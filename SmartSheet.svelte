@@ -2,7 +2,8 @@
     import Cell from './Cell.svelte';
     import CellPointer from './CellPointer.svelte';
     import NavigationOverlay from './NavigationOverlay.svelte';
-    import { SmartSheetNavigation, type GridPosition, type NavigationState } from './navigationHandlers';
+    import { SmartSheetController } from './navigationHandlers';
+    import type { GridPosition } from './types';
 
     // Test data with many columns
     let gridData = [
@@ -16,77 +17,48 @@
         ['Grace', 29, 'Alicante', 49000, 'HR', 'Specialist', '2023-04-05', 'Tom Garcia', '+34-777-999', 'grace@company.com', 'Spain', '4 years', 'Recruiting', 4.7, 4800, 'Health+Vision', 'Active', 2, 39, 'Very Good']
     ];
 
-    // Navigation instance
-    let navigation = new SmartSheetNavigation(gridData);
+    // Create controller with grid dimensions
+    let controller = new SmartSheetController({
+        maxRow: gridData.length - 1,
+        maxCol: (gridData[0]?.length || 1) - 1
+    });
     let tableContainer: HTMLDivElement;
-    let pointerVisible = true;
 
-    // Reactive states derived from navigation
-    $: navigationState = navigation.getState();
-    $: pointerPosition = navigationState.pointerPosition;
-    $: navigationMode = navigationState.navigationMode;
-    $: selectedCells = navigationState.selectedCells; // Extract for reactivity
-    $: {
-        console.log('Navigation state updated:', {
-            navigationMode,
-            pointerPosition,
-            selectedCells: Array.from(navigationState.selectedCells)
-        });
-    }
-
-    // Reactive function that updates automatically
-    $: isCellSelected = (row: number, col: number) => {
-        return navigationMode && selectedCells.has(`${row}-${col}`);
-    };
+    // Reactive states managed by controller
+    let navigationMode = false;
+    let pointerPosition: GridPosition = { row: 0, col: 0 };
 
     // Update container reference when available
     $: if (tableContainer) {
-        navigation.setTableContainer(tableContainer);
+        controller.setTableContainer(tableContainer);
     }
 
     // Cell event handler
     function handleCellClick(event: CustomEvent) {
-        const { position, selected, value } = event.detail;
+        const { position } = event.detail;
 
         // Activate navigation if not active
         if (!navigationMode) {
             handleNavigationActivate();
         }
 
-        // Move pointer to clicked cell
-        const newState = navigation.moveToPosition(position);
-        if (newState) {
-            navigationState = newState;
-        }
-
-        console.log(`Cell clicked at ${position.row}-${position.col}:`, {
-            value,
-            selected,
-            position
-        });
+        // Let controller handle the click
+        controller.handleCellClick(position);
     }
 
     // Activate navigation mode
     function handleNavigationActivate() {
-        const newState = navigation.activateNavigation();
-        // Force reactive update
-        navigationState = newState;
+        navigationMode = controller.activateNavigation();
     }
 
     // Handle focus loss
     function handleBlur() {
-        const newState = navigation.deactivateNavigation();
-        // Force reactive update
-        navigationState = newState;
+        navigationMode = controller.deactivateNavigation();
     }
 
     // Handle keyboard navigation
     function handleKeyDown(event: KeyboardEvent) {
-        const newState = navigation.handleKeyDown(event);
-        if (newState) {
-            // Force reactive update
-            navigationState = newState;
-        }
+        pointerPosition = controller.handleKeyDown(event);
     }
 </script>
 
@@ -107,7 +79,8 @@
                         <Cell
                             value={cellValue}
                             position={{ row: rowIndex, col: colIndex }}
-                            selected={isCellSelected(rowIndex, colIndex)}
+                            registerCell={(cell) => controller.registerCell(cell)}
+                            unregisterCell={(pos) => controller.unregisterCell(pos)}
                             on:cellClick={handleCellClick}
                         />
                     </div>
