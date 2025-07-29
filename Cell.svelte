@@ -13,7 +13,12 @@
     let element: HTMLElement;
 
     const dispatch = createEventDispatcher<{
-        cellClick: { position: GridPosition; selected: boolean; value: string | number };
+        cellClick: {
+            position: GridPosition;
+            selected: boolean;
+            value: string | number;
+            mouseEvent: MouseEvent;
+        };
     }>();
 
     // Implement CellComponent interface
@@ -37,15 +42,21 @@
         };
     });
 
-    function handleClick() {
-        // Only dispatch event to parent - let parent handle all logic
-        dispatch('cellClick', { position, selected, value });
+    function handleClick(event: MouseEvent) {
+        // Dispatch event with complete MouseEvent for analysis
+        dispatch('cellClick', {
+            position,
+            selected,
+            value,
+            mouseEvent: event
+        });
     }
 </script>
 
 <div
     bind:this={element}
-    class="border border-tertiaryOnBg px-2 py-1 cursor-pointer select-none transition-colors duration-200 w-full h-full flex items-center {selected ? 'bg-[rgb(255,127,80)]' : 'bg-tertiaryBg'}"
+    class="border border-tertiaryOnBg px-2 py-1 cursor-pointer select-none transition-colors
+        duration-200 w-full h-full flex items-center {selected ? 'bg-[rgb(255,127,80)]' : 'bg-tertiaryBg'}"
     on:click={handleClick}
     data-row={position.row}
     data-col={position.col}

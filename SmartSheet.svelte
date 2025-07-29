@@ -2,26 +2,36 @@
     import Cell from './Cell.svelte';
     import CellPointer from './CellPointer.svelte';
     import NavigationOverlay from './NavigationOverlay.svelte';
-    import { SmartSheetController } from './navigationHandlers';
+    import SmartSheetController from './SmartSheetController';
+    import { Selection } from './SelectionHandler';
+    import type { SelectionChangedCallback } from './SelectionHandler';
     import type { GridPosition } from './types';
+    import SelectionRect from './SelectionRect.svelte';
 
     // Test data with many columns
     let gridData = [
         ['Name', 'Age', 'City', 'Salary', 'Department', 'Position', 'Start Date', 'Manager', 'Phone', 'Email', 'Country', 'Experience', 'Skills', 'Rating', 'Bonus', 'Benefits', 'Status', 'Projects', 'Hours', 'Performance'],
         ['Alice', 25, 'Madrid', 45000, 'Engineering', 'Developer', '2023-01-15', 'John Smith', '+34-123-456', 'alice@company.com', 'Spain', '2 years', 'JavaScript', 4.5, 5000, 'Health+Dental', 'Active', 3, 40, 'Excellent'],
-        ['Bob', 30, 'Barcelona', 52000, 'Marketing', 'Manager', '2022-03-20', 'Jane Doe', '+34-987-654', 'bob@company.com', 'Spain', '5 years', 'Analytics', 4.2, 7000, 'Full Package', 'Active', 5, 45, 'Good'],
-        ['Carol', 28, 'Valencia', 48000, 'Design', 'UX Designer', '2023-06-10', 'Mike Johnson', '+34-555-777', 'carol@company.com', 'Spain', '3 years', 'Figma', 4.8, 4500, 'Health Only', 'Active', 2, 38, 'Outstanding'],
+        ['Bob', 30, 'Barcelona', 52000, 'Marketing', 'Manager', '2022-03-20', 'Jane Doe', '+34-987-654', 'bob@company.com', 'Spain', undefined, undefined, undefined, 7000, undefined, 'Active', 5, 45, 'Good'],
+        ['Carol', 28, 'Valencia', 48000, 'Design', 'UX Designer', '2023-06-10', 'Mike Johnson', '+34-555-777', 'carol@company.com', 'Spain', '3 years', 'Figma', 4.8, 4500, 'Health Only', undefined, 2, 38, 'Outstanding'],
         ['David', 35, 'Sevilla', 55000, 'Sales', 'Director', '2021-08-30', 'Sarah Wilson', '+34-111-222', 'david@company.com', 'Spain', '8 years', 'CRM', 4.0, 8000, 'Premium', 'On Leave', 7, 42, 'Good'],
         ['Emma', 27, 'Bilbao', 46000, 'Engineering', 'Frontend', '2023-02-28', 'John Smith', '+34-333-444', 'emma@company.com', 'Spain', '2.5 years', 'React', 4.6, 5500, 'Health+Dental', 'Active', 4, 40, 'Excellent'],
         ['Frank', 32, 'Granada', 51000, 'Operations', 'Analyst', '2022-11-15', 'Lisa Brown', '+34-666-888', 'frank@company.com', 'Spain', '6 years', 'SQL', 4.3, 6000, 'Full Package', 'Active', 3, 41, 'Good'],
         ['Grace', 29, 'Alicante', 49000, 'HR', 'Specialist', '2023-04-05', 'Tom Garcia', '+34-777-999', 'grace@company.com', 'Spain', '4 years', 'Recruiting', 4.7, 4800, 'Health+Vision', 'Active', 2, 39, 'Very Good']
     ];
 
+    // Selections array to render, will be suscribed to controller's selections by a callback
+    let selections: Selection[] = [];
+
+    const suscribeToSelections: SelectionChangedCallback = (handler) => {
+        selections = handler.getSelections();
+    };
+
     // Create controller with grid dimensions
     let controller = new SmartSheetController({
         maxRow: gridData.length - 1,
         maxCol: (gridData[0]?.length || 1) - 1
-    });
+    }, suscribeToSelections);
     let tableContainer: HTMLDivElement;
 
     // Reactive states managed by controller
@@ -35,15 +45,15 @@
 
     // Cell event handler
     function handleCellClick(event: CustomEvent) {
-        const { position } = event.detail;
+        const { position, mouseEvent } = event.detail;
 
         // Activate navigation if not active
         if (!navigationMode) {
             handleNavigationActivate();
         }
 
-        // Let controller handle the click
-        controller.handleCellClick(position);
+        // Let controller handle the click with complete mouse event
+        pointerPosition = controller.handleCellClick(position, mouseEvent);
     }
 
     // Activate navigation mode
@@ -59,6 +69,35 @@
     // Handle keyboard navigation
     function handleKeyDown(event: KeyboardEvent) {
         pointerPosition = controller.handleKeyDown(event);
+    }
+
+    // PUBLIC API - Methods exposed for external control
+    export function selectPositions(positions: GridPosition[]) {
+        controller.selectPositions(positions);
+    }
+
+    export function addToSelection(positions: GridPosition[]) {
+        controller.addToSelection(positions);
+    }
+
+    export function removeFromSelection(positions: GridPosition[]) {
+        controller.removeFromSelection(positions);
+    }
+
+    export function navigateToPosition(position: GridPosition) {
+        return controller.navigateToPosition(position);
+    }
+
+    export function getGridDimensions() {
+        return controller.getGridDimensions();
+    }
+
+    export function getAllPositions() {
+        return controller.getAllPositions();
+    }
+
+    export function clearSelection() {
+        controller.selectPositions([]);
     }
 </script>
 
@@ -91,6 +130,14 @@
             <CellPointer
                 position={pointerPosition} 
             />
+
+            <!-- Render selections -->
+            {#each selections as selection}
+                <SelectionRect
+                    gridArea={{...selection.getGridArea()}}
+                    active={selection.isActiveSelection()}
+                />
+            {/each}
         </div>
     </div>
 
