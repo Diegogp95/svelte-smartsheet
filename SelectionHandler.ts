@@ -13,13 +13,22 @@ export default class SelectionHandler {
     private selectedCells: Set<string>;
     private cellComponents: Map<string, CellComponent>;
     private selections: Selection[];
-    private onSelectionsChanged?: (handler: SelectionHandler) => void;
+    private onSelectionsChanged?: SelectionChangedCallback;
+    private onDeselectionsChanged?: SelectionChangedCallback;
+    private isDeselecting: boolean;
+    private deselection: Selection | null;
 
-    constructor(cellComponents: Map<string, CellComponent>, onSelectionsChanged?: (handler: SelectionHandler) => void) {
+    constructor(cellComponents: Map<string, CellComponent>,
+        onSelectionsChanged?: SelectionChangedCallback,
+        onDeselectionsChanged?: SelectionChangedCallback
+    ) {
         this.selectedCells = new Set<string>();
         this.cellComponents = cellComponents;
         this.selections = [];
         this.onSelectionsChanged = onSelectionsChanged;
+        this.onDeselectionsChanged = onDeselectionsChanged;
+        this.isDeselecting = false;
+        this.deselection = null;
     }
 
     // Helper method to convert position to key
@@ -56,6 +65,11 @@ export default class SelectionHandler {
                 toSelect.add(key);
             }
         });
+
+        // If no changes, do nothing for performance
+        if (toDeselect.size === 0 && (!clearPrevious || toSelect.size === 0)) {
+            return;
+        }
 
         // Update selectedCells state
         this.applyCellChanges(toDeselect, toSelect);
@@ -118,18 +132,49 @@ export default class SelectionHandler {
 
     // Process mouse click selection with modifiers
     processClickSelection(analysis: ClickAnalysis, currentPosition: GridPosition, anchor: GridPosition): void {
-        if (analysis.modifiers.ctrl && analysis.modifiers.shift) {
-            // SHIFT + CTRL + Click: Single selection (comportamiento Excel)
-            this.selectSingle(currentPosition);
-        } else if (analysis.modifiers.ctrl) {
-            // CTRL + Click: Add new selection (multiple)
-            this.addNewSelection(anchor, currentPosition);
-        } else if (analysis.modifiers.shift && anchor) {
-            // SHIFT + Click: Update active selection
+        if (analysis.type === 'mousedown' && analysis.modifiers.ctrl && !analysis.modifiers.shift) {
+            // CTRL + mousedown: Create new selection or start deselecting
+            // Need to adress the the case when the cell is already selected, in that case we deselect cells
+            // For now only select case
+            if (this.isCellSelected(currentPosition)) {
+                this.isDeselecting = true;
+                this.createDeselection(anchor, currentPosition);
+            } else {
+                // Create new selection
+                this.addNewSelection(anchor, currentPosition);
+            }
+        } else if (analysis.type === 'mousedown' && analysis.modifiers.shift && !analysis.modifiers.ctrl) {
+            // SHIFT + mousedown: Update active selection
             this.updateActiveSelection(anchor, currentPosition);
-        } else {
-            // Normal Click: Single selection
-            this.selectSingle(currentPosition);
+        } else if (analysis.type === 'mousedown') {
+            // Normal mousedown: Firt clear and add new selection
+            this.clearSelections();
+            this.addNewSelection(currentPosition, currentPosition);
+        } else if (analysis.type === 'mouseenter') {
+            // This whole method is not supposed to be triggered if no changes are detected for position or anchor
+            // And in case one of these changes, we update the active selection no matter the modifiers
+            if (this.isDeselecting) {
+                // If deselecting, update the deselection area
+                this.updateDeselection(anchor, currentPosition);
+            } else {
+                // Otherwise update the active selection
+                this.updateActiveSelection(anchor, currentPosition);
+            }
+        } else if (analysis.type === 'mouseup') {
+            // Mouse up: The selections should already be handled by the mouseenter
+            // except if the mousedown and mouseup are on the same cell and no modifiers are pressed
+            // But in the case of deselection, we finalize it, so skipping this needs to be carefully
+            if (anchor.row === currentPosition.row && anchor.col === currentPosition.col &&
+                !analysis.modifiers.shift && !analysis.modifiers.ctrl) {
+                // If mouse up is on the same cell, we select it
+                this.selectSingle(currentPosition);
+            }
+            if (this.isDeselecting) {
+                // If deselecting, finalize deselection
+                this.isDeselecting = false;
+                this.deselectArea();
+                this.clearDeselection();
+            }
         }
     }
 
@@ -190,33 +235,61 @@ export default class SelectionHandler {
         this.updateSelection(allCells, true);
     }
 
-    findSelectionsContaining(position: GridPosition): Selection[] {
-        return this.selections.filter(selection => selection.contains(position));
-    }
-
-    deselectArea(position1: GridPosition, position2: GridPosition): void {
-        // TODO: For each selection that contains the area:
-        // 1. Fragment the selection excluding the area
-        // 2. Replace the original selection with the fragments
-        // 3. Sync selected cells after modification
-    }
-
-    // Process area toggle: select or deselect based on current state
-    processAreaToggle(position1: GridPosition, position2: GridPosition): void {
-        const selectionsAtStart = this.findSelectionsContaining(position1);
-
-        if (selectionsAtStart.length > 0) {
-            // If first cell is selected, deselect area
-            this.deselectArea(position1, position2);
-        } else {
-            // First cell is not selected → select area (additive)
-            this.addNewSelection(position1, position2);
+    private deselectArea(): void {
+        const deselection = this.getDeselection();
+        const newSelections: Selection[] = [];
+        if (deselection) {
+            for (const selection of this.selections) {
+                const newSelection = selection.fragmentExcluding({...deselection.getBounds()});
+                newSelections.push(...newSelection);
+            }
+            this.selections = newSelections;
+            // If no active selection remains, set last selection as active
+            if (!this.selections.some(sel => sel.isActiveSelection()) && this.selections.length > 0) {
+                const lastSelection = this.selections[this.selections.length - 1];
+                if (lastSelection) {
+                    lastSelection.setActive(true);
+                }
+            }
+            // Update selections with new fragments
+            this.syncSelectedCells();
         }
     }
 
     getSelections(): Selection[] {
         return this.selections;
     }
+
+    // Reuse Selection class for deselection, since it handles rectangular areas
+    private createDeselection(position1: GridPosition, position2: GridPosition): void {
+        this.deselection = new Selection(position1, position2, false);
+        if (this.onDeselectionsChanged) {
+            this.onDeselectionsChanged(this);
+        }
+    }
+
+    private clearDeselection(): void {
+        this.deselection = null;
+        if (this.onDeselectionsChanged) {
+            this.onDeselectionsChanged(this);
+        }
+    }
+
+    private updateDeselection(position1: GridPosition, position2: GridPosition): void {
+        if (this.deselection) {
+            this.deselection.updateBounds(position1, position2);
+        } else {
+            this.createDeselection(position1, position2);
+        }
+        if (this.onDeselectionsChanged) {
+            this.onDeselectionsChanged(this);
+        }
+    }
+
+    getDeselection(): Selection | null {
+        return this.deselection;
+    }
+
 }
 
 export class Selection {
@@ -256,7 +329,7 @@ export class Selection {
 
     // Update selection bounds and recalculate cells
     updateBounds(position1: GridPosition, position2: GridPosition): void {
-        this.calculateBounds(position1, position2);
+        this.updateBoundsFromCells(position1, position2);
         this.recalculateCells();
         this.updateGridArea();
     }
@@ -294,15 +367,22 @@ export class Selection {
     }
 
     // Calculate bounds based on two positions
-    private calculateBounds(pos1: GridPosition, pos2: GridPosition): void {
-        this.topLeft = {
+    private calculateBounds(pos1: GridPosition, pos2: GridPosition): { topLeft: GridPosition, bottomRight: GridPosition } {
+        const topLeft = {
             row: Math.min(pos1.row, pos2.row),
             col: Math.min(pos1.col, pos2.col)
         };
-        this.bottomRight = {
+        const bottomRight = {
             row: Math.max(pos1.row, pos2.row),
             col: Math.max(pos1.col, pos2.col)
         };
+        return { topLeft, bottomRight };
+    }
+
+    private updateBoundsFromCells(position1: GridPosition, position2: GridPosition): void {
+        const { topLeft, bottomRight } = this.calculateBounds(position1, position2);
+        this.topLeft = { ...topLeft };
+        this.bottomRight = { ...bottomRight };
     }
 
     private recalculateCells(): void {
@@ -329,9 +409,100 @@ export class Selection {
         return `${position.row}-${position.col}`;
     }
 
-    fragmentExcluding(excludeArea: { topLeft: GridPosition, bottomRight: GridPosition }): Selection[] {
-        // TODO: Calculate resulting rectangles (can be 0-8 new rectangles)
-        // If this selection was active, mark one of the new ones as active
-        return []; // Placeholder
+    fragmentExcluding(excludeArea: { topLeft: GridPosition; bottomRight: GridPosition }): Selection[] {
+        const fragments: Selection[] = [];
+
+        const selectionTopLeft = this.topLeft;
+        const selectionBottomRight = this.bottomRight;
+
+        const excludeTopLeft = excludeArea.topLeft;
+        const excludeBottomRight = excludeArea.bottomRight;
+
+        // Calculate intersection
+        const intersectTopLeft: GridPosition = {
+            row: Math.max(selectionTopLeft.row, excludeTopLeft.row),
+            col: Math.max(selectionTopLeft.col, excludeTopLeft.col)
+        };
+
+        const intersectBottomRight: GridPosition = {
+            row: Math.min(selectionBottomRight.row, excludeBottomRight.row),
+            col: Math.min(selectionBottomRight.col, excludeBottomRight.col)
+        };
+
+        // Check if there is no intersection
+        const noIntersection =
+            intersectTopLeft.row > intersectBottomRight.row ||
+            intersectTopLeft.col > intersectBottomRight.col;
+
+        if (noIntersection) {
+            return [new Selection(selectionTopLeft, selectionBottomRight, this.isActive)];
+        }
+
+        // Check if the selection fully covers the intersection area
+        const fullCover =
+            intersectTopLeft.row === selectionTopLeft.row &&
+            intersectBottomRight.row === selectionBottomRight.row &&
+            intersectTopLeft.col === selectionTopLeft.col &&
+            intersectBottomRight.col === selectionBottomRight.col;
+
+        if (fullCover) {
+            return [];
+        }
+
+        // Upper part
+        if (selectionTopLeft.row < intersectTopLeft.row) {
+            fragments.push(new Selection(
+                { row: selectionTopLeft.row, col: selectionTopLeft.col },
+                { row: intersectTopLeft.row - 1, col: selectionBottomRight.col },
+                false
+            ));
+        }
+
+        // Lower part
+        if (intersectBottomRight.row < selectionBottomRight.row) {
+            fragments.push(new Selection(
+                { row: intersectBottomRight.row + 1, col: selectionTopLeft.col },
+                { row: selectionBottomRight.row, col: selectionBottomRight.col },
+                false
+            ));
+        }
+
+        // Left side
+        if (selectionTopLeft.col < intersectTopLeft.col) {
+            fragments.push(new Selection(
+                {
+                    row: Math.max(selectionTopLeft.row, intersectTopLeft.row),
+                    col: selectionTopLeft.col
+                },
+                {
+                    row: Math.min(selectionBottomRight.row, intersectBottomRight.row),
+                    col: intersectTopLeft.col - 1
+                },
+                false
+            ));
+        }
+
+        // Right side
+        if (intersectBottomRight.col < selectionBottomRight.col) {
+            fragments.push(new Selection(
+                {
+                    row: Math.max(selectionTopLeft.row, intersectTopLeft.row),
+                    col: intersectBottomRight.col + 1
+                },
+                {
+                    row: Math.min(selectionBottomRight.row, intersectBottomRight.row),
+                    col: selectionBottomRight.col
+                },
+                false
+            ));
+        }
+
+        // Set active state for the first fragment if this selection was active
+        if (this.isActive && fragments.length > 0) {
+            fragments[0].setActive(true);
+        }
+
+        return fragments;
     }
+
 }

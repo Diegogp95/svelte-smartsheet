@@ -5,8 +5,13 @@
     import SmartSheetController from './SmartSheetController';
     import { Selection } from './SelectionHandler';
     import type { SelectionChangedCallback } from './SelectionHandler';
-    import type { GridPosition } from './types';
+    import type { PointerPositionCallback } from './NavigationHandler';
+    import type {
+        GridPosition,
+        CellMouseEvent,
+    } from './types';
     import SelectionRect from './SelectionRect.svelte';
+    import DeselectionRect from './DeselectionRect.svelte';
 
     // Test data with many columns
     let gridData = [
@@ -20,23 +25,34 @@
         ['Grace', 29, 'Alicante', 49000, 'HR', 'Specialist', '2023-04-05', 'Tom Garcia', '+34-777-999', 'grace@company.com', 'Spain', '4 years', 'Recruiting', 4.7, 4800, 'Health+Vision', 'Active', 2, 39, 'Very Good']
     ];
 
-    // Selections array to render, will be suscribed to controller's selections by a callback
+    // Selections array to render, will be subscribed to controller's selections by a callback
     let selections: Selection[] = [];
-
-    const suscribeToSelections: SelectionChangedCallback = (handler) => {
+    // Callback to get selections from controller
+    const subscribeToSelections: SelectionChangedCallback = (handler) => {
         selections = handler.getSelections();
+    };
+    // Pointer position variable to be subscribed to controller updates
+    let pointerPosition: GridPosition = { row: 0, col: 0 };
+    // Callback to update pointer position from controller
+    const subscribeToPointerPosition: PointerPositionCallback = (handler) => {
+        pointerPosition = handler.getCurrentPosition();
+    };
+
+    let deSelection: Selection | null = null;
+    // Callback to get deselection area from controller
+    const subscribeToDeselection: SelectionChangedCallback = (handler) => {
+        deSelection = handler.getDeselection();
     };
 
     // Create controller with grid dimensions
     let controller = new SmartSheetController({
         maxRow: gridData.length - 1,
         maxCol: (gridData[0]?.length || 1) - 1
-    }, suscribeToSelections);
+    }, subscribeToSelections, subscribeToPointerPosition, subscribeToDeselection);
     let tableContainer: HTMLDivElement;
 
     // Reactive states managed by controller
     let navigationMode = false;
-    let pointerPosition: GridPosition = { row: 0, col: 0 };
 
     // Update container reference when available
     $: if (tableContainer) {
@@ -44,16 +60,11 @@
     }
 
     // Cell event handler
-    function handleCellClick(event: CustomEvent) {
-        const { position, mouseEvent } = event.detail;
-
-        // Activate navigation if not active
+    function handleCellMouseEvent(event: CustomEvent<CellMouseEvent>) {
         if (!navigationMode) {
             handleNavigationActivate();
         }
-
-        // Let controller handle the click with complete mouse event
-        pointerPosition = controller.handleCellClick(position, mouseEvent);
+        controller.handleMouseEvent(event.detail);
     }
 
     // Activate navigation mode
@@ -68,7 +79,7 @@
 
     // Handle keyboard navigation
     function handleKeyDown(event: KeyboardEvent) {
-        pointerPosition = controller.handleKeyDown(event);
+        controller.handleKeyDown(event);
     }
 
     // PUBLIC API - Methods exposed for external control
@@ -118,9 +129,9 @@
                         <Cell
                             value={cellValue}
                             position={{ row: rowIndex, col: colIndex }}
-                            registerCell={(cell) => controller.registerCell(cell)}
-                            unregisterCell={(pos) => controller.unregisterCell(pos)}
-                            on:cellClick={handleCellClick}
+                            onCellCreation={(cell) => controller.registerCell(cell)}
+                            onCellDestruction={(cell) => controller.unregisterCell(cell)}
+                            on:cellInteraction={handleCellMouseEvent}
                         />
                     </div>
                 {/each}
@@ -138,6 +149,13 @@
                     active={selection.isActiveSelection()}
                 />
             {/each}
+
+            <!-- Render deselection area -->
+            {#if deSelection}
+                <DeselectionRect
+                    gridArea={{...deSelection.getGridArea()}}
+                />
+            {/if}
         </div>
     </div>
 

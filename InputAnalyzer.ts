@@ -5,6 +5,7 @@ import type {
     NavigationAnalysis,
     ClickAnalysis,
     KeyCategory,
+    CellMouseEvent,
 } from './types';
 
 export default class InputAnalyzer {
@@ -33,22 +34,32 @@ export default class InputAnalyzer {
     }
 
     // PHASE 2: Specialized click analysis
-    analyzeClick(event: MouseEvent | undefined, position: GridPosition): ClickAnalysis {
-        const modifiers = event ? this.analyzeMouseEvent(event) : { shift: false, ctrl: false, alt: false };
+    analyzeMouseEvent(event: CellMouseEvent): ClickAnalysis {
+        const modifiers = event ? this.analyzeMouseModifiers(event.mouseEvent) : { shift: false, ctrl: false, alt: false };
         return {
-            position,
+            type: event.type,
+            position: event.position,
             modifiers,
-            clickType: event ? this.determineClickType(event) : 'normal',
+            clickType: this.determineClickType(event.mouseEvent),
         };
     }
 
     // Analyze mouse event and extract modifier state
-    analyzeMouseEvent(event: MouseEvent): ModifierState {
+    analyzeMouseModifiers(event: MouseEvent): ModifierState {
         return {
             shift: event.shiftKey,
             ctrl: event.ctrlKey,
             alt: event.altKey
         };
+    }
+
+    // Determine click type from mouse event
+    private determineClickType(event: MouseEvent): 'normal' | 'double' | 'right' | 'wheel' {
+        console.log(`Mouse Button: ${event.button}, Detail: ${event.detail}`);
+        if (event.button === 2) return 'right';
+        if (event.button === 1) return 'wheel';
+        if (event.detail === 2) return 'double';
+        return 'normal';
     }
 
     // Update internal modifier state
@@ -78,13 +89,6 @@ export default class InputAnalyzer {
             'ArrowRight': 'right'
         };
         return directions[key] || null;
-    }
-
-    // Determine click type from mouse event
-    private determineClickType(event: MouseEvent): 'normal' | 'double' | 'right' {
-        if (event.button === 2) return 'right';
-        if (event.detail === 2) return 'double';
-        return 'normal';
     }
 
     // Determine if default behavior should be prevented

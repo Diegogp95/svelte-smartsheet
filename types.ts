@@ -11,7 +11,9 @@ export interface GridDimensions {
 export interface NavigationState {
     pointerPosition: GridPosition;
     navigationMode: boolean;
-    anchorPosition?: GridPosition;  // For rectangular selection
+    anchorPosition: GridPosition;  // For rectangular selection,
+    mousePosition?: GridPosition; // For mouse-based navigation
+    isDragging: boolean; // Indicates if a drag operation is in progress
 }
 
 // Interface for Cell component interaction
@@ -24,8 +26,8 @@ export interface CellComponent {
 }
 
 // Function type for cell registration
-export type RegisterCellFunction = (cellComponent: CellComponent) => void;
-export type UnregisterCellFunction = (position: GridPosition) => void;
+export type OnCellCreation = (cellComponent: CellComponent) => void;
+export type OnCellDestruction = (cellComponent: CellComponent) => void;
 
 // Keyboard event analysis types
 export type KeyCategory = 'arrow' | 'confirm' | 'cancel' | 'delete' | 'space' | 'alphanumeric' | 'other';
@@ -52,7 +54,16 @@ export interface NavigationAnalysis {
 }
 
 export interface ClickAnalysis {
+    type: 'mousedown' | 'mouseenter' | 'mouseup';
     position: GridPosition;
     modifiers: ModifierState;
-    clickType: 'normal' | 'double' | 'right';
+    clickType: 'normal' | 'double' | 'right' | 'wheel';
 }
+
+export interface CellMouseEvent {
+    type: 'mousedown' | 'mouseenter' | 'mouseup';
+    position: GridPosition;
+    selected: boolean;
+    value: string | number;
+    mouseEvent: MouseEvent;
+};

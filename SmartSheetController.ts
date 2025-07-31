@@ -3,11 +3,13 @@ import type {
     GridDimensions,
     CellComponent,
     RawKeyboardAnalysis,
+    CellMouseEvent,
 } from './types';
 import InputAnalyzer from './InputAnalyzer';
 import NavigationHandler from './NavigationHandler';
 import SelectionHandler from './SelectionHandler';
 import type { SelectionChangedCallback } from './SelectionHandler';
+import type { PointerPositionCallback } from './NavigationHandler';
 
 // Main Controller - Mediates between navigation and selection
 export default class SmartSheetController {
@@ -17,13 +19,17 @@ export default class SmartSheetController {
     private selectionHandler: SelectionHandler;
     private inputAnalyzer: InputAnalyzer;
 
-    constructor(initialDimensions: GridDimensions, onSelectionsChanged?: SelectionChangedCallback) {
+    constructor(initialDimensions: GridDimensions,
+        onSelectionsChanged?: SelectionChangedCallback,
+        pointerPositionCallback?: PointerPositionCallback,
+        onDeselectionsChanged?: SelectionChangedCallback,
+    ) {
         this.cellComponents = new Map();
         this.gridDimensions = initialDimensions;
 
         // Initialize handlers with shared references
-        this.selectionHandler = new SelectionHandler(this.cellComponents, onSelectionsChanged);
-        this.navigationHandler = new NavigationHandler(this.gridDimensions, this.cellComponents);
+        this.selectionHandler = new SelectionHandler(this.cellComponents, onSelectionsChanged, onDeselectionsChanged);
+        this.navigationHandler = new NavigationHandler(this.gridDimensions, this.cellComponents, pointerPositionCallback);
         this.inputAnalyzer = new InputAnalyzer();
     }
 
@@ -34,8 +40,8 @@ export default class SmartSheetController {
     }
 
     // Unregister cell component (for cleanup)
-    unregisterCell(position: GridPosition) {
-        const key = `${position.row}-${position.col}`;
+    unregisterCell(cellComponent: CellComponent) {
+        const key = `${cellComponent.position.row}-${cellComponent.position.col}`;
         this.cellComponents.delete(key);
     }
 
@@ -51,22 +57,34 @@ export default class SmartSheetController {
     }
 
     // Click on cell: navigate + select with modifier support
-    handleCellClick(position: GridPosition, mouseEvent?: MouseEvent): GridPosition {
+    handleMouseEvent(cellMouseEvent: CellMouseEvent) {
         // Analyze click with specialized analysis
-        const clickAnalysis = this.inputAnalyzer.analyzeClick(mouseEvent, position);
+        const clickAnalysis = this.inputAnalyzer.analyzeMouseEvent(cellMouseEvent);
 
+        // Wheel should not trigger neither navigation nor selection
+        if (clickAnalysis.clickType === 'wheel') {
+            return;
+        }
+
+        const oldPosition = this.navigationHandler.getCurrentPosition();
+        const oldAnchor = this.navigationHandler.getAnchor();
         // Delegate navigation and anchor coordination to NavigationHandler
         const newPosition = this.navigationHandler.processMouseNavigation(clickAnalysis);
         const anchorPosition = this.navigationHandler.getAnchor() || newPosition;
 
+        // If the position didn't change, we can skip selection logic
+        // Except for mouseup, since mousedown + mouseup in the same cell must select the cell
+        if (this.navigationHandler.comparePositions(oldPosition, newPosition) &&
+            this.navigationHandler.comparePositions(oldAnchor || { row: -1, col: -1 }, anchorPosition) &&
+            clickAnalysis.type !== 'mouseup') {
+            return;
+        }
         // Delegate selection logic to SelectionHandler with complete context
         this.selectionHandler.processClickSelection(clickAnalysis, newPosition, anchorPosition);
-
-        return newPosition;
     }
 
     // Keyboard navigation: process input and update selection
-    handleKeyDown(event: KeyboardEvent): GridPosition {
+    handleKeyDown(event: KeyboardEvent) {
         // PHASE 1: Basic analysis for categorization
         const basicAnalysis = this.inputAnalyzer.analyzeEvent(event);
 
@@ -87,11 +105,10 @@ export default class SmartSheetController {
         }
 
         // Other categories not processed yet
-        return this.navigationHandler.getCurrentPosition();
     }
 
     // Handle navigation keys with specialized analysis
-    private handleNavigationKey(basicAnalysis: RawKeyboardAnalysis): GridPosition {
+    private handleNavigationKey(basicAnalysis: RawKeyboardAnalysis) {
         // PHASE 2: Specialized navigation analysis
         const navAnalysis = this.inputAnalyzer.analyzeNavigation(basicAnalysis);
 
@@ -102,7 +119,6 @@ export default class SmartSheetController {
         // Delegate selection logic to SelectionHandler with complete context
         this.selectionHandler.processNavigationSelection(navAnalysis, currentPosition, anchorPosition);
 
-        return currentPosition;
     }
 
     // Activate navigation: select current cell only if no selection exists

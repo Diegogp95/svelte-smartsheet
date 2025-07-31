@@ -7,19 +7,27 @@ import type {
     ClickAnalysis,
 } from './types';
 
+export type PointerPositionCallback = (handler: NavigationHandler) => void;
+
 export default class NavigationHandler {
     private gridDimensions: GridDimensions;
     private navigationState: NavigationState;
     private tableContainer: HTMLDivElement | undefined;
     private cellComponents: Map<string, CellComponent>;
+    private pointerPositionCallback?: PointerPositionCallback;
 
-    constructor(gridDimensions: GridDimensions, cellComponents: Map<string, CellComponent>) {
+    constructor(gridDimensions: GridDimensions, cellComponents: Map<string, CellComponent>,
+        pointerPositionCallback?: PointerPositionCallback
+    ) {
         this.gridDimensions = gridDimensions;
         this.cellComponents = cellComponents;
         this.navigationState = {
             pointerPosition: { row: 0, col: 0 },
-            navigationMode: false
+            anchorPosition: { row: 0, col: 0 },
+            navigationMode: false,
+            isDragging: false,
         };
+        this.pointerPositionCallback = pointerPositionCallback;
     }
 
     // Update container reference
@@ -38,32 +46,35 @@ export default class NavigationHandler {
 
         if (position.row >= 0 && position.row <= maxRow &&
             position.col >= 0 && position.col <= maxCol) {
-            this.navigationState.pointerPosition = { ...position };
+            this.setPointerPosition(position);
 
             // Auto-scroll if container is available
             if (this.tableContainer) {
                 this.scrollToPosition(position);
             }
-
-            return { ...position };
         }
 
-        return this.navigationState.pointerPosition; // Return current position if out of bounds
+        // Call pointer position callback if defined
+        if (this.pointerPositionCallback) {
+            this.pointerPositionCallback(this);
+        }
+
+        return this.getCurrentPosition(); // Return current position if out of bounds
     }
 
     // Process keyboard navigation analysis from InputAnalyzer
     processKeyboardNavigation(analysis: NavigationAnalysis): GridPosition {
-        if (!this.navigationState.navigationMode) return this.navigationState.pointerPosition;
+        if (!this.isNavigationMode()) return this.getCurrentPosition();
 
         // Only process if we have a valid direction
-        if (!analysis.direction) return this.navigationState.pointerPosition;
+        if (!analysis.direction) return this.getCurrentPosition();
 
         // ANCHOR COORDINATION: Set anchor before navigation if Shift is pressed and no anchor exists
-        if (analysis.modifiers.shift && !this.navigationState.anchorPosition) {
-            this.setAnchor(this.navigationState.pointerPosition);
+        if (analysis.modifiers.shift && !this.getAnchor()) {
+            this.setAnchor(this.getCurrentPosition());
         }
 
-        const { row, col } = this.navigationState.pointerPosition;
+        const { row, col } = this.getCurrentPosition();
         const { maxRow, maxCol } = this.gridDimensions;
         let newPosition: GridPosition | null = null;
 
@@ -97,8 +108,8 @@ export default class NavigationHandler {
         }
 
         if (newPosition) {
-            this.navigationState.pointerPosition = newPosition;
-            this.scrollToPosition(newPosition);
+            // Move pointer to new position
+            this.movePointer(newPosition);
 
             // ANCHOR COORDINATION: Update anchor to follow pointer (except when Shift is pressed)
             if (!analysis.modifiers.shift) {
@@ -109,25 +120,72 @@ export default class NavigationHandler {
         return this.navigationState.pointerPosition;
     }
 
-    // Process mouse click navigation analysis from InputAnalyzer
+    // Process mouse navigation and selection logic
     processMouseNavigation(analysis: ClickAnalysis): GridPosition {
-        // Move pointer to clicked position
-        const newPosition = this.movePointer(analysis.position);
-        
-        // ANCHOR COORDINATION: Handle anchor based on modifiers
-        if (analysis.modifiers.shift && !analysis.modifiers.ctrl) {
-            // SHIFT+CLICK: Keep anchor fixed (if exists) for rectangular selection
-            if (!this.navigationState.anchorPosition) {
-                // No anchor exists: set anchor at current position before click
-                this.setAnchor(this.navigationState.pointerPosition);
+        // Modifiers have priority over clickType
+        const { type, position, modifiers, clickType } = analysis;
+
+        // Shift modifier: update pointer but not anchor
+        // ctrl modifier behaves just like normal event
+        // shift + ctrl behaves like normal event
+        if (modifiers.shift && !modifiers.ctrl ) {
+            if (type === 'mousedown') {
+                if (this.isDragging()) {
+                    // Already dragging, probably from a previous mousedown followed by mouseup outside the grid
+                    return this.getCurrentPosition();
+                }
+                this.movePointer(position);
+                this.setDragging(true);
+            } else if (type === 'mouseenter') {
+                // Update pointer during drag
+                if (!this.comparePositions(position, this.getMousePosition() || { row: -1, col: -1 })) {
+                    this.setMousePosition(position);
+                    if (this.isDragging()) {
+                        this.movePointer(position);
+                    }
+                }
+            } else if (type === 'mouseup') {
+                // End selection by setting isDragging to false
+                // need to move pointer?
+                this.setDragging(false);
             }
-            // If anchor exists, keep it fixed for rectangular selection
         } else {
-            // NORMAL/CTRL+CLICK: Update anchor to follow pointer (coordinated)
-            this.setAnchor(newPosition);
+            // No modifiers: check clickType
+            if (clickType === 'double') {
+                // Double click: activate edit mode (future)
+                console.log('Double click detected at', position);
+                // No pointer movement for edit mode
+            } else {
+                // Normal click or drag
+                if (type === 'mousedown') {
+                    if (this.isDragging()) {
+                        // Already dragging, probably from a previous mousedown followed by mouseup outside the grid
+                        return this.getCurrentPosition();
+                    }
+                    // Set anchor and pointer
+                    this.setAnchor(position);
+                    this.movePointer(position);
+                    this.setDragging(true);
+                } else if (type === 'mouseenter') {
+                    // Update pointer during drag
+                    if (!this.comparePositions(position, this.getMousePosition() || { row: -1, col: -1 })) {
+                        this.setMousePosition(position);
+                        if (this.isDragging()) {
+                            this.movePointer(position);
+                        }
+                    }
+                } else if (type === 'mouseup') {
+                    // End selection
+                    this.setDragging(false);
+                }
+            }
         }
 
-        return newPosition;
+        return this.getCurrentPosition();
+    }
+
+    comparePositions(pos1: GridPosition, pos2: GridPosition): boolean {
+        return pos1.row === pos2.row && pos1.col === pos2.col;
     }
 
     // Helper methods for Ctrl+Arrow navigation (Excel-like boundary detection)
@@ -254,33 +312,53 @@ export default class NavigationHandler {
 
     deactivateNavigation(): boolean {
         this.navigationState.navigationMode = false;
-        // Clear anchor when deactivating navigation
-        this.navigationState.anchorPosition = undefined;
+        this.clearMousePosition();
+        // Study isDragging reset here
+        this.setDragging(false);
         return false;
     }
+
+    // Getters and setters for navigation state
 
     // Anchor management for rectangular selection
     setAnchor(position: GridPosition): void {
         this.navigationState.anchorPosition = { ...position };
-        console.log(`Anchor set to: ${JSON.stringify(this.navigationState.anchorPosition)}`);
     }
 
     getAnchor(): GridPosition | undefined {
         return this.navigationState.anchorPosition ? { ...this.navigationState.anchorPosition } : undefined;
     }
 
-    clearAnchor(): void {
-        this.navigationState.anchorPosition = undefined;
-        console.log('Anchor cleared');
+    setMousePosition(position: GridPosition): void {
+        this.navigationState.mousePosition = { ...position };
     }
 
-    // Getters
+    getMousePosition(): GridPosition | undefined {
+        return this.navigationState.mousePosition ? { ...this.navigationState.mousePosition } : undefined;
+    }
+
+    clearMousePosition(): void {
+        this.navigationState.mousePosition = undefined;
+    }
+
+    setPointerPosition(position: GridPosition): void {
+        this.navigationState.pointerPosition = { ...position };
+    }
+
     getCurrentPosition(): GridPosition {
         return { ...this.navigationState.pointerPosition };
     }
 
     isNavigationMode(): boolean {
         return this.navigationState.navigationMode;
+    }
+
+    isDragging(): boolean {
+        return this.navigationState.isDragging;
+    }
+
+    setDragging(isDragging: boolean): void {
+        this.navigationState.isDragging = isDragging;
     }
 
     getNavigationState(): NavigationState {
