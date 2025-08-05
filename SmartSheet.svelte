@@ -12,6 +12,7 @@
     } from './types';
     import SelectionRect from './SelectionRect.svelte';
     import DeselectionRect from './DeselectionRect.svelte';
+    import { onMount } from 'svelte';
 
     // Test data with many columns
     let gridData = [
@@ -59,7 +60,7 @@
         controller.setTableContainer(tableContainer);
     }
 
-    // Cell event handler
+    // Cell mouse event handler
     function handleCellMouseEvent(event: CustomEvent<CellMouseEvent>) {
         if (!navigationMode) {
             handleNavigationActivate();
@@ -67,14 +68,31 @@
         controller.handleMouseEvent(event.detail);
     }
 
+    // Cell input blur handler
+    function handleCellInputBlur(event: CustomEvent<{ event: FocusEvent, position: GridPosition }>) {
+        const { position } = event.detail;
+        console.log(`[SmartSheet] Cell input blurred at position (${position.row}, ${position.col})`);
+        // Notify controller about input blur
+        controller.handleInputBlur(position);
+        // Blur in a cell must trigger blur in the table container
+        if (tableContainer) {
+            handleFocusOut(event.detail.event);
+        }
+    }
+
     // Activate navigation mode
     function handleNavigationActivate() {
         navigationMode = controller.activateNavigation();
     }
 
-    // Handle focus loss
-    function handleBlur() {
-        navigationMode = controller.deactivateNavigation();
+    function handleFocusOut(event: FocusEvent) {
+      const related = event.relatedTarget as HTMLElement | null;
+        if (!related || !tableContainer.contains(related)) {
+            console.log('[tableContainer] Real blur: focus left table');
+            navigationMode = controller.deactivateNavigation();
+        } else {
+            console.log('[tableContainer] Ignored blur: focus moved within');
+        }
     }
 
     // Handle keyboard navigation
@@ -110,6 +128,17 @@
     export function clearSelection() {
         controller.selectPositions([]);
     }
+
+
+    // logging for debugging of focus
+//    onMount(() => {
+//        tableContainer?.addEventListener('focus', () => console.log('[tableContainer] FOCUS'), true);
+//        tableContainer?.addEventListener('blur', () => console.log('[tableContainer] BLUR'), true);
+//        tableContainer?.addEventListener('mousedown', () => console.log('[tableContainer] MOUSEDOWN'), true);
+//        tableContainer?.addEventListener('mouseup', () => console.log('[tableContainer] MOUSEUP'), true);
+//        tableContainer?.addEventListener('click', () => console.log('[tableContainer] CLICK'), true);
+//        tableContainer?.addEventListener('dblclick', () => console.log('[tableContainer] DBLCLICK'), true);
+//    });
 </script>
 
 <div class="smart-sheet relative">
@@ -118,7 +147,7 @@
         bind:this={tableContainer}
         class="overflow-auto max-h-96 max-w-full border border-tertiaryOnBg bg-tertiaryBg relative outline-none"
         tabindex="-1"
-        on:blur={handleBlur}
+        on:focusout={handleFocusOut}
         on:keydown={handleKeyDown}
     >
         <!-- Grid of cells with auto-sizing -->
@@ -132,6 +161,8 @@
                             onCellCreation={(cell) => controller.registerCell(cell)}
                             onCellDestruction={(cell) => controller.unregisterCell(cell)}
                             on:cellInteraction={handleCellMouseEvent}
+                            on:cellDoubleClick={handleCellMouseEvent}
+                            on:inputBlur={handleCellInputBlur}
                         />
                     </div>
                 {/each}

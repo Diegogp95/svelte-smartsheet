@@ -4,10 +4,12 @@ import type {
     CellComponent,
     RawKeyboardAnalysis,
     CellMouseEvent,
+    CellValue,
 } from './types';
 import InputAnalyzer from './InputAnalyzer';
 import NavigationHandler from './NavigationHandler';
 import SelectionHandler from './SelectionHandler';
+import DataHandler from './DataHandler';
 import type { SelectionChangedCallback } from './SelectionHandler';
 import type { PointerPositionCallback } from './NavigationHandler';
 
@@ -18,6 +20,7 @@ export default class SmartSheetController {
     private navigationHandler: NavigationHandler;
     private selectionHandler: SelectionHandler;
     private inputAnalyzer: InputAnalyzer;
+    private dataHandler: DataHandler;
 
     constructor(initialDimensions: GridDimensions,
         onSelectionsChanged?: SelectionChangedCallback,
@@ -31,6 +34,7 @@ export default class SmartSheetController {
         this.selectionHandler = new SelectionHandler(this.cellComponents, onSelectionsChanged, onDeselectionsChanged);
         this.navigationHandler = new NavigationHandler(this.gridDimensions, this.cellComponents, pointerPositionCallback);
         this.inputAnalyzer = new InputAnalyzer();
+        this.dataHandler = new DataHandler(this.cellComponents);
     }
 
     // Register cell component (called from SmartSheet.svelte)
@@ -68,6 +72,15 @@ export default class SmartSheetController {
 
         const oldPosition = this.navigationHandler.getCurrentPosition();
         const oldAnchor = this.navigationHandler.getAnchor();
+
+        // dblclick should not navigate, since the previous mousedown already did
+        // Delegate selection logic to SelectionHandler with complete context
+        if (clickAnalysis.clickType === 'double') {
+            this.dataHandler.setCellEditing(oldPosition);
+            this.selectionHandler.clearSelections();
+            return;
+        }
+
         // Delegate navigation and anchor coordination to NavigationHandler
         const newPosition = this.navigationHandler.processMouseNavigation(clickAnalysis);
         const anchorPosition = this.navigationHandler.getAnchor() || newPosition;
@@ -75,11 +88,11 @@ export default class SmartSheetController {
         // If the position didn't change, we can skip selection logic
         // Except for mouseup, since mousedown + mouseup in the same cell must select the cell
         if (this.navigationHandler.comparePositions(oldPosition, newPosition) &&
-            this.navigationHandler.comparePositions(oldAnchor || { row: -1, col: -1 }, anchorPosition) &&
-            clickAnalysis.type !== 'mouseup') {
+        this.navigationHandler.comparePositions(oldAnchor || { row: -1, col: -1 }, anchorPosition) &&
+        clickAnalysis.type !== 'mouseup') {
             return;
         }
-        // Delegate selection logic to SelectionHandler with complete context
+
         this.selectionHandler.processClickSelection(clickAnalysis, newPosition, anchorPosition);
     }
 
@@ -121,6 +134,11 @@ export default class SmartSheetController {
 
     }
 
+    handleInputBlur(position: GridPosition) {
+        // Delegate to DataHandler to set cell not editing
+        this.dataHandler.finishCellEdit(position, 'blur');
+    }
+
     // Activate navigation: select current cell only if no selection exists
     activateNavigation() {
         this.navigationHandler.activateNavigation();
@@ -157,7 +175,7 @@ export default class SmartSheetController {
     }
 
     // Get current cell value (from the cell component itself)
-    getCurrentCellValue(): string | number | undefined {
+    getCurrentCellValue(): CellValue | undefined {
         const position = this.getCurrentPosition();
         const key = `${position.row}-${position.col}`;
         const cellComponent = this.cellComponents.get(key);

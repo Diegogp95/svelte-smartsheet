@@ -36,11 +36,12 @@ export default class InputAnalyzer {
     // PHASE 2: Specialized click analysis
     analyzeMouseEvent(event: CellMouseEvent): ClickAnalysis {
         const modifiers = event ? this.analyzeMouseModifiers(event.mouseEvent) : { shift: false, ctrl: false, alt: false };
+        const clickType = event.type === 'dblclick' ? 'double' : this.determineClickType(event.mouseEvent);
         return {
             type: event.type,
             position: event.position,
             modifiers,
-            clickType: this.determineClickType(event.mouseEvent),
+            clickType,
         };
     }
 
@@ -55,7 +56,6 @@ export default class InputAnalyzer {
 
     // Determine click type from mouse event
     private determineClickType(event: MouseEvent): 'normal' | 'double' | 'right' | 'wheel' {
-        console.log(`Mouse Button: ${event.button}, Detail: ${event.detail}`);
         if (event.button === 2) return 'right';
         if (event.button === 1) return 'wheel';
         if (event.detail === 2) return 'double';

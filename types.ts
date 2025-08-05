@@ -16,13 +16,23 @@ export interface NavigationState {
     isDragging: boolean; // Indicates if a drag operation is in progress
 }
 
+// Type for cell values, can be extended later if needed
+export type CellValue = string | number | boolean | null;
+
 // Interface for Cell component interaction
 export interface CellComponent {
     position: GridPosition;
     element: HTMLElement;
     selected: boolean;
-    value: string | number;
+    value: CellValue; // Updated to use CellValue type
+    editing: boolean;
+    inputElement: HTMLInputElement;
+    inputValue: CellValue; // Intermediate value for input handling
     setSelected(selected: boolean): void;
+    setEditing(editing: boolean): void;
+    setInputFocus(): void;
+    setInputValue(value: CellValue): void;
+    setValue(value: CellValue): void; // Method to update the cell's value
 }
 
 // Function type for cell registration
@@ -54,16 +64,16 @@ export interface NavigationAnalysis {
 }
 
 export interface ClickAnalysis {
-    type: 'mousedown' | 'mouseenter' | 'mouseup';
+    type: 'mousedown' | 'mouseenter' | 'mouseup' | 'dblclick';
     position: GridPosition;
     modifiers: ModifierState;
     clickType: 'normal' | 'double' | 'right' | 'wheel';
 }
 
 export interface CellMouseEvent {
-    type: 'mousedown' | 'mouseenter' | 'mouseup';
+    type: 'mousedown' | 'mouseenter' | 'mouseup' | 'dblclick';
     position: GridPosition;
     selected: boolean;
-    value: string | number;
+    value: CellValue;
     mouseEvent: MouseEvent;
 };
