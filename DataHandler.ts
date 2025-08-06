@@ -23,8 +23,6 @@ class ValueValidator {
      * Parse and validate input value based on expected type or auto-detection
      */
     validate(inputValue: string, expectedType?: ExpectedType): ValidationResult {
-        console.log(`[ValueValidator] Validating: "${inputValue}" (expected: ${expectedType || 'auto'})`);
-
         // Handle empty input
         if (inputValue.trim() === '') {
             return { isValid: true, value: '', detectedType: 'string' };
@@ -121,35 +119,223 @@ export default class DataHandler {
         this.historyManager = new HistoryManager();
     }
 
-    setCellEditing(position: GridPosition) {
+    private setCellEditing(cellComponent: CellComponent): void {
+        if (!cellComponent.editing) {
+            cellComponent.setEditing(true);
+        }
+        this.editingCell = cellComponent;
+    }
+
+    private setCellNotEditing(cellComponent: CellComponent): void {
+        if (cellComponent.editing) {
+            cellComponent.setEditing(false);
+            // Clear editingCell reference if it matches
+            if (this.editingCell &&
+                this.editingCell.position.row === cellComponent.position.row &&
+                this.editingCell.position.col === cellComponent.position.col) {
+                this.editingCell = null;
+            }
+        }
+    }
+
+    startEditingCell(position: GridPosition, startKey?: string) {
         const key = `${position.row}-${position.col}`;
         const cellComponent = this.cellComponents.get(key);
         if (cellComponent) {
             if (this.editingCell) {
-                this.setCellNotEditing(this.editingCell.position);
+                this.endEditingCell(this.editingCell.position);
             }
-            this.editingCell = cellComponent;
-            cellComponent.setEditing(true);
+            this.setCellEditing(cellComponent);
             cellComponent.setInputFocus();
-            console.log(`[DataHandler] setCellEditing: Cell at ${key} is now in editing mode.`);
+            if (startKey) {
+                // Set initial input value based on startKey or erase existing value if key is backspace
+                cellComponent.setInputValue(startKey === 'Backspace' ? '' : startKey);
+            }
         }
     }
 
-    setCellNotEditing(position: GridPosition) {
+    endEditingCell(position: GridPosition) {
         const key = `${position.row}-${position.col}`;
         const cellComponent = this.cellComponents.get(key);
         if (cellComponent && cellComponent.editing) {
             cellComponent.setEditing(false);
-            console.log(`[DataHandler] setCellNotEditing: Cell at ${key} is no longer in editing mode.`);
             // Clear editingCell reference if it matches
             if (this.editingCell && 
                 this.editingCell.position.row === position.row && 
                 this.editingCell.position.col === position.col) {
                 this.editingCell = null;
             }
-        } else {
-            console.log(`[DataHandler] setCellNotEditing: Cell at ${key} was already not editing.`);
         }
+    }
+
+    /**
+     * Generate changes for a cell by setting its inputValue to newValue.
+     * For artificially generating changes (like deletion), this method can be used
+     * and take advantage of existing commit/validation logic.
+     */
+    generateChangesCell(position: GridPosition, newValue: CellValue): CellComponent | null {
+        const key = `${position.row}-${position.col}`;
+        const cellComponent = this.cellComponents.get(key);
+        if (!cellComponent) {
+            return null;
+        }
+        const oldValue = cellComponent.value;
+        // Set inputValue to null to use existing methods
+        cellComponent.setInputValue(newValue);
+
+        return cellComponent;
+    }
+
+    deleteCellsValues(positions: GridPosition[]) {
+        const changedCells: CellComponent[] = [];
+        for (const position of positions) {
+            const cellComponent = this.generateChangesCell(position, null);
+            if (cellComponent) {
+                changedCells.push(cellComponent);
+            }
+        }
+        const commitSuccess = this.attemptCommitCells(changedCells, undefined, 'delete');
+    }
+
+    /**
+     * Paste data starting from a specific position
+     * @param startPosition - Position where paste operation begins (top-left corner)
+     * @param pasteData - 2D array of values to paste [row][col]
+     * @param expectedType - Optional expected type for validation
+     * @returns boolean indicating success
+     */
+    paste(startPosition: GridPosition, pasteData: CellValue[][], expectedType?: ExpectedType): boolean {
+        if (!pasteData || pasteData.length === 0) {
+            return false;
+        }
+
+        const changedCells: CellComponent[] = [];
+        const maxRows = pasteData.length;
+
+        // Process each row of paste data
+        for (let rowOffset = 0; rowOffset < maxRows; rowOffset++) {
+            const rowData = pasteData[rowOffset];
+            if (!rowData || rowData.length === 0) continue;
+
+            const maxCols = rowData.length;
+
+            // Process each column in the current row
+            for (let colOffset = 0; colOffset < maxCols; colOffset++) {
+                const targetPosition: GridPosition = {
+                    row: startPosition.row + rowOffset,
+                    col: startPosition.col + colOffset
+                };
+
+                const pasteValue = rowData[colOffset];
+                const cellComponent = this.generateChangesCell(targetPosition, pasteValue);
+
+                if (cellComponent) {
+                    changedCells.push(cellComponent);
+                }
+            }
+        }
+
+        if (changedCells.length === 0) {
+            return false;
+        }
+
+        // Attempt to commit all changes
+        const commitSuccess = this.attemptCommitCells(changedCells, expectedType, 'paste');
+        if (commitSuccess) {
+        }
+
+        return commitSuccess;
+    }
+
+    /**
+     * Parse clipboard text into 2D array for pasting
+     * @param clipboardText - Text from clipboard (typically tab/newline separated)
+     * @returns 2D array of parsed values
+     */
+    parseClipboardText(clipboardText: string): CellValue[][] {
+        if (!clipboardText || clipboardText.trim() === '') {
+            return [];
+        }
+
+        // Split by lines (handle different line endings)
+        const lines = clipboardText.split(/\r?\n/);
+        const result: CellValue[][] = [];
+
+        for (const line of lines) {
+            // Skip empty lines at the end
+            if (line === '' && lines.indexOf(line) === lines.length - 1) {
+                continue;
+            }
+
+            // Split by tabs (standard for spreadsheet data)
+            const cells = line.split('\t');
+            const rowData: CellValue[] = [];
+
+            for (const cellText of cells) {
+                // Parse each cell value - could be enhanced with type detection
+                let cellValue: CellValue = cellText;
+
+                // Basic type conversion (can be enhanced)
+                if (cellText === '') {
+                    cellValue = '';
+                } else if (cellText.toLowerCase() === 'null' || cellText.toLowerCase() === 'undefined') {
+                    cellValue = null;
+                } else if (!isNaN(Number(cellText)) && cellText.trim() !== '') {
+                    cellValue = Number(cellText);
+                } else if (cellText.toLowerCase() === 'true') {
+                    cellValue = true;
+                } else if (cellText.toLowerCase() === 'false') {
+                    cellValue = false;
+                } else {
+                    cellValue = cellText;
+                }
+
+                rowData.push(cellValue);
+            }
+
+            result.push(rowData);
+        }
+
+        return result;
+    }
+
+    /**
+     * Format selected positions into clipboard text (tab-separated format)
+     * @param positions - Array of grid positions to format
+     * @returns Formatted string ready for clipboard
+     */
+    formatClipboardData(positions: GridPosition[]): string {
+        if (positions.length === 0) return '';
+
+        // Group positions by row
+        const rowMap = new Map<number, GridPosition[]>();
+        for (const pos of positions) {
+            if (!rowMap.has(pos.row)) {
+                rowMap.set(pos.row, []);
+            }
+            rowMap.get(pos.row)!.push(pos);
+        }
+
+        // Sort rows and create data
+        const sortedRows = Array.from(rowMap.keys()).sort((a, b) => a - b);
+        const rows: string[] = [];
+
+        for (const rowNum of sortedRows) {
+            const rowPositions = rowMap.get(rowNum)!.sort((a, b) => a.col - b.col);
+            const rowData: string[] = [];
+
+            for (const pos of rowPositions) {
+                const key = `${pos.row}-${pos.col}`;
+                const cellComponent = this.cellComponents.get(key);
+                const value = cellComponent?.value || '';
+                rowData.push(String(value));
+            }
+
+            rows.push(rowData.join('\t'));
+        }
+
+        const result = rows.join('\n');
+        return result;
     }
 
     // ==================== EDIT COMPLETION METHODS ====================
@@ -165,70 +351,48 @@ export default class DataHandler {
         const cellComponent = this.cellComponents.get(key);
 
         if (!cellComponent || !cellComponent.editing) {
-            console.log(`[DataHandler] finishCellEdit: Cell ${key} is not being edited`);
             return false;
         }
-
-        console.log(`[DataHandler] Finishing cell edit at ${key} with action: ${action}`);
 
         switch (action) {
             case 'cancel':
                 // Discard changes - revert inputValue to original value
                 cellComponent.setInputValue(cellComponent.value);
-                this.setCellNotEditingDirect(cellComponent);
-                console.log(`[DataHandler] Cell edit cancelled at ${key}`);
+                this.setCellNotEditing(cellComponent);
                 return true;
 
             case 'commit':
                 // Force commit - only if there are changes, keep in editing if validation fails
                 if (cellComponent.inputValue === cellComponent.value) {
-                    this.setCellNotEditingDirect(cellComponent);
+                    this.setCellNotEditing(cellComponent);
                     return true;
                 }
                 const commitSuccess = this.attemptCommitCells([cellComponent], expectedType);
                 if (commitSuccess) {
-                    this.setCellNotEditingDirect(cellComponent);
+                    this.setCellNotEditing(cellComponent);
                 }
                 return commitSuccess;
 
             case 'blur':
                 // Exit editing regardless, but only commit if validation passes and there are changes
                 if (cellComponent.inputValue === cellComponent.value) {
-                    this.setCellNotEditingDirect(cellComponent);
+                    this.setCellNotEditing(cellComponent);
                     return true;
                 }
                 this.attemptCommitCells([cellComponent], expectedType);
-                this.setCellNotEditingDirect(cellComponent);
+                this.setCellNotEditing(cellComponent);
                 return true; // Always return true for blur, even if commit failed
 
             default:
-                console.error(`[DataHandler] Unknown action: ${action}`);
                 return false;
-        }
-    }
-
-    /**
-     * Set cell not editing - works directly with cell component
-     */
-    private setCellNotEditingDirect(cellComponent: CellComponent): void {
-        if (cellComponent.editing) {
-            cellComponent.setEditing(false);
-            console.log(`[DataHandler] setCellNotEditingDirect: Cell at ${cellComponent.position.row}-${cellComponent.position.col} is no longer in editing mode.`);
-
-            // Clear editingCell reference if it matches
-            if (this.editingCell && 
-                this.editingCell.position.row === cellComponent.position.row && 
-                this.editingCell.position.col === cellComponent.position.col) {
-                this.editingCell = null;
-            }
         }
     }
 
     /**
      * Attempt to commit multiple cell edits - if any fails, entire commit fails
      */
-    private attemptCommitCells(cells: CellComponent[], expectedType?: ExpectedType): boolean {
-        console.log(`[DataHandler] Attempting to commit ${cells.length} cells`);
+    private attemptCommitCells(cells: CellComponent[], expectedType?: ExpectedType,
+        changeType: 'single-edit' | 'paste' | 'delete' | 'format' | 'other' = 'single-edit'): boolean {
 
         // First pass: validate all cells
         for (const cell of cells) {
@@ -237,14 +401,13 @@ export default class DataHandler {
             const validationResult = this.validator.validate(inputString, expectedType);
 
             if (!validationResult.isValid) {
-                console.log(`[DataHandler] Validation failed for cell ${cell.position.row}-${cell.position.col}: ${validationResult.error}`);
                 // If any cell fails validation, fail entire commit
                 return false;
             }
         }
 
         // All validations passed, commit the changes
-        return this.commitCellChanges(cells, 'single-edit');
+        return this.commitCellChanges(cells, changeType);
     }
 
     // ==================== HISTORY METHODS ====================
@@ -255,7 +418,6 @@ export default class DataHandler {
     undo(): boolean {
         const changeSet = this.historyManager.undo();
         if (changeSet) {
-            console.log(`[DataHandler] Undoing ${changeSet.changes.length} changes`);
             this.revertChangeSet(changeSet);
             return true;
         }
@@ -268,7 +430,6 @@ export default class DataHandler {
     redo(): boolean {
         const changeSet = this.historyManager.redo();
         if (changeSet) {
-            console.log(`[DataHandler] Redoing ${changeSet.changes.length} changes`);
             this.applyChangeSet(changeSet);
             return true;
         }
@@ -294,13 +455,6 @@ export default class DataHandler {
      */
     clearHistory(): void {
         this.historyManager.clear();
-    }
-
-    /**
-     * Get history debug information
-     */
-    getHistoryInfo(): object {
-        return this.historyManager.getDebugInfo();
     }
 
     /**
@@ -333,9 +487,6 @@ export default class DataHandler {
             // Update both value and inputValue to keep them in sync
             cellComponent.setValue(value);
             cellComponent.setInputValue(value);
-            console.log(`[DataHandler] Applied value ${JSON.stringify(value)} to cell ${key}`);
-        } else {
-            console.warn(`[DataHandler] Cannot apply value: cell ${key} not found`);
         }
     }
 
@@ -345,8 +496,6 @@ export default class DataHandler {
      * Process cell changes: create ChangeSet from cells and apply changes
      */
     commitCellChanges(cells: CellComponent[], type: 'single-edit' | 'paste' | 'delete' | 'format' | 'other'): boolean {
-        console.log(`[DataHandler] Processing ${cells.length} cells for commit`);
-
         // Create CellChange array from cells using their interface
         const changes: CellChange[] = [];
 
@@ -362,7 +511,6 @@ export default class DataHandler {
 
         // If no actual changes, return early
         if (changes.length === 0) {
-            console.log(`[DataHandler] No actual changes detected, skipping commit`);
             return true;
         }
 
@@ -375,7 +523,6 @@ export default class DataHandler {
         // Apply changes
         this.applyChangeSet(changeSet);
 
-        console.log(`[DataHandler] Successfully committed ${changes.length} changes`);
         return true;
     }
 

@@ -150,37 +150,28 @@ export default class NavigationHandler {
                 this.setDragging(false);
             }
         } else {
-            // No modifiers: check clickType
-            if (clickType === 'double') {
-                // Double click: activate edit mode (future)
-                console.log('Double click detected at', position);
-                // No pointer movement for edit mode
-            } else {
-                // Normal click or drag
-                if (type === 'mousedown') {
-                    if (this.isDragging()) {
-                        // Already dragging, probably from a previous mousedown followed by mouseup outside the grid
-                        return this.getCurrentPosition();
-                    }
-                    // Set anchor and pointer
-                    this.setAnchor(position);
-                    this.movePointer(position);
-                    this.setDragging(true);
-                } else if (type === 'mouseenter') {
-                    // Update pointer during drag
-                    if (!this.comparePositions(position, this.getMousePosition() || { row: -1, col: -1 })) {
-                        this.setMousePosition(position);
-                        if (this.isDragging()) {
-                            this.movePointer(position);
-                        }
-                    }
-                } else if (type === 'mouseup') {
-                    // End selection
-                    this.setDragging(false);
+            if (type === 'mousedown') {
+                if (this.isDragging()) {
+                    // Already dragging, probably from a previous mousedown followed by mouseup outside the grid
+                    return this.getCurrentPosition();
                 }
+                // Set anchor and pointer
+                this.setAnchor(position);
+                this.movePointer(position);
+                this.setDragging(true);
+            } else if (type === 'mouseenter') {
+                // Update pointer during drag
+                if (!this.comparePositions(position, this.getMousePosition() || { row: -1, col: -1 })) {
+                    this.setMousePosition(position);
+                    if (this.isDragging()) {
+                        this.movePointer(position);
+                    }
+                }
+            } else if (type === 'mouseup') {
+                // End selection
+                this.setDragging(false);
             }
         }
-
         return this.getCurrentPosition();
     }
 
@@ -347,6 +338,78 @@ export default class NavigationHandler {
 
     getCurrentPosition(): GridPosition {
         return { ...this.navigationState.pointerPosition };
+    }
+
+    // Navigation utility methods for programmatic movement
+
+    /**
+     * Navigate to the next cell to the right within grid bounds
+     * @returns New position or current position if at boundary
+     */
+    navigateToNextRightCell(): GridPosition {
+        const currentPosition = this.getCurrentPosition();
+        const { maxCol } = this.gridDimensions;
+
+        if (currentPosition.col < maxCol) {
+            const newPosition = { row: currentPosition.row, col: currentPosition.col + 1 };
+            this.movePointer(newPosition);
+            this.setAnchor(newPosition); // Update anchor to follow pointer
+            return newPosition;
+        }
+
+        return currentPosition; // Already at rightmost boundary
+    }
+
+    /**
+     * Navigate to the next cell down within grid bounds
+     * @returns New position or current position if at boundary
+     */
+    navigateToNextDownCell(): GridPosition {
+        const currentPosition = this.getCurrentPosition();
+        const { maxRow } = this.gridDimensions;
+
+        if (currentPosition.row < maxRow) {
+            const newPosition = { row: currentPosition.row + 1, col: currentPosition.col };
+            this.movePointer(newPosition);
+            this.setAnchor(newPosition); // Update anchor to follow pointer
+            return newPosition;
+        }
+
+        return currentPosition; // Already at bottom boundary
+    }
+
+    /**
+     * Navigate to the next cell to the left within grid bounds
+     * @returns New position or current position if at boundary
+     */
+    navigateToNextLeftCell(): GridPosition {
+        const currentPosition = this.getCurrentPosition();
+
+        if (currentPosition.col > 0) {
+            const newPosition = { row: currentPosition.row, col: currentPosition.col - 1 };
+            this.movePointer(newPosition);
+            this.setAnchor(newPosition); // Update anchor to follow pointer
+            return newPosition;
+        }
+
+        return currentPosition; // Already at leftmost boundary
+    }
+
+    /**
+     * Navigate to the next cell up within grid bounds
+     * @returns New position or current position if at boundary
+     */
+    navigateToNextUpCell(): GridPosition {
+        const currentPosition = this.getCurrentPosition();
+
+        if (currentPosition.row > 0) {
+            const newPosition = { row: currentPosition.row - 1, col: currentPosition.col };
+            this.movePointer(newPosition);
+            this.setAnchor(newPosition); // Update anchor to follow pointer
+            return newPosition;
+        }
+
+        return currentPosition; // Already at top boundary
     }
 
     isNavigationMode(): boolean {

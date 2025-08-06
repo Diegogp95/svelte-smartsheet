@@ -147,7 +147,7 @@ export default class SelectionHandler {
             // SHIFT + mousedown: Update active selection
             this.updateActiveSelection(anchor, currentPosition);
         } else if (analysis.type === 'mousedown') {
-            // Normal mousedown: Firt clear and add new selection
+            // Normal mousedown: First clear and add new selection
             this.clearSelections();
             this.addNewSelection(currentPosition, currentPosition);
         } else if (analysis.type === 'mouseenter') {
@@ -178,7 +178,7 @@ export default class SelectionHandler {
         }
     }
 
-    // NUEVO: Multiple Selection - Añade nueva selección, mantiene anteriores
+    // Multiple Selection - Adds new selection, keeps previous ones
     private addNewSelection(position1: GridPosition, position2: GridPosition): void {
         // Create new selection without affecting existing ones
         this.createSelection(position1, position2);
@@ -191,7 +191,7 @@ export default class SelectionHandler {
         this.addNewSelection(position, position);
     }
 
-    // NUEVO: Update Active - Modifica la selección activa existente
+    // Update Active - Modifies the currently active selection
     private updateActiveSelection(position1: GridPosition, position2: GridPosition): void {
         const activeSelection = this.getActiveSelection();
         if (activeSelection) {

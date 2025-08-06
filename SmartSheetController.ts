@@ -35,6 +35,90 @@ export default class SmartSheetController {
         this.navigationHandler = new NavigationHandler(this.gridDimensions, this.cellComponents, pointerPositionCallback);
         this.inputAnalyzer = new InputAnalyzer();
         this.dataHandler = new DataHandler(this.cellComponents);
+
+        // Setup clipboard event handlers
+        this.setupClipboardHandlers();
+    }
+
+    // Setup clipboard event handlers for better clipboard detection
+    private setupClipboardHandlers(): void {
+        // Listen for paste events
+        document.addEventListener('paste', (event: ClipboardEvent) => {
+            if (this.isNavigationMode()) {
+                event.preventDefault();
+                event.stopPropagation();
+
+                const clipboardText = event.clipboardData?.getData('text/plain') || '';
+                this.handlePasteFromClipboard(clipboardText);
+            }
+        }, { capture: true });
+
+        // Listen for copy events
+        document.addEventListener('copy', (event: ClipboardEvent) => {
+            if (this.isNavigationMode()) {
+                event.preventDefault();
+                event.stopPropagation();
+
+                this.handleCopyToClipboard(event);
+            }
+        }, { capture: true });
+
+        // Listen for cut events
+        document.addEventListener('cut', (event: ClipboardEvent) => {
+            if (this.isNavigationMode()) {
+                event.preventDefault();
+                event.stopPropagation();
+
+                this.handleCutToClipboard(event);
+            }
+        }, { capture: true });
+    }
+
+    // Process clipboard text and paste into grid
+    private handlePasteFromClipboard(clipboardText: string): void {
+        if (!clipboardText || clipboardText.trim() === '') {
+            return;
+        }
+
+        const currentPosition = this.navigationHandler.getCurrentPosition();
+        const pasteData = this.dataHandler.parseClipboardText(clipboardText);
+        const success = this.dataHandler.paste(currentPosition, pasteData);
+    }
+
+    // Handle copy to clipboard
+    private handleCopyToClipboard(event: ClipboardEvent): void {
+        const selectedPositions = this.selectionHandler.getSelectedPositions();
+        if (selectedPositions.length === 0) {
+            // If no selection, copy current cell
+            const currentPosition = this.navigationHandler.getCurrentPosition();
+            selectedPositions.push(currentPosition);
+        }
+
+        // Create clipboard data using DataHandler
+        const clipboardData = this.dataHandler.formatClipboardData(selectedPositions);
+
+        if (event.clipboardData) {
+            event.clipboardData.setData('text/plain', clipboardData);
+        }
+    }
+
+    // Handle cut to clipboard
+    private handleCutToClipboard(event: ClipboardEvent): void {
+        const selectedPositions = this.selectionHandler.getSelectedPositions();
+        if (selectedPositions.length === 0) {
+            // If no selection, cut current cell
+            const currentPosition = this.navigationHandler.getCurrentPosition();
+            selectedPositions.push(currentPosition);
+        }
+
+        // Create clipboard data using DataHandler
+        const clipboardData = this.dataHandler.formatClipboardData(selectedPositions);
+
+        if (event.clipboardData) {
+            event.clipboardData.setData('text/plain', clipboardData);
+            // Delete the cell values after copying (that's what makes it "cut")
+            this.dataHandler.deleteCellsValues(selectedPositions);
+        }
     }
 
     // Register cell component (called from SmartSheet.svelte)
@@ -76,7 +160,7 @@ export default class SmartSheetController {
         // dblclick should not navigate, since the previous mousedown already did
         // Delegate selection logic to SelectionHandler with complete context
         if (clickAnalysis.clickType === 'double') {
-            this.dataHandler.setCellEditing(oldPosition);
+            this.dataHandler.startEditingCell(oldPosition);
             this.selectionHandler.clearSelections();
             return;
         }
@@ -105,19 +189,59 @@ export default class SmartSheetController {
         if (basicAnalysis.shouldPreventDefault) {
             event.preventDefault();
         }
+        const currentPosition = this.navigationHandler.getCurrentPosition();
 
         // PHASE 2: Process by category
         if (basicAnalysis.keyCategory === 'arrow') {
             return this.handleNavigationKey(basicAnalysis);
-        } else if (basicAnalysis.keyCategory === 'confirm') {
-            // TODO: Implement Enter/Tab handling
-            return this.navigationHandler.getCurrentPosition();
+        } else if (basicAnalysis.keyCategory === 'command') {
+            const commandAnalysis = this.inputAnalyzer.analyzeCommand(basicAnalysis);
+            if (commandAnalysis.command === 'undo') {
+                this.dataHandler.undo();
+                return;
+            } else if (commandAnalysis.command === 'redo') {
+                this.dataHandler.redo();
+                return;
+            } else {
+                //console.warn(`[SmartSheetController] Unhandled command: ${commandAnalysis.command}`);
+                return;
+            }
+        } else if (basicAnalysis.keyCategory === 'write' || basicAnalysis.keyCategory === 'backspace') {
+            // Handle writing input (e.g. typing in a cell)
+            this.dataHandler.startEditingCell(currentPosition, basicAnalysis.key);
+            this.selectionHandler.clearSelections();
+            return;
         } else if (basicAnalysis.keyCategory === 'delete') {
+            const selections = this.selectionHandler.getSelectedPositions();
+            this.dataHandler.deleteCellsValues(selections);
+            return;
+        } else if (basicAnalysis.keyCategory === 'edit') {
+            // Handle edit input (e.g. pressing Enter in a cell)
+            this.dataHandler.startEditingCell(currentPosition);
+            this.selectionHandler.clearSelections();
+            return;
+        } else if (basicAnalysis.keyCategory === 'space') {
             // TODO: Implement Delete/Backspace handling
-            return this.navigationHandler.getCurrentPosition();
+            return;
         }
-
         // Other categories not processed yet
+    }
+
+    handleCellInputCommit(position: GridPosition, event: KeyboardEvent) {
+        this.dataHandler.finishCellEdit(position, 'commit');
+        if (event.key === 'Enter') {
+            this.navigationHandler.navigateToNextDownCell();
+        } else if (event.key === 'Tab') {
+            this.navigationHandler.navigateToNextRightCell();
+        } // Shouuldn't be triggered by other keys
+        // Re-select the current position after commit
+        this.selectionHandler.selectSingle(this.navigationHandler.getCurrentPosition());
+    }
+
+    handleCellInputCancel(position: GridPosition, event: KeyboardEvent) {
+        this.dataHandler.finishCellEdit(position, 'cancel');
+        // Re-select the current position after cancel
+        this.selectionHandler.selectSingle(this.navigationHandler.getCurrentPosition());
     }
 
     // Handle navigation keys with specialized analysis

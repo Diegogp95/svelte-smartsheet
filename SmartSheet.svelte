@@ -12,7 +12,6 @@
     } from './types';
     import SelectionRect from './SelectionRect.svelte';
     import DeselectionRect from './DeselectionRect.svelte';
-    import { onMount } from 'svelte';
 
     // Test data with many columns
     let gridData = [
@@ -71,7 +70,6 @@
     // Cell input blur handler
     function handleCellInputBlur(event: CustomEvent<{ event: FocusEvent, position: GridPosition }>) {
         const { position } = event.detail;
-        console.log(`[SmartSheet] Cell input blurred at position (${position.row}, ${position.col})`);
         // Notify controller about input blur
         controller.handleInputBlur(position);
         // Blur in a cell must trigger blur in the table container
@@ -87,17 +85,31 @@
 
     function handleFocusOut(event: FocusEvent) {
       const related = event.relatedTarget as HTMLElement | null;
+        // If focus moved outside the table container, deactivate navigation mode
+        // This keeps the navigation mode active if the focus moves within the table (e.g., to a cell input)
         if (!related || !tableContainer.contains(related)) {
-            console.log('[tableContainer] Real blur: focus left table');
             navigationMode = controller.deactivateNavigation();
-        } else {
-            console.log('[tableContainer] Ignored blur: focus moved within');
         }
     }
 
     // Handle keyboard navigation
     function handleKeyDown(event: KeyboardEvent) {
         controller.handleKeyDown(event);
+    }
+
+    // Handle cell input keydown events
+    function handleCellInputKeyCommand(e: CustomEvent<{ event: KeyboardEvent, position: GridPosition }>) {
+        const { event: keyboardEvent, position } = e.detail;
+        // Notify controller about input key command
+        if (keyboardEvent.key === 'Enter' || keyboardEvent.key === 'Tab') {
+            controller.handleCellInputCommit(position, keyboardEvent);
+        } else if (keyboardEvent.key === 'Escape') {
+            controller.handleCellInputCancel(position, keyboardEvent);
+        }
+        // Ensure focus is on the table container after input key command
+        if (tableContainer) {
+            tableContainer.focus();
+        }
     }
 
     // PUBLIC API - Methods exposed for external control
@@ -129,16 +141,6 @@
         controller.selectPositions([]);
     }
 
-
-    // logging for debugging of focus
-//    onMount(() => {
-//        tableContainer?.addEventListener('focus', () => console.log('[tableContainer] FOCUS'), true);
-//        tableContainer?.addEventListener('blur', () => console.log('[tableContainer] BLUR'), true);
-//        tableContainer?.addEventListener('mousedown', () => console.log('[tableContainer] MOUSEDOWN'), true);
-//        tableContainer?.addEventListener('mouseup', () => console.log('[tableContainer] MOUSEUP'), true);
-//        tableContainer?.addEventListener('click', () => console.log('[tableContainer] CLICK'), true);
-//        tableContainer?.addEventListener('dblclick', () => console.log('[tableContainer] DBLCLICK'), true);
-//    });
 </script>
 
 <div class="smart-sheet relative">
@@ -163,6 +165,8 @@
                             on:cellInteraction={handleCellMouseEvent}
                             on:cellDoubleClick={handleCellMouseEvent}
                             on:inputBlur={handleCellInputBlur}
+                            on:inputKeyCommit={handleCellInputKeyCommand}
+                            on:inputKeyCancel={handleCellInputKeyCommand}
                         />
                     </div>
                 {/each}

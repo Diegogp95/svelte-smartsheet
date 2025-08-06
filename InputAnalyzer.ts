@@ -3,6 +3,7 @@ import type {
     ModifierState,
     RawKeyboardAnalysis,
     NavigationAnalysis,
+    CommandAnalysis,
     ClickAnalysis,
     KeyCategory,
     CellMouseEvent,
@@ -14,13 +15,13 @@ export default class InputAnalyzer {
     // PHASE 1: Basic analysis for event categorization
     analyzeEvent(event: KeyboardEvent): RawKeyboardAnalysis {
         this.updateModifierState(event);
-
+        const category = this.categorizeKey(event.key);
         return {
             key: event.key,
             modifiers: { ...this.modifierState },
-            keyCategory: this.categorizeKey(event.key),
+            keyCategory: category,
             isRepeating: event.repeat,
-            shouldPreventDefault: this.shouldPreventDefault(event)
+            shouldPreventDefault: this.shouldPreventDefault(category, event),
         };
     }
 
@@ -30,6 +31,15 @@ export default class InputAnalyzer {
             key: basicAnalysis.key,
             modifiers: basicAnalysis.modifiers,
             direction: this.getNavigationDirection(basicAnalysis.key),
+        };
+    }
+
+    // PHASE 2: Specialized command analysis (only called if keyCategory === 'command')
+    analyzeCommand(basicAnalysis: RawKeyboardAnalysis): CommandAnalysis {
+        return {
+            key: basicAnalysis.key,
+            modifiers: basicAnalysis.modifiers,
+            command: this.getCommandType(basicAnalysis.key),
         };
     }
 
@@ -72,12 +82,36 @@ export default class InputAnalyzer {
     // Categorize key by type
     private categorizeKey(key: string): KeyCategory {
         if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(key)) return 'arrow';
-        if (['Enter', 'Tab'].includes(key)) return 'confirm';
-        if (['Escape'].includes(key)) return 'cancel';
-        if (['Delete', 'Backspace'].includes(key)) return 'delete';
+        if (['Delete'].includes(key)) return 'delete';
+        if (['Backspace'].includes(key)) return 'backspace';
+        if (['Enter'].includes(key)) return 'edit';
         if (key === ' ') return 'space';
-        if (key.length === 1 && /[a-zA-Z0-9]/.test(key)) return 'alphanumeric';
+
+        // Command category: Any letter with Ctrl modifier
+        if (this.modifierState.ctrl && key.length === 1 && /[a-zA-Z]/.test(key)) return 'command';
+
+        // Write category: Characters that can be written (letters, numbers, symbols, etc.)
+        if (this.isWritableCharacter(key)) return 'write';
+
         return 'other';
+    }
+
+    // Helper method to determine if a key represents a writable character
+    private isWritableCharacter(key: string): boolean {
+        // Single character check
+        if (key.length !== 1) return false;
+
+        // Alphanumeric characters
+        if (/[a-zA-Z0-9]/.test(key)) return true;
+
+        // Common symbols and punctuation that can be written
+        if (/[áéíóúüñÁÉÍÓÚÜÑ]/.test(key)) return true; // Spanish accents
+        if (/[àèìòùÀÈÌÒÙ]/.test(key)) return true; // Other accents
+        if (/[çÇ]/.test(key)) return true; // Cedilla
+        if (/[.,;:!?¡¿]/.test(key)) return true; // Punctuation
+        if (/[\-_+=*\/\\|<>(){}[\]"'`~@#$%^&]/.test(key)) return true; // Symbols
+
+        return false;
     }
 
     // Get navigation direction from arrow key
@@ -91,18 +125,35 @@ export default class InputAnalyzer {
         return directions[key] || null;
     }
 
+    // Get command type from key
+    private getCommandType(key: string): | 'undo' | 'redo' | 'select-all' | 'save' | 'invalid-command' {
+        const commands: Record<string, 'undo' | 'redo' | 'select-all' | 'save'> = {
+            'z': 'undo',
+            'y': 'redo',
+            'a': 'select-all',
+            's': 'save'
+        };
+        return commands[key.toLowerCase()] || 'invalid-command';
+    }
+
     // Determine if default behavior should be prevented
-    private shouldPreventDefault(event: KeyboardEvent): boolean {
-        const key = event.key;
+    private shouldPreventDefault(category: KeyCategory, event: KeyboardEvent): boolean {
 
         // Prevent default for arrow keys (to avoid scrolling)
-        if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(key)) return true;
+        if (category === 'arrow') return true;
 
-        // Prevent default for Tab (to avoid focus changes)
-        if (key === 'Tab') return true;
+        // Prevent default for commands
+        if (category === 'command') {
+            if (this.getCommandType(event.key) !== 'invalid-command') {
+                return true;
+            } else return false;
+        }
 
         // Prevent default for Space (to avoid page scrolling)
-        if (key === ' ') return true;
+        if (category === 'space') return true;
+
+        // Preventing default for delete keys
+        if (category === 'delete') return true;
 
         return false;
     }

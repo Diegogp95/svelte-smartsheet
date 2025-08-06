@@ -63,12 +63,10 @@ export class HistoryManager {
      * This clears any "redo" history if we're not at the end
      */
     add(changeSet: ChangeSet): void {
-        console.log(`[HistoryManager] Adding change set with ${changeSet.changes.length} changes (type: ${changeSet.type})`);
 
         // If we're not at the end of history, remove everything after current position
         if (this.currentIndex < this.history.length - 1) {
             this.history = this.history.slice(0, this.currentIndex + 1);
-            console.log(`[HistoryManager] Cleared redo history, now at index ${this.currentIndex}`);
         }
 
         // Add the new change set
@@ -77,8 +75,6 @@ export class HistoryManager {
 
         // Enforce max history size
         this.enforceMaxSize();
-
-        console.log(`[HistoryManager] History now has ${this.history.length} entries, current index: ${this.currentIndex}`);
     }
 
     /**
@@ -87,14 +83,12 @@ export class HistoryManager {
      */
     undo(): ChangeSet | null {
         if (!this.canUndo()) {
-            console.log(`[HistoryManager] Cannot undo: no history available`);
             return null;
         }
 
         const changeSet = this.history[this.currentIndex];
         this.currentIndex--;
 
-        console.log(`[HistoryManager] Undoing change set, moved to index ${this.currentIndex}`);
         return changeSet;
     }
 
@@ -104,14 +98,12 @@ export class HistoryManager {
      */
     redo(): ChangeSet | null {
         if (!this.canRedo()) {
-            console.log(`[HistoryManager] Cannot redo: no future history available`);
             return null;
         }
 
         this.currentIndex++;
         const changeSet = this.history[this.currentIndex];
 
-        console.log(`[HistoryManager] Redoing change set, moved to index ${this.currentIndex}`);
         return changeSet;
     }
 
@@ -170,7 +162,6 @@ export class HistoryManager {
             return;
         }
 
-        console.log(`[HistoryManager] Clearing history from index ${index}`);
         this.history = this.history.slice(0, index);
 
         // Adjust current index if it's beyond the new end
@@ -190,7 +181,6 @@ export class HistoryManager {
 
         this.maxHistorySize = size;
         this.enforceMaxSize();
-        console.log(`[HistoryManager] Max history size set to ${size}`);
     }
 
     /**
@@ -211,8 +201,6 @@ export class HistoryManager {
         const entriesToRemove = this.history.length - this.maxHistorySize;
         this.history = this.history.slice(entriesToRemove);
         this.currentIndex = Math.max(-1, this.currentIndex - entriesToRemove);
-
-        console.log(`[HistoryManager] Enforced max size: removed ${entriesToRemove} old entries`);
     }
 
 }

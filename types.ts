@@ -40,7 +40,7 @@ export type OnCellCreation = (cellComponent: CellComponent) => void;
 export type OnCellDestruction = (cellComponent: CellComponent) => void;
 
 // Keyboard event analysis types
-export type KeyCategory = 'arrow' | 'confirm' | 'cancel' | 'delete' | 'space' | 'alphanumeric' | 'other';
+export type KeyCategory = 'arrow' | 'edit' | 'confirm' | 'backspace' | 'cancel' | 'delete' | 'space' | 'command' | 'write' | 'other';
 
 export interface ModifierState {
     shift: boolean;
@@ -61,6 +61,12 @@ export interface NavigationAnalysis {
     key: string;
     modifiers: ModifierState;
     direction: 'up' | 'down' | 'left' | 'right' | null;
+}
+
+export interface CommandAnalysis {
+    key: string;
+    modifiers: ModifierState;
+    command: 'undo' | 'redo' | 'select-all' | 'save' | 'invalid-command';
 }
 
 export interface ClickAnalysis {

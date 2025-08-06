@@ -10,6 +10,10 @@
     } from './types';
     import { tick } from 'svelte';
 
+    // Visual props
+    export let minWidth: string = '5rem';
+    export let minHeight: string = '2.5rem';
+
     // Props from parent
     export let value: CellValue = '';
     export let position: GridPosition;
@@ -28,6 +32,8 @@
         cellInteraction: CellMouseEvent,
         cellDoubleClick: CellMouseEvent,
         inputBlur: { event: FocusEvent, position: GridPosition },
+        inputKeyCommit: { event: KeyboardEvent, position: GridPosition },
+        inputKeyCancel: { event: KeyboardEvent, position: GridPosition },
     }>();
 
     // Implement CellComponent interface
@@ -43,11 +49,9 @@
             selected = newSelected;
         },
         setValue(newValue: CellValue) {
-            console.log(`[Cell ${position.row},${position.col}] setValue: ${newValue}`);
             value = newValue;
         },
         setEditing(newEditing: boolean) {
-            console.log(`[Cell ${position.row},${position.col}] setEditing: ${newEditing}`);
             editing = newEditing;
         },
         setInputFocus() {
@@ -55,9 +59,6 @@
                 if (inputElement) {
                     inputElement.focus();
                     inputElement.select();
-                    console.log(`[Cell ${position.row},${position.col}] setInputFocus: Input focused (after tick).`);
-                } else {
-                    console.warn(`[Cell ${position.row},${position.col}] Input not available after tick.`);
                 }
             });
         },
@@ -117,11 +118,22 @@
         dispatch('inputBlur', { event, position });
     }
 
+    function handleInputKeydown(event: KeyboardEvent) {
+        event.stopPropagation();
+        if (['Enter', 'Tab'].includes(event.key)) {
+            event.preventDefault();
+            dispatch('inputKeyCommit', { event, position });
+        } else if (event.key === 'Escape') {
+            event.preventDefault();
+            dispatch('inputKeyCancel', { event, position });
+        }
+    }
+
 </script>
 
 <div
     bind:this={element}
-    class="border border-tertiaryOnBg px-2 py-1 cursor-pointer select-none transition-colors
+    class="min-w-[{minWidth}] min-h-[{minHeight}] border border-tertiaryOnBg px-2 py-1 cursor-pointer select-none transition-colors
         duration-200 w-full h-full flex items-center {selected ? 'bg-[rgb(255,127,80)]' : 'bg-tertiaryBg'}"
     on:mousedown={(e) => handleCellMouseInteraction('mousedown', e)}
     on:mouseenter={(e) => handleCellMouseInteraction('mouseenter', e)}
@@ -137,12 +149,12 @@
             bind:this={inputElement}
             class="w-full h-full bg-transparent outline-none"
             on:blur={handleInputBlur}
-            on:keydown={(event) => {event.stopPropagation();}}
+            on:keydown={handleInputKeydown}
         />
     {:else}
         <span
         >
-            {value}
+            {value ?? ''}
         </span>
     {/if}
 </div>
