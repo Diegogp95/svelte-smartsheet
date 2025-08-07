@@ -20,7 +20,7 @@ export interface NavigationState {
 export type CellValue = string | number | boolean | null;
 
 // Interface for Cell component interaction
-export interface CellComponent {
+export interface CellComponent<T = Record<string, any>> {
     position: GridPosition;
     element: HTMLElement;
     selected: boolean;
@@ -28,11 +28,13 @@ export interface CellComponent {
     editing: boolean;
     inputElement: HTMLInputElement;
     inputValue: CellValue; // Intermediate value for input handling
+    extraProps?: T; // Generic extra properties for specific implementations
     setSelected(selected: boolean): void;
     setEditing(editing: boolean): void;
     setInputFocus(): void;
     setInputValue(value: CellValue): void;
     setValue(value: CellValue): void; // Method to update the cell's value
+    setExtraProps(props: T): void; // Method to update extra properties
 }
 
 // Function type for cell registration

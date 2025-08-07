@@ -1,4 +1,4 @@
-<script lang="ts">
+<script lang="ts" generics="TExtraprops extends Record<string, any>">
     import { createEventDispatcher, onMount } from 'svelte';
     import type {
         GridPosition,
@@ -17,6 +17,7 @@
     // Props from parent
     export let value: CellValue = '';
     export let position: GridPosition;
+    export let extraProps: TExtraprops | undefined = undefined;
     export let onCellCreation: OnCellCreation | undefined = undefined;
     export let onCellDestruction: OnCellDestruction | undefined = undefined;
 
@@ -37,7 +38,7 @@
     }>();
 
     // Implement CellComponent interface
-    const cellComponent: CellComponent = {
+    const cellComponent: CellComponent<TExtraprops> = {
         get position() { return position; },
         get element() { return element!; }, // Will be assigned in template
         get selected() { return selected; },
@@ -45,6 +46,7 @@
         get editing() { return editing; },
         get inputElement() { return inputElement!; },
         get inputValue() { return inputValue; },
+        get extraProps() { return extraProps!; },
         setSelected(newSelected: boolean) {
             selected = newSelected;
         },
@@ -63,9 +65,12 @@
             });
         },
         // Maybe useful later
-        setInputValue(value: CellValue) {
-            inputValue = value;
+        setInputValue(newInputValue: CellValue) {
+            inputValue = newInputValue;
         },
+        setExtraProps(props: TExtraprops) {
+            extraProps = {...props};
+        }
     };
 
     // Register with parent on mount
@@ -133,7 +138,8 @@
 
 <div
     bind:this={element}
-    class="min-w-[{minWidth}] min-h-[{minHeight}] border border-tertiaryOnBg px-2 py-1 cursor-pointer select-none transition-colors
+    style="min-width: {minWidth}; min-height: {minHeight};"
+    class="border border-tertiaryOnBg px-2 py-1 cursor-pointer select-none transition-colors
         duration-200 w-full h-full flex items-center {selected ? 'bg-[rgb(255,127,80)]' : 'bg-tertiaryBg'}"
     on:mousedown={(e) => handleCellMouseInteraction('mousedown', e)}
     on:mouseenter={(e) => handleCellMouseInteraction('mouseenter', e)}
