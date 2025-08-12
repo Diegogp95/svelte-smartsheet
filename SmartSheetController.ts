@@ -18,15 +18,15 @@ import type { PointerPositionCallback } from './NavigationHandler';
 import { ColorHandler } from './ColorHandler';
 
 // Main Controller - Mediates between navigation and selection
-export default class SmartSheetController {
+export default class SmartSheetController<TExtraProps = undefined> {
     private gridDimensions: GridDimensions;
-    private cellComponents: Map<string, CellComponent>;
+    private cellComponents: Map<string, CellComponent<TExtraProps>>;
     private backgroundComponents: Map<string, CellBackgroundComponent>;
-    private navigationHandler: NavigationHandler;
-    private selectionHandler: SelectionHandler;
+    private navigationHandler: NavigationHandler<TExtraProps>;
+    private selectionHandler: SelectionHandler<TExtraProps>;
     private inputAnalyzer: InputAnalyzer;
-    private dataHandler: DataHandler;
-    private colorHandler: ColorHandler;
+    private dataHandler: DataHandler<TExtraProps>;
+    private colorHandler: ColorHandler<TExtraProps>;
 
     constructor(initialDimensions: GridDimensions,
         onSelectionsChanged?: SelectionChangedCallback,
@@ -38,11 +38,11 @@ export default class SmartSheetController {
         this.gridDimensions = initialDimensions;
 
         // Initialize handlers with shared references
-        this.selectionHandler = new SelectionHandler(this.cellComponents, onSelectionsChanged, onDeselectionsChanged);
-        this.navigationHandler = new NavigationHandler(this.gridDimensions, this.cellComponents, pointerPositionCallback);
+        this.selectionHandler = new SelectionHandler<TExtraProps>(this.cellComponents, onSelectionsChanged, onDeselectionsChanged);
+        this.navigationHandler = new NavigationHandler<TExtraProps>(this.gridDimensions, this.cellComponents, pointerPositionCallback);
         this.inputAnalyzer = new InputAnalyzer();
-        this.dataHandler = new DataHandler(this.cellComponents);
-        this.colorHandler = new ColorHandler(this.cellComponents, this.backgroundComponents);
+        this.dataHandler = new DataHandler<TExtraProps>(this.cellComponents);
+        this.colorHandler = new ColorHandler<TExtraProps>(this.cellComponents, this.backgroundComponents);
 
         // Setup clipboard event handlers
         this.setupClipboardHandlers();
@@ -130,13 +130,13 @@ export default class SmartSheetController {
     }
 
     // Register cell component (called from SmartSheet.svelte)
-    registerCell(cellComponent: CellComponent) {
+    registerCell(cellComponent: CellComponent<TExtraProps>) {
         const key = `${cellComponent.position.row}-${cellComponent.position.col}`;
         this.cellComponents.set(key, cellComponent);
     }
 
     // Unregister cell component (for cleanup)
-    unregisterCell(cellComponent: CellComponent) {
+    unregisterCell(cellComponent: CellComponent<TExtraProps>) {
         const key = `${cellComponent.position.row}-${cellComponent.position.col}`;
         this.cellComponents.delete(key);
     }
@@ -436,7 +436,7 @@ export default class SmartSheetController {
 
     // Selection API that takes a function aware of cell structure
     applySelections(
-        selectionGenerator: (cells: Map<string, CellComponent>) => GridPosition[]
+        selectionGenerator: (cells: Map<string, CellComponent<TExtraProps>>) => GridPosition[]
     ): void {
         const positions = selectionGenerator(this.cellComponents);
         this.selectPositions(positions);
@@ -444,7 +444,7 @@ export default class SmartSheetController {
 
     // Navigation APIs that take functions aware of cell structure
     navigateToFirst(
-        cellMatcher: (cell: CellComponent) => boolean
+        cellMatcher: (cell: CellComponent<TExtraProps>) => boolean
     ): boolean {
         const success = this.navigationHandler.navigateToFirst(cellMatcher);
 
@@ -458,7 +458,7 @@ export default class SmartSheetController {
     }
 
     navigateToNext(
-        cellMatcher: (cell: CellComponent) => boolean
+        cellMatcher: (cell: CellComponent<TExtraProps>) => boolean
     ): boolean {
         const success = this.navigationHandler.navigateToNext(cellMatcher);
         // If navigation was successful, select the cell
@@ -475,7 +475,7 @@ export default class SmartSheetController {
     }
 
     applyImputations(
-        imputationGenerator: (cells: Map<string, CellComponent>) => [GridPosition, CellValue][]
+        imputationGenerator: (cells: Map<string, CellComponent<TExtraProps>>) => [GridPosition, CellValue][]
     ): boolean {
         return this.dataHandler.applyImputations(imputationGenerator);
     }

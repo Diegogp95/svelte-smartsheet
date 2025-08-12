@@ -7,18 +7,18 @@ import type {
 } from './types';
 
 // Callback type for selection changes
-export type SelectionChangedCallback = (handler: SelectionHandler) => void;
+export type SelectionChangedCallback = (handler: SelectionHandler<any>) => void;
 
-export default class SelectionHandler {
+export default class SelectionHandler<TExtraProps = undefined> {
     private selectedCells: Set<string>;
-    private cellComponents: Map<string, CellComponent>;
+    private cellComponents: Map<string, CellComponent<TExtraProps>>;
     private selections: Selection[];
     private onSelectionsChanged?: SelectionChangedCallback;
     private onDeselectionsChanged?: SelectionChangedCallback;
     private isDeselecting: boolean;
     private deselection: Selection | null;
 
-    constructor(cellComponents: Map<string, CellComponent>,
+    constructor(cellComponents: Map<string, CellComponent<TExtraProps>>,
         onSelectionsChanged?: SelectionChangedCallback,
         onDeselectionsChanged?: SelectionChangedCallback
     ) {

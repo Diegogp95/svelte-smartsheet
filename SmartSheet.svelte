@@ -1,4 +1,4 @@
-<script lang="ts" generics="TExtraProps extends Record<string, any> = Record<string, any>">
+<script lang="ts" generics="TExtraProps = undefined">
     import Cell from './Cell.svelte';
     import CellBackground from './CellBackground.svelte';
     import CellPointer from './CellPointer.svelte';
@@ -18,7 +18,7 @@
 
     // Data
     export let gridData: (CellValue | undefined)[][];
-    export let extraPropsMatrix: (TExtraProps | undefined)[][] | undefined;
+    export let extraPropsMatrix: (TExtraProps | undefined)[][] | undefined = undefined;
 
     // Selections array to render, will be subscribed to controller's selections by a callback
     let selections: Selection[] = [];
@@ -40,7 +40,7 @@
     };
 
     // Create controller with grid dimensions
-    let controller = new SmartSheetController({
+    let controller = new SmartSheetController<TExtraProps>({
         maxRow: gridData.length - 1,
         maxCol: (gridData[0]?.length || 1) - 1
     }, subscribeToSelections, subscribeToPointerPosition, subscribeToDeselection);
@@ -137,25 +137,25 @@
     }
 
     // Batch styling helpers exposed
-    export function applyBackgroundStyles(styleGenerator: (cells: Map<string, CellComponent>) => [GridPosition, any][]) {
+    export function applyBackgroundStyles(styleGenerator: (cells: Map<string, CellComponent<TExtraProps>>) => [GridPosition, any][]) {
         controller.applyBackgroundStyles(styleGenerator as any);
     }
 
-    export function applyTailwindStyles(styleGenerator: (cells: Map<string, CellComponent>) => [GridPosition, any][]) {
+    export function applyTailwindStyles(styleGenerator: (cells: Map<string, CellComponent<TExtraProps>>) => [GridPosition, any][]) {
         controller.applyTailwindStyles(styleGenerator as any);
     }
 
     // Selection APIs that take functions aware of cell structure
-    export function applySelections(selectionGenerator: (cells: Map<string, CellComponent>) => GridPosition[]) {
+    export function applySelections(selectionGenerator: (cells: Map<string, CellComponent<TExtraProps>>) => GridPosition[]) {
         controller.applySelections(selectionGenerator as any);
     }
 
     // Navigation APIs that take functions aware of cell structure
-    export function navigateToFirst(cellMatcher: (cell: CellComponent) => boolean) {
+    export function navigateToFirst(cellMatcher: (cell: CellComponent<TExtraProps>) => boolean) {
         return controller.navigateToFirst(cellMatcher as any);
     }
 
-    export function navigateToNext(cellMatcher: (cell: CellComponent) => boolean) {
+    export function navigateToNext(cellMatcher: (cell: CellComponent<TExtraProps>) => boolean) {
         return controller.navigateToNext(cellMatcher as any);
     }
 
@@ -164,7 +164,7 @@
         return controller.imputeValues(imputations as any);
     }
 
-    export function applyImputations(imputationGenerator: (cells: Map<string, CellComponent>) => [GridPosition, any][]) {
+    export function applyImputations(imputationGenerator: (cells: Map<string, CellComponent<TExtraProps>>) => [GridPosition, any][]) {
         return controller.applyImputations(imputationGenerator as any);
     }
 

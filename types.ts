@@ -19,8 +19,9 @@ export interface NavigationState {
 // Type for cell values, can be extended later if needed
 export type CellValue = string | number | boolean | null;
 
-// Interface for Cell component interaction
-export interface CellComponent<T = Record<string, any>> {
+// Interface for Cell component interaction with simplified extraProps
+// T defaults to undefined, but when specified, should extend Record<string, any>
+export interface CellComponent<T = undefined> {
     position: GridPosition;
     element: HTMLElement;
     selected: boolean;
@@ -28,18 +29,18 @@ export interface CellComponent<T = Record<string, any>> {
     editing: boolean;
     inputElement: HTMLInputElement;
     inputValue: CellValue; // Intermediate value for input handling
-    extraProps?: T; // Generic extra properties for specific implementations
+    extraProps: T; // Simplified: just T directly
     setSelected(selected: boolean): void;
     setEditing(editing: boolean): void;
     setInputFocus(): void;
     setInputValue(value: CellValue): void;
     setValue(value: CellValue): void; // Method to update the cell's value
-    setExtraProps(props: T): void; // Method to update extra properties
+    setExtraProps(props: T): void; // Simplified: just T directly
 }
 
 // Function type for cell registration
-export type OnCellCreation = (cellComponent: CellComponent) => void;
-export type OnCellDestruction = (cellComponent: CellComponent) => void;
+export type OnCellCreation<T = undefined> = (cellComponent: CellComponent<T>) => void;
+export type OnCellDestruction<T = undefined> = (cellComponent: CellComponent<T>) => void;
 
 // Background properties for cell styling
 export interface BackgroundProperties {

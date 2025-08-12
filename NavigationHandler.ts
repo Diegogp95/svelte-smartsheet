@@ -7,16 +7,16 @@ import type {
     ClickAnalysis,
 } from './types';
 
-export type PointerPositionCallback = (handler: NavigationHandler) => void;
+export type PointerPositionCallback = (handler: NavigationHandler<any>) => void;
 
-export default class NavigationHandler {
+export default class NavigationHandler<TExtraProps = undefined> {
     private gridDimensions: GridDimensions;
     private navigationState: NavigationState;
     private tableContainer: HTMLDivElement | undefined;
-    private cellComponents: Map<string, CellComponent>;
+    private cellComponents: Map<string, CellComponent<TExtraProps>>;
     private pointerPositionCallback?: PointerPositionCallback;
 
-    constructor(gridDimensions: GridDimensions, cellComponents: Map<string, CellComponent>,
+    constructor(gridDimensions: GridDimensions, cellComponents: Map<string, CellComponent<TExtraProps>>,
         pointerPositionCallback?: PointerPositionCallback
     ) {
         this.gridDimensions = gridDimensions;
@@ -435,7 +435,7 @@ export default class NavigationHandler {
      * @returns True if navigation occurred, false if no matching cell found
      */
     navigateToFirst(
-        cellMatcher: (cell: CellComponent) => boolean
+        cellMatcher: (cell: CellComponent<TExtraProps>) => boolean
     ): boolean {
         const { maxRow, maxCol } = this.gridDimensions;
 
@@ -464,7 +464,7 @@ export default class NavigationHandler {
      * @returns True if navigation occurred, false if no matching cell found
      */
     navigateToNext(
-        cellMatcher: (cell: CellComponent) => boolean
+        cellMatcher: (cell: CellComponent<TExtraProps>) => boolean
     ): boolean {
         const currentPosition = this.getCurrentPosition();
         const { maxRow, maxCol } = this.gridDimensions;

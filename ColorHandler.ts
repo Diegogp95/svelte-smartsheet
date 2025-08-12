@@ -12,12 +12,12 @@ import type {
  * and other visual aspects of the SmartSheet component.
  */
 // Generic ONLY for CellComponent extraProps, no extension of background/tailwind prop types
-export class ColorHandler<TExtra extends Record<string, any> = any> {
-    private cellComponents: Map<string, CellComponent<TExtra>>;
+export class ColorHandler<TExtraProps = undefined> {
+    private cellComponents: Map<string, CellComponent<TExtraProps>>;
     private backgroundComponents: Map<string, CellBackgroundComponent>;
 
     constructor(
-        cellComponents: Map<string, CellComponent<TExtra>>,
+        cellComponents: Map<string, CellComponent<TExtraProps>>,
         backgroundComponents: Map<string, CellBackgroundComponent>
     ) {
         this.cellComponents = cellComponents;
@@ -95,7 +95,7 @@ export class ColorHandler<TExtra extends Record<string, any> = any> {
      */
 
     public applyBackgroundStyles(
-        styleGenerator: (cells: Map<string, CellComponent<TExtra>>) => [GridPosition, BackgroundProperties][]
+        styleGenerator: (cells: Map<string, CellComponent<TExtraProps>>) => [GridPosition, BackgroundProperties][]
     ): void {
         for (const [position, props] of styleGenerator(this.cellComponents)) {
             this.setBackgroundProperties(position, props);
@@ -103,7 +103,7 @@ export class ColorHandler<TExtra extends Record<string, any> = any> {
     }
 
     public applyTailwindStyles(
-        styleGenerator: (cells: Map<string, CellComponent<TExtra>>) => [GridPosition, TailwindProperties][]
+        styleGenerator: (cells: Map<string, CellComponent<TExtraProps>>) => [GridPosition, TailwindProperties][]
     ): void {
         for (const [position, props] of styleGenerator(this.cellComponents)) {
             this.setTailwindProperties(position, props);

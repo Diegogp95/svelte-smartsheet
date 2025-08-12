@@ -1,4 +1,4 @@
-<script lang="ts" generics="TExtraprops extends Record<string, any>">
+<script lang="ts" generics="TExtraProps = undefined">
     import { createEventDispatcher, onMount } from 'svelte';
     import type {
         GridPosition,
@@ -17,13 +17,10 @@
     // Props from parent
     export let value: CellValue = '';
     export let position: GridPosition;
-    // Need to address the issue with extraProps type
-    // The goal is that if the developer doesn't pass a type for TExtraprops, extraProps should be optional.
-    // But if a type is passed, extraProps should be required (can't be undefined)
-    // The generics handling in SmartSheet, the controller and functions APIs is not working as expected.
-    export let extraProps: [TExtraprops] extends [undefined] ? undefined : TExtraprops;
-    export let onCellCreation: OnCellCreation | undefined = undefined;
-    export let onCellDestruction: OnCellDestruction | undefined = undefined;
+    // extraProps: simplified type - just TExtraProps directly
+    export let extraProps: TExtraProps = undefined as TExtraProps;
+    export let onCellCreation: OnCellCreation<TExtraProps> | undefined = undefined;
+    export let onCellDestruction: OnCellDestruction<TExtraProps> | undefined = undefined;
 
     // Internal state
     let selected = false;
@@ -42,7 +39,7 @@
     }>();
 
     // Implement CellComponent interface
-    const cellComponent: CellComponent<TExtraprops> = {
+    const cellComponent: CellComponent<TExtraProps> = {
         get position() { return position; },
         get element() { return element!; }, // Will be assigned in template
         get selected() { return selected; },
@@ -50,7 +47,7 @@
         get editing() { return editing; },
         get inputElement() { return inputElement!; },
         get inputValue() { return inputValue; },
-        get extraProps() { return extraProps!; },
+        get extraProps() { return extraProps; }, // Simplified: no more casting needed
         setSelected(newSelected: boolean) {
             selected = newSelected;
         },
@@ -72,8 +69,8 @@
         setInputValue(newInputValue: CellValue) {
             inputValue = newInputValue;
         },
-        setExtraProps(props: TExtraprops) {
-            extraProps = {...props};
+        setExtraProps(props: TExtraProps) {
+            extraProps = props; // Simplified: no more casting needed
         }
     };
 

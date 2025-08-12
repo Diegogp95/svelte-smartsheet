@@ -107,26 +107,26 @@ class ValueValidator {
 
 // ==================== DATA HANDLER CLASS ====================
 
-export default class DataHandler {
-    private cellComponents: Map<string, CellComponent>;
-    private editingCell: CellComponent | null = null;
+export default class DataHandler<TExtraProps = undefined> {
+    private cellComponents: Map<string, CellComponent<TExtraProps>>;
+    private editingCell: CellComponent<TExtraProps> | null = null;
     private validator: ValueValidator;
     private historyManager: HistoryManager;
 
-    constructor(cellComponents: Map<string, CellComponent>) {
+    constructor(cellComponents: Map<string, CellComponent<TExtraProps>>) {
         this.cellComponents = cellComponents;
         this.validator = new ValueValidator();
         this.historyManager = new HistoryManager();
     }
 
-    private setCellEditing(cellComponent: CellComponent): void {
+    private setCellEditing(cellComponent: CellComponent<TExtraProps>): void {
         if (!cellComponent.editing) {
             cellComponent.setEditing(true);
         }
         this.editingCell = cellComponent;
     }
 
-    private setCellNotEditing(cellComponent: CellComponent): void {
+    private setCellNotEditing(cellComponent: CellComponent<TExtraProps>): void {
         if (cellComponent.editing) {
             cellComponent.setEditing(false);
             // Clear editingCell reference if it matches
@@ -173,7 +173,7 @@ export default class DataHandler {
      * For artificially generating changes (like deletion), this method can be used
      * and take advantage of existing commit/validation logic.
      */
-    generateChangesCell(position: GridPosition, newValue: CellValue): CellComponent | null {
+    generateChangesCell(position: GridPosition, newValue: CellValue): CellComponent<TExtraProps> | null {
         const key = `${position.row}-${position.col}`;
         const cellComponent = this.cellComponents.get(key);
         if (!cellComponent) {
@@ -187,7 +187,7 @@ export default class DataHandler {
     }
 
     deleteCellsValues(positions: GridPosition[]) {
-        const changedCells: CellComponent[] = [];
+        const changedCells: CellComponent<TExtraProps>[] = [];
         for (const position of positions) {
             const cellComponent = this.generateChangesCell(position, null);
             if (cellComponent) {
@@ -209,7 +209,7 @@ export default class DataHandler {
             return false;
         }
 
-        const changedCells: CellComponent[] = [];
+        const changedCells: CellComponent<TExtraProps>[] = [];
         const maxRows = pasteData.length;
 
         // Process each row of paste data
@@ -391,7 +391,7 @@ export default class DataHandler {
     /**
      * Attempt to commit multiple cell edits - if any fails, entire commit fails
      */
-    private attemptCommitCells(cells: CellComponent[], expectedType?: ExpectedType,
+    private attemptCommitCells(cells: CellComponent<TExtraProps>[], expectedType?: ExpectedType,
         changeType: 'single-edit' | 'paste' | 'delete' | 'format' | 'other' = 'single-edit'): boolean {
 
         // First pass: validate all cells
@@ -495,7 +495,7 @@ export default class DataHandler {
     /**
      * Process cell changes: create ChangeSet from cells and apply changes
      */
-    commitCellChanges(cells: CellComponent[], type: 'single-edit' | 'paste' | 'delete' | 'format' | 'other'): boolean {
+    commitCellChanges(cells: CellComponent<TExtraProps>[], type: 'single-edit' | 'paste' | 'delete' | 'format' | 'other'): boolean {
         // Create CellChange array from cells using their interface
         const changes: CellChange[] = [];
 
@@ -538,7 +538,7 @@ export default class DataHandler {
             return false;
         }
 
-        const changedCells: CellComponent[] = [];
+        const changedCells: CellComponent<TExtraProps>[] = [];
 
         for (const [position, newValue] of imputations) {
             const cellComponent = this.generateChangesCell(position, newValue);
@@ -556,7 +556,7 @@ export default class DataHandler {
      * @returns boolean indicating success
      */
     applyImputations(
-        imputationGenerator: (cells: Map<string, CellComponent>) => [GridPosition, CellValue][]
+        imputationGenerator: (cells: Map<string, CellComponent<TExtraProps>>) => [GridPosition, CellValue][]
     ): boolean {
         const imputations = imputationGenerator(this.cellComponents);
         return this.imputeValues(imputations);
