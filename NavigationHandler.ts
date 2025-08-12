@@ -427,4 +427,73 @@ export default class NavigationHandler {
     getNavigationState(): NavigationState {
         return { ...this.navigationState };
     }
+
+    // Navigation APIs that take functions aware of cell structure
+    /**
+     * Navigate to the first cell that matches the given condition
+     * @param cellMatcher Function that receives a cell component and returns true if it matches
+     * @returns True if navigation occurred, false if no matching cell found
+     */
+    navigateToFirst(
+        cellMatcher: (cell: CellComponent) => boolean
+    ): boolean {
+        const { maxRow, maxCol } = this.gridDimensions;
+
+        // Search in reading order: top to bottom, left to right
+        for (let row = 0; row <= maxRow; row++) {
+            for (let col = 0; col <= maxCol; col++) {
+                const key = `${row}-${col}`;
+                const cell = this.cellComponents.get(key);
+
+                if (cell && cellMatcher(cell)) {
+                    const targetPosition = { row, col };
+                    this.movePointer(targetPosition);
+                    this.setAnchor(targetPosition);
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Navigate to the next cell (from current position) that matches the given condition
+     * Searches in reading order: left to right, top to bottom
+     * @param cellMatcher Function that receives a cell component and returns true if it matches
+     * @returns True if navigation occurred, false if no matching cell found
+     */
+    navigateToNext(
+        cellMatcher: (cell: CellComponent) => boolean
+    ): boolean {
+        const currentPosition = this.getCurrentPosition();
+        const { maxRow, maxCol } = this.gridDimensions;
+
+        // Start from the next position after current
+        let startRow = currentPosition.row;
+        let startCol = currentPosition.col + 1;
+
+        // If we're at the end of the row, go to next row
+        if (startCol > maxCol) {
+            startRow++;
+            startCol = 0;
+        }
+
+        // Search from current position forward
+        for (let row = startRow; row <= maxRow; row++) {
+            for (let col = (row === startRow ? startCol : 0); col <= maxCol; col++) {
+                const key = `${row}-${col}`;
+                const cell = this.cellComponents.get(key);
+
+                if (cell && cellMatcher(cell)) {
+                    const targetPosition = { row, col };
+                    this.movePointer(targetPosition);
+                    this.setAnchor(targetPosition);
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
 }

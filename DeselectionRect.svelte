@@ -3,7 +3,7 @@
 </script>
 <div
   class="border-4 border-minusBg bg-stone-700/20 transition-all duration-150 relative
-    pointer-events-none"
+    pointer-events-none z-[25]"
   style="
     grid-row: {gridArea.rowStart} / {gridArea.rowEnd};
     grid-column: {gridArea.colStart} / {gridArea.colEnd};

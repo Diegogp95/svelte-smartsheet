@@ -2,9 +2,12 @@ import type {
     GridPosition,
     GridDimensions,
     CellComponent,
+    CellBackgroundComponent,
     RawKeyboardAnalysis,
     CellMouseEvent,
     CellValue,
+    BackgroundProperties,
+    TailwindProperties,
 } from './types';
 import InputAnalyzer from './InputAnalyzer';
 import NavigationHandler from './NavigationHandler';
@@ -12,15 +15,18 @@ import SelectionHandler from './SelectionHandler';
 import DataHandler from './DataHandler';
 import type { SelectionChangedCallback } from './SelectionHandler';
 import type { PointerPositionCallback } from './NavigationHandler';
+import { ColorHandler } from './ColorHandler';
 
 // Main Controller - Mediates between navigation and selection
 export default class SmartSheetController {
     private gridDimensions: GridDimensions;
     private cellComponents: Map<string, CellComponent>;
+    private backgroundComponents: Map<string, CellBackgroundComponent>;
     private navigationHandler: NavigationHandler;
     private selectionHandler: SelectionHandler;
     private inputAnalyzer: InputAnalyzer;
     private dataHandler: DataHandler;
+    private colorHandler: ColorHandler;
 
     constructor(initialDimensions: GridDimensions,
         onSelectionsChanged?: SelectionChangedCallback,
@@ -28,6 +34,7 @@ export default class SmartSheetController {
         onDeselectionsChanged?: SelectionChangedCallback,
     ) {
         this.cellComponents = new Map();
+        this.backgroundComponents = new Map();
         this.gridDimensions = initialDimensions;
 
         // Initialize handlers with shared references
@@ -35,6 +42,7 @@ export default class SmartSheetController {
         this.navigationHandler = new NavigationHandler(this.gridDimensions, this.cellComponents, pointerPositionCallback);
         this.inputAnalyzer = new InputAnalyzer();
         this.dataHandler = new DataHandler(this.cellComponents);
+        this.colorHandler = new ColorHandler(this.cellComponents, this.backgroundComponents);
 
         // Setup clipboard event handlers
         this.setupClipboardHandlers();
@@ -131,6 +139,18 @@ export default class SmartSheetController {
     unregisterCell(cellComponent: CellComponent) {
         const key = `${cellComponent.position.row}-${cellComponent.position.col}`;
         this.cellComponents.delete(key);
+    }
+
+    // Register background component (called from SmartSheet.svelte)
+    registerBackground(backgroundComponent: CellBackgroundComponent) {
+        const key = `${backgroundComponent.position.row}-${backgroundComponent.position.col}`;
+        this.backgroundComponents.set(key, backgroundComponent);
+    }
+
+    // Unregister background component (for cleanup)
+    unregisterBackground(backgroundComponent: CellBackgroundComponent) {
+        const key = `${backgroundComponent.position.row}-${backgroundComponent.position.col}`;
+        this.backgroundComponents.delete(key);
     }
 
     // Update container reference
@@ -308,22 +328,10 @@ export default class SmartSheetController {
 
     // PUBLIC API for external selection control
     selectPositions(positions: GridPosition[]): void {
-        const keys = positions.map(pos => `${pos.row}-${pos.col}`);
-        this.selectionHandler.updateSelection(new Set(keys));
-    }
-
-    addToSelection(positions: GridPosition[]): void {
-        const currentSelection = this.selectionHandler.getSelectedCells();
-        const newKeys = positions.map(pos => `${pos.row}-${pos.col}`);
-        newKeys.forEach(key => currentSelection.add(key));
-        this.selectionHandler.updateSelection(currentSelection);
-    }
-
-    removeFromSelection(positions: GridPosition[]): void {
-        const currentSelection = this.selectionHandler.getSelectedCells();
-        const keysToRemove = positions.map(pos => `${pos.row}-${pos.col}`);
-        keysToRemove.forEach(key => currentSelection.delete(key));
-        this.selectionHandler.updateSelection(currentSelection);
+        // Clear existing selections first
+        this.selectionHandler.clearSelections();
+        // Add individual selections for each position
+        this.selectionHandler.addMultipleSelections(positions);
     }
 
     navigateToPosition(position: GridPosition): boolean {
@@ -359,4 +367,108 @@ export default class SmartSheetController {
     getSelections() {
         return this.selectionHandler.getSelections();
     }
+
+    // PUBLIC API for background control (supports single or batch via tuple arrays)
+    // setCellBackgroundColor
+    setCellBackgroundColor(position: GridPosition, color: string): void;
+    setCellBackgroundColor(updates: [GridPosition, string][]): void;
+    setCellBackgroundColor(arg1: GridPosition | [GridPosition, string][], arg2?: string): void {
+        if (Array.isArray(arg1)) {
+            for (const [pos, col] of arg1) {
+                this.colorHandler.changeCellBackgroundColor(pos, col);
+            }
+        } else {
+            this.colorHandler.changeCellBackgroundColor(arg1, arg2 as string);
+        }
+    }
+
+    // setCellTailwindBackgroundColor
+    setCellTailwindBackgroundColor(position: GridPosition, classes: string[]): void;
+    setCellTailwindBackgroundColor(updates: [GridPosition, string[]][]): void;
+    setCellTailwindBackgroundColor(arg1: GridPosition | [GridPosition, string[]][], arg2?: string[]): void {
+        if (Array.isArray(arg1) && Array.isArray(arg1[0])) {
+            // arg1 is tuple array
+            for (const [pos, cls] of arg1 as [GridPosition, string[]][]) {
+                this.colorHandler.changeTailwindBackgroundColor(pos, cls);
+            }
+        } else if (!Array.isArray(arg1)) {
+            this.colorHandler.changeTailwindBackgroundColor(arg1, arg2 as string[]);
+        } else {
+            // Fallback (shouldn't happen) - ignore
+        }
+    }
+
+    // setCellStyle for background properties
+    setCellStyle(position: GridPosition, props: BackgroundProperties): void;
+    setCellStyle(updates: [GridPosition, BackgroundProperties][]): void;
+    setCellStyle(arg1: GridPosition | [GridPosition, BackgroundProperties][], arg2?: BackgroundProperties): void {
+        if (Array.isArray(arg1) && Array.isArray(arg1[0])) {
+            for (const [pos, props] of arg1 as [GridPosition, BackgroundProperties][]) {
+                this.colorHandler.setBackgroundProperties(pos, props);
+            }
+        } else if (!Array.isArray(arg1)) {
+            this.colorHandler.setBackgroundProperties(arg1, arg2 as BackgroundProperties);
+        }
+    }
+
+    // setTailwindProperties
+    setTailwindProperties(position: GridPosition, props: TailwindProperties): void;
+    setTailwindProperties(updates: [GridPosition, TailwindProperties][]): void;
+    setTailwindProperties(arg1: GridPosition | [GridPosition, TailwindProperties][], arg2?: TailwindProperties): void {
+        if (Array.isArray(arg1) && Array.isArray(arg1[0])) {
+            for (const [pos, props] of arg1 as [GridPosition, TailwindProperties][]) {
+                this.colorHandler.setTailwindProperties(pos, props);
+            }
+        } else if (!Array.isArray(arg1)) {
+            this.colorHandler.setTailwindProperties(arg1, arg2 as TailwindProperties);
+        }
+    }
+
+    // Batch background styles via generator
+    applyBackgroundStyles(styleGenerator: (cells: Map<string, CellComponent>) => [GridPosition, BackgroundProperties][]): void {
+        this.colorHandler.applyBackgroundStyles(styleGenerator as any);
+    }
+
+    // Batch tailwind styles via generator
+    applyTailwindStyles(styleGenerator: (cells: Map<string, CellComponent>) => [GridPosition, TailwindProperties][]): void {
+        this.colorHandler.applyTailwindStyles(styleGenerator as any);
+    }
+
+    // Selection API that takes a function aware of cell structure
+    applySelections(
+        selectionGenerator: (cells: Map<string, CellComponent>) => GridPosition[]
+    ): void {
+        const positions = selectionGenerator(this.cellComponents);
+        this.selectPositions(positions);
+    }
+
+    // Navigation APIs that take functions aware of cell structure
+    navigateToFirst(
+        cellMatcher: (cell: CellComponent) => boolean
+    ): boolean {
+        const success = this.navigationHandler.navigateToFirst(cellMatcher);
+
+        // If navigation was successful, select the cell
+        if (success) {
+            const currentPosition = this.navigationHandler.getCurrentPosition();
+            this.selectionHandler.selectSingle(currentPosition);
+        }
+
+        return success;
+    }
+
+    navigateToNext(
+        cellMatcher: (cell: CellComponent) => boolean
+    ): boolean {
+        const success = this.navigationHandler.navigateToNext(cellMatcher);
+
+        // If navigation was successful, select the cell
+        if (success) {
+            const currentPosition = this.navigationHandler.getCurrentPosition();
+            this.selectionHandler.selectSingle(currentPosition);
+        }
+
+        return success;
+    }
+
 }

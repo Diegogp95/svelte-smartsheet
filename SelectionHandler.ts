@@ -191,6 +191,13 @@ export default class SelectionHandler {
         this.addNewSelection(position, position);
     }
 
+    // Add multiple individual selections
+    addMultipleSelections(positions: GridPosition[]): void {
+        positions.forEach(pos => {
+            this.addNewSelection(pos, pos);
+        });
+    }
+
     // Update Active - Modifies the currently active selection
     private updateActiveSelection(position1: GridPosition, position2: GridPosition): void {
         const activeSelection = this.getActiveSelection();

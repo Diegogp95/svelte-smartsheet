@@ -41,6 +41,42 @@ export interface CellComponent<T = Record<string, any>> {
 export type OnCellCreation = (cellComponent: CellComponent) => void;
 export type OnCellDestruction = (cellComponent: CellComponent) => void;
 
+// Background properties for cell styling
+export interface BackgroundProperties {
+    'background-color'?: string;
+    'border-color'?: string;
+    'border-width'?: string;
+    'border-style'?: string;
+    'border-radius'?: string;
+    'text-color'?: string;
+    'opacity'?: number;
+}
+export interface TailwindProperties {
+    'bg'?: string[];
+    'border'?: string[];
+    'rounded'?: string[];
+    'text'?: string[];
+    'opacity'?: number;
+}
+
+// Interface for CellBackground component interaction
+export interface CellBackgroundComponent {
+    position: GridPosition;
+    element: HTMLElement;
+    backgroundProperties: BackgroundProperties;
+    tailwindProperties: TailwindProperties;
+    setBackgroundProperties: (props: BackgroundProperties) => void;
+    applyBackgroundProperties: () => void;
+    clearBackgroundProperties: () => void;
+    setTailwindProperties: (props: TailwindProperties) => void;
+    applyTailwindProperties: () => void;
+    clearTailwindProperties: () => void;
+}
+
+// Function type for background registration
+export type OnBackgroundCreation = (backgroundComponent: CellBackgroundComponent) => void;
+export type OnBackgroundDestruction = (backgroundComponent: CellBackgroundComponent) => void;
+
 // Keyboard event analysis types
 export type KeyCategory = 'arrow' | 'edit' | 'confirm' | 'backspace' | 'cancel' | 'delete' | 'space' | 'command' | 'write' | 'other';
 

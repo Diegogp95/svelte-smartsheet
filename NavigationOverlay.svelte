@@ -31,7 +31,7 @@
 {#if visible}
     <!-- Invisible overlay that covers the entire table -->
     <div 
-        class="absolute inset-0 z-20 cursor-pointer flex items-center justify-center transition-all
+        class="absolute inset-0 z-[100] cursor-pointer flex items-center justify-center transition-all
             duration-500 {showTooltip ? 'bg-tertiaryOnBg' : ''}"
         style="opacity: {showTooltip ? '0.4' : '0'}"
         on:click={handleClick}

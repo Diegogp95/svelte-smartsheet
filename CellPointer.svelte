@@ -5,7 +5,7 @@
 <!-- Pointer that overlays the corresponding cell -->
 <div
     class="pointer-events-none border-4 border-sheetPointerBorder bg-slate-700/20
-        shadow-lg transition-all duration-150 relative"
+        shadow-lg transition-all duration-150 relative z-30"
     style="
         grid-row: {position.row + 1};
         grid-column: {position.col + 1};

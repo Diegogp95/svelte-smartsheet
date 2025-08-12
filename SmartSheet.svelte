@@ -1,5 +1,6 @@
-<script lang="ts">
+<script lang="ts" generics="TExtraProps extends Record<string, any> = Record<string, any>">
     import Cell from './Cell.svelte';
+    import CellBackground from './CellBackground.svelte';
     import CellPointer from './CellPointer.svelte';
     import NavigationOverlay from './NavigationOverlay.svelte';
     import SmartSheetController from './SmartSheetController';
@@ -9,21 +10,14 @@
     import type {
         GridPosition,
         CellMouseEvent,
+        CellValue,
     } from './types';
     import SelectionRect from './SelectionRect.svelte';
     import DeselectionRect from './DeselectionRect.svelte';
 
-    // Test data with many columns
-    let gridData = [
-        ['Name', 'Age', 'City', 'Salary', 'Department', 'Position', 'Start Date', 'Manager', 'Phone', 'Email', 'Country', 'Experience', 'Skills', 'Rating', 'Bonus', 'Benefits', 'Status', 'Projects', 'Hours', 'Performance'],
-        ['Alice', 25, 'Madrid', 45000, 'Engineering', 'Developer', '2023-01-15', 'John Smith', '+34-123-456', 'alice@company.com', 'Spain', '2 years', 'JavaScript', 4.5, 5000, 'Health+Dental', 'Active', 3, 40, 'Excellent'],
-        ['Bob', 30, 'Barcelona', 52000, 'Marketing', 'Manager', '2022-03-20', 'Jane Doe', '+34-987-654', 'bob@company.com', 'Spain', undefined, undefined, undefined, 7000, undefined, 'Active', 5, 45, 'Good'],
-        ['Carol', 28, 'Valencia', 48000, 'Design', 'UX Designer', '2023-06-10', 'Mike Johnson', '+34-555-777', 'carol@company.com', 'Spain', '3 years', 'Figma', 4.8, 4500, 'Health Only', undefined, 2, 38, 'Outstanding'],
-        ['David', 35, 'Sevilla', 55000, 'Sales', 'Director', '2021-08-30', 'Sarah Wilson', '+34-111-222', 'david@company.com', 'Spain', '8 years', 'CRM', 4.0, 8000, 'Premium', 'On Leave', 7, 42, 'Good'],
-        ['Emma', 27, 'Bilbao', 46000, 'Engineering', 'Frontend', '2023-02-28', 'John Smith', '+34-333-444', 'emma@company.com', 'Spain', '2.5 years', 'React', 4.6, 5500, 'Health+Dental', 'Active', 4, 40, 'Excellent'],
-        ['Frank', 32, 'Granada', 51000, 'Operations', 'Analyst', '2022-11-15', 'Lisa Brown', '+34-666-888', 'frank@company.com', 'Spain', '6 years', 'SQL', 4.3, 6000, 'Full Package', 'Active', 3, 41, 'Good'],
-        ['Grace', 29, 'Alicante', 49000, 'HR', 'Specialist', '2023-04-05', 'Tom Garcia', '+34-777-999', 'grace@company.com', 'Spain', '4 years', 'Recruiting', 4.7, 4800, 'Health+Vision', 'Active', 2, 39, 'Very Good']
-    ];
+    // Data
+    export let gridData: (CellValue | undefined)[][];
+    export let extraPropsMatrix: (TExtraProps | undefined)[][] | undefined;
 
     // Selections array to render, will be subscribed to controller's selections by a callback
     let selections: Selection[] = [];
@@ -117,14 +111,6 @@
         controller.selectPositions(positions);
     }
 
-    export function addToSelection(positions: GridPosition[]) {
-        controller.addToSelection(positions);
-    }
-
-    export function removeFromSelection(positions: GridPosition[]) {
-        controller.removeFromSelection(positions);
-    }
-
     export function navigateToPosition(position: GridPosition) {
         return controller.navigateToPosition(position);
     }
@@ -139,6 +125,37 @@
 
     export function clearSelection() {
         controller.selectPositions([]);
+    }
+
+    export function colorizeCell(position: GridPosition, color: string) {
+        controller.setCellBackgroundColor(position, color);
+    }
+
+    export function colorizeCellTailwind(position: GridPosition, bg: string) {
+        controller.setCellTailwindBackgroundColor(position, [bg]);
+    }
+
+    // Batch styling helpers exposed
+    export function applyBackgroundStyles(styleGenerator: (cells: Map<string, any>) => [GridPosition, any][]) {
+        controller.applyBackgroundStyles(styleGenerator as any);
+    }
+
+    export function applyTailwindStyles(styleGenerator: (cells: Map<string, any>) => [GridPosition, any][]) {
+        controller.applyTailwindStyles(styleGenerator as any);
+    }
+
+    // Selection APIs that take functions aware of cell structure
+    export function applySelections(selectionGenerator: (cells: Map<string, any>) => GridPosition[]) {
+        controller.applySelections(selectionGenerator as any);
+    }
+
+    // Navigation APIs that take functions aware of cell structure
+    export function navigateToFirst(cellMatcher: (cell: any) => boolean) {
+        return controller.navigateToFirst(cellMatcher as any);
+    }
+
+    export function navigateToNext(cellMatcher: (cell: any) => boolean) {
+        return controller.navigateToNext(cellMatcher as any);
     }
 
 </script>
@@ -156,10 +173,11 @@
         <div class="grid gap-0 text-tertiaryOnBg" style="grid-template-columns: repeat({gridData[0]?.length || 1}, auto); display: grid;">
             {#each gridData as row, rowIndex}
                 {#each row as cellValue, colIndex}
-                    <div class="flex" style="grid-row: {rowIndex + 1}; grid-column: {colIndex + 1};">
+                    <div class="flex z-40" style="grid-row: {rowIndex + 1}; grid-column: {colIndex + 1};">
                         <Cell
                             value={cellValue}
                             position={{ row: rowIndex, col: colIndex }}
+                            extraProps={extraPropsMatrix?.[rowIndex]?.[colIndex]}
                             onCellCreation={(cell) => controller.registerCell(cell)}
                             onCellDestruction={(cell) => controller.unregisterCell(cell)}
                             on:cellInteraction={handleCellMouseEvent}
@@ -167,6 +185,20 @@
                             on:inputBlur={handleCellInputBlur}
                             on:inputKeyCommit={handleCellInputKeyCommand}
                             on:inputKeyCancel={handleCellInputKeyCommand}
+                        />
+                    </div>
+                {/each}
+            {/each}
+
+            <!-- Background components for styling (lower priority than selections and pointer) -->
+            {#each gridData as row, rowIndex}
+                {#each row as cellValue, colIndex}
+                    <div class="flex z-10" style="grid-row: {rowIndex + 1}; grid-column: {colIndex + 1};">
+                        <!-- Background component for each cell -->
+                        <CellBackground
+                            position={{ row: rowIndex, col: colIndex }}
+                            onBackgroundCreation={(bg) => controller.registerBackground(bg)}
+                            onBackgroundDestruction={(bg) => controller.unregisterBackground(bg)}
                         />
                     </div>
                 {/each}

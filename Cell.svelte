@@ -17,7 +17,11 @@
     // Props from parent
     export let value: CellValue = '';
     export let position: GridPosition;
-    export let extraProps: TExtraprops | undefined = undefined;
+    // Need to address the issue with extraProps type
+    // The goal is that if the developer doesn't pass a type for TExtraprops, extraProps should be optional.
+    // But if a type is passed, extraProps should be required (can't be undefined)
+    // The generics handling in SmartSheet, the controller and functions APIs is not working as expected.
+    export let extraProps: [TExtraprops] extends [undefined] ? undefined : TExtraprops;
     export let onCellCreation: OnCellCreation | undefined = undefined;
     export let onCellDestruction: OnCellDestruction | undefined = undefined;
 
@@ -140,7 +144,7 @@
     bind:this={element}
     style="min-width: {minWidth}; min-height: {minHeight};"
     class="border border-tertiaryOnBg px-2 py-1 cursor-pointer select-none transition-colors
-        duration-200 w-full h-full flex items-center {selected ? 'bg-[rgb(255,127,80)]' : 'bg-tertiaryBg'}"
+        duration-200 w-full h-full flex items-center"
     on:mousedown={(e) => handleCellMouseInteraction('mousedown', e)}
     on:mouseenter={(e) => handleCellMouseInteraction('mouseenter', e)}
     on:mouseup={(e) => handleCellMouseInteraction('mouseup', e)}

@@ -3,8 +3,8 @@
     export let active: boolean = false;
 </script>
 <div
-  class="border-4 border-plusBg bg-slate-700/20 transition-all duration-150 relative
-    pointer-events-none"
+  class="border-4 border-plusBg bg-[rgb(255,127,80,0.8)] transition-all duration-150 relative
+    pointer-events-none z-20"
   style="
     grid-row: {gridArea.rowStart} / {gridArea.rowEnd};
     grid-column: {gridArea.colStart} / {gridArea.colEnd};
