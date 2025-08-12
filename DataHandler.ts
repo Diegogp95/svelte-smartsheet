@@ -526,4 +526,40 @@ export default class DataHandler {
         return true;
     }
 
+    // ==================== IMPUTATION APIS ====================
+
+    /**
+     * Impute values for specific positions (direct API)
+     * @param imputations Array of [position, value] tuples
+     * @returns boolean indicating success
+     */
+    imputeValues(imputations: [GridPosition, CellValue][]): boolean {
+        if (!imputations || imputations.length === 0) {
+            return false;
+        }
+
+        const changedCells: CellComponent[] = [];
+
+        for (const [position, newValue] of imputations) {
+            const cellComponent = this.generateChangesCell(position, newValue);
+            if (cellComponent) {
+                changedCells.push(cellComponent);
+            }
+        }
+
+        return this.attemptCommitCells(changedCells, undefined, 'other');
+    }
+
+    /**
+     * Impute values using a generator function (smart API)
+     * @param imputationGenerator Function that receives cell components and returns [position, value] tuples
+     * @returns boolean indicating success
+     */
+    applyImputations(
+        imputationGenerator: (cells: Map<string, CellComponent>) => [GridPosition, CellValue][]
+    ): boolean {
+        const imputations = imputationGenerator(this.cellComponents);
+        return this.imputeValues(imputations);
+    }
+
 }

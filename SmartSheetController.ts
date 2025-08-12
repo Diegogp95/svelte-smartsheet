@@ -461,14 +461,23 @@ export default class SmartSheetController {
         cellMatcher: (cell: CellComponent) => boolean
     ): boolean {
         const success = this.navigationHandler.navigateToNext(cellMatcher);
-
         // If navigation was successful, select the cell
         if (success) {
             const currentPosition = this.navigationHandler.getCurrentPosition();
             this.selectionHandler.selectSingle(currentPosition);
         }
-
         return success;
+    }
+
+    // Data imputation APIs
+    imputeValues(imputations: [GridPosition, CellValue][]): boolean {
+        return this.dataHandler.imputeValues(imputations);
+    }
+
+    applyImputations(
+        imputationGenerator: (cells: Map<string, CellComponent>) => [GridPosition, CellValue][]
+    ): boolean {
+        return this.dataHandler.applyImputations(imputationGenerator);
     }
 
 }

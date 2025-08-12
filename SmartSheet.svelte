@@ -11,6 +11,7 @@
         GridPosition,
         CellMouseEvent,
         CellValue,
+        CellComponent,
     } from './types';
     import SelectionRect from './SelectionRect.svelte';
     import DeselectionRect from './DeselectionRect.svelte';
@@ -136,26 +137,35 @@
     }
 
     // Batch styling helpers exposed
-    export function applyBackgroundStyles(styleGenerator: (cells: Map<string, any>) => [GridPosition, any][]) {
+    export function applyBackgroundStyles(styleGenerator: (cells: Map<string, CellComponent>) => [GridPosition, any][]) {
         controller.applyBackgroundStyles(styleGenerator as any);
     }
 
-    export function applyTailwindStyles(styleGenerator: (cells: Map<string, any>) => [GridPosition, any][]) {
+    export function applyTailwindStyles(styleGenerator: (cells: Map<string, CellComponent>) => [GridPosition, any][]) {
         controller.applyTailwindStyles(styleGenerator as any);
     }
 
     // Selection APIs that take functions aware of cell structure
-    export function applySelections(selectionGenerator: (cells: Map<string, any>) => GridPosition[]) {
+    export function applySelections(selectionGenerator: (cells: Map<string, CellComponent>) => GridPosition[]) {
         controller.applySelections(selectionGenerator as any);
     }
 
     // Navigation APIs that take functions aware of cell structure
-    export function navigateToFirst(cellMatcher: (cell: any) => boolean) {
+    export function navigateToFirst(cellMatcher: (cell: CellComponent) => boolean) {
         return controller.navigateToFirst(cellMatcher as any);
     }
 
-    export function navigateToNext(cellMatcher: (cell: any) => boolean) {
+    export function navigateToNext(cellMatcher: (cell: CellComponent) => boolean) {
         return controller.navigateToNext(cellMatcher as any);
+    }
+
+    // Data imputation APIs
+    export function imputeValues(imputations: [GridPosition, any][]) {
+        return controller.imputeValues(imputations as any);
+    }
+
+    export function applyImputations(imputationGenerator: (cells: Map<string, CellComponent>) => [GridPosition, any][]) {
+        return controller.applyImputations(imputationGenerator as any);
     }
 
 </script>
