@@ -415,25 +415,27 @@ export default class DataHandler<TExtraProps = undefined> {
     /**
      * Undo the last change
      */
-    undo(): boolean {
+    undo(): GridPosition[] {
         const changeSet = this.historyManager.undo();
         if (changeSet) {
             this.revertChangeSet(changeSet);
-            return true;
+            // Return affected positions
+            return changeSet.changes.map(change => change.position);
         }
-        return false;
+        return [];
     }
 
     /**
      * Redo the next change
      */
-    redo(): boolean {
+    redo(): GridPosition[] {
         const changeSet = this.historyManager.redo();
         if (changeSet) {
             this.applyChangeSet(changeSet);
-            return true;
+            // Return affected positions
+            return changeSet.changes.map(change => change.position);
         }
-        return false;
+        return [];
     }
 
     /**
@@ -533,9 +535,9 @@ export default class DataHandler<TExtraProps = undefined> {
      * @param imputations Array of [position, value] tuples
      * @returns boolean indicating success
      */
-    imputeValues(imputations: [GridPosition, CellValue][]): boolean {
+    imputeValues(imputations: [GridPosition, CellValue][]): GridPosition[] {
         if (!imputations || imputations.length === 0) {
-            return false;
+            return [];
         }
 
         const changedCells: CellComponent<TExtraProps>[] = [];
@@ -547,7 +549,12 @@ export default class DataHandler<TExtraProps = undefined> {
             }
         }
 
-        return this.attemptCommitCells(changedCells, undefined, 'other');
+        const success = this.attemptCommitCells(changedCells, undefined, 'other');
+        if (success) {
+            // Return positions of successfully changed cells
+            return changedCells.map(cell => cell.position);
+        }
+        return [];
     }
 
     /**
@@ -557,7 +564,7 @@ export default class DataHandler<TExtraProps = undefined> {
      */
     applyImputations(
         imputationGenerator: (cells: Map<string, CellComponent<TExtraProps>>) => [GridPosition, CellValue][]
-    ): boolean {
+    ): GridPosition[] {
         const imputations = imputationGenerator(this.cellComponents);
         return this.imputeValues(imputations);
     }

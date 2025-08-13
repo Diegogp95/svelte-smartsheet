@@ -27,7 +27,7 @@
     let element: HTMLElement;
     let editing = false;
     let inputElement: HTMLInputElement | null = null;
-    // Intermediate variable to handler value changes by the controller
+    // Intermediate variable to handle value change by the controller
     let inputValue: CellValue = value;
 
     const dispatch = createEventDispatcher<{
@@ -71,6 +71,16 @@
         },
         setExtraProps(props: TExtraProps) {
             extraProps = props; // Simplified: no more casting needed
+        },
+        triggerFlash() {
+            // Trigger flash animation by toggling class
+            if (element) {
+                element.classList.add('cell-changed-flash');
+                // Remove class after animation completes
+                setTimeout(() => {
+                    element.classList.remove('cell-changed-flash');
+                }, 800); // Duration should match CSS animation
+            }
         }
     };
 
@@ -140,7 +150,7 @@
 <div
     bind:this={element}
     style="min-width: {minWidth}; min-height: {minHeight};"
-    class="border border-tertiaryOnBg px-2 py-1 cursor-pointer select-none transition-colors
+    class="px-2 py-1 cursor-pointer select-none transition-colors
         duration-200 w-full h-full flex items-center"
     on:mousedown={(e) => handleCellMouseInteraction('mousedown', e)}
     on:mouseenter={(e) => handleCellMouseInteraction('mouseenter', e)}
@@ -165,3 +175,25 @@
         </span>
     {/if}
 </div>
+
+<style>
+    /* Flash animation for value changes */
+    :global(.cell-changed-flash) {
+        animation: cell-flash 0.8s ease-out;
+    }
+
+    @keyframes cell-flash {
+        0% {
+            background-color: rgba(59, 130, 246, 0.3); /* blue-500 with opacity */
+            box-shadow: 0 0 8px rgba(59, 130, 246, 0.6);
+        }
+        50% {
+            background-color: rgba(59, 130, 246, 0.5);
+            box-shadow: 0 0 12px rgba(59, 130, 246, 0.8);
+        }
+        100% {
+            background-color: transparent;
+            box-shadow: none;
+        }
+    }
+</style>

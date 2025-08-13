@@ -132,7 +132,8 @@
 <div
     bind:this={element}
     class="w-full h-full cell-background inset-0 pointer-events-none {tailwindClasses}
-        transition-all duration-200 ease-in-out"
+        transition-all duration-200 ease-in-out
+        border border-slate-500"
     style="{backgroundClass}"
     data-row={position.row}
     data-col={position.col}

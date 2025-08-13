@@ -164,7 +164,7 @@
         return controller.imputeValues(imputations as any);
     }
 
-    export function applyImputations(imputationGenerator: (cells: Map<string, CellComponent<TExtraProps>>) => [GridPosition, any][]) {
+    export function applyImputations(imputationGenerator: (cells: Map<string, CellComponent<TExtraProps>>) => [GridPosition, any][]): GridPosition[] {
         return controller.applyImputations(imputationGenerator as any);
     }
 

@@ -217,10 +217,16 @@ export default class SmartSheetController<TExtraProps = undefined> {
         } else if (basicAnalysis.keyCategory === 'command') {
             const commandAnalysis = this.inputAnalyzer.analyzeCommand(basicAnalysis);
             if (commandAnalysis.command === 'undo') {
-                this.dataHandler.undo();
+                const affectedPositions = this.dataHandler.undo();
+                if (affectedPositions.length > 0) {
+                    this.colorHandler.flashCells(affectedPositions);
+                }
                 return;
             } else if (commandAnalysis.command === 'redo') {
-                this.dataHandler.redo();
+                const affectedPositions = this.dataHandler.redo();
+                if (affectedPositions.length > 0) {
+                    this.colorHandler.flashCells(affectedPositions);
+                }
                 return;
             } else {
                 //console.warn(`[SmartSheetController] Unhandled command: ${commandAnalysis.command}`);
@@ -470,14 +476,47 @@ export default class SmartSheetController<TExtraProps = undefined> {
     }
 
     // Data imputation APIs
-    imputeValues(imputations: [GridPosition, CellValue][]): boolean {
-        return this.dataHandler.imputeValues(imputations);
+    imputeValues(imputations: [GridPosition, CellValue][]): GridPosition[] {
+        const affectedPositions = this.dataHandler.imputeValues(imputations);
+        if (affectedPositions.length > 0) {
+            this.colorHandler.flashCells(affectedPositions);
+        }
+        return affectedPositions;
     }
 
     applyImputations(
         imputationGenerator: (cells: Map<string, CellComponent<TExtraProps>>) => [GridPosition, CellValue][]
-    ): boolean {
-        return this.dataHandler.applyImputations(imputationGenerator);
+    ): GridPosition[] {
+        const affectedPositions = this.dataHandler.applyImputations(imputationGenerator);
+        if (affectedPositions.length > 0) {
+            this.colorHandler.flashCells(affectedPositions);
+        }
+        return affectedPositions;
+    }
+
+    // ==================== VISUAL EFFECTS APIs ====================
+
+    /**
+     * Trigger flash effect on a single cell
+     */
+    flashCell(position: GridPosition): void {
+        this.colorHandler.flashCell(position);
+    }
+
+    /**
+     * Trigger flash effect on multiple cells
+     */
+    flashCells(positions: GridPosition[]): void {
+        this.colorHandler.flashCells(positions);
+    }
+
+    /**
+     * Trigger flash effect using a generator function
+     */
+    applyFlashEffect(
+        flashGenerator: (cells: Map<string, CellComponent<TExtraProps>>) => GridPosition[]
+    ): void {
+        this.colorHandler.applyFlashEffect(flashGenerator);
     }
 
 }

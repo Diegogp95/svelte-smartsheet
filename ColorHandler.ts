@@ -110,4 +110,36 @@ export class ColorHandler<TExtraProps = undefined> {
         }
     }
 
+    // ==================== FLASH EFFECTS ====================
+
+    /**
+     * Trigger flash effect on a single cell
+     */
+    public flashCell(position: GridPosition): void {
+        const key = `${position.row}-${position.col}`;
+        const cellComponent = this.cellComponents.get(key);
+        if (cellComponent) {
+            cellComponent.triggerFlash();
+        }
+    }
+
+    /**
+     * Trigger flash effect on multiple cells
+     */
+    public flashCells(positions: GridPosition[]): void {
+        for (const position of positions) {
+            this.flashCell(position);
+        }
+    }
+
+    /**
+     * Trigger flash effect using a generator function that determines which cells to flash
+     */
+    public applyFlashEffect(
+        flashGenerator: (cells: Map<string, CellComponent<TExtraProps>>) => GridPosition[]
+    ): void {
+        const positions = flashGenerator(this.cellComponents);
+        this.flashCells(positions);
+    }
+
 }

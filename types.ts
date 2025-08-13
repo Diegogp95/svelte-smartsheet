@@ -36,6 +36,7 @@ export interface CellComponent<T = undefined> {
     setInputValue(value: CellValue): void;
     setValue(value: CellValue): void; // Method to update the cell's value
     setExtraProps(props: T): void; // Simplified: just T directly
+    triggerFlash(): void; // Method to trigger visual flash effect when value changes
 }
 
 // Function type for cell registration
