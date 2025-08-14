@@ -1,9 +1,9 @@
-import { t } from 'svelte-i18n';
 import type {
     GridPosition,
     CellComponent,
     NavigationAnalysis,
     ClickAnalysis,
+    HeaderComponent,
 } from './types';
 
 // Callback type for selection changes
@@ -17,10 +17,13 @@ export default class SelectionHandler<TExtraProps = undefined> {
     private onDeselectionsChanged?: SelectionChangedCallback;
     private isDeselecting: boolean;
     private deselection: Selection | null;
+    private headerComponents: Map<string, HeaderComponent>;
+    private selectedHeaders: Set<string>;
 
     constructor(cellComponents: Map<string, CellComponent<TExtraProps>>,
+        headerComponents: Map<string, HeaderComponent>,
         onSelectionsChanged?: SelectionChangedCallback,
-        onDeselectionsChanged?: SelectionChangedCallback
+        onDeselectionsChanged?: SelectionChangedCallback,
     ) {
         this.selectedCells = new Set<string>();
         this.cellComponents = cellComponents;
@@ -29,6 +32,8 @@ export default class SelectionHandler<TExtraProps = undefined> {
         this.onDeselectionsChanged = onDeselectionsChanged;
         this.isDeselecting = false;
         this.deselection = null;
+        this.headerComponents = headerComponents;
+        this.selectedHeaders = new Set<string>();
     }
 
     // Helper method to convert position to key

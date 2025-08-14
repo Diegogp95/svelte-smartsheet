@@ -8,6 +8,10 @@ import type {
     CellValue,
     BackgroundProperties,
     TailwindProperties,
+    HeaderPosition,
+    HeaderComponent,
+    HeaderMouseEvent,
+    HeaderValue,
 } from './types';
 import InputAnalyzer from './InputAnalyzer';
 import NavigationHandler from './NavigationHandler';
@@ -27,6 +31,7 @@ export default class SmartSheetController<TExtraProps = undefined> {
     private inputAnalyzer: InputAnalyzer;
     private dataHandler: DataHandler<TExtraProps>;
     private colorHandler: ColorHandler<TExtraProps>;
+    private headerComponents: Map<string, HeaderComponent>;
 
     constructor(initialDimensions: GridDimensions,
         onSelectionsChanged?: SelectionChangedCallback,
@@ -36,9 +41,11 @@ export default class SmartSheetController<TExtraProps = undefined> {
         this.cellComponents = new Map();
         this.backgroundComponents = new Map();
         this.gridDimensions = initialDimensions;
+        this.headerComponents = new Map();
 
         // Initialize handlers with shared references
-        this.selectionHandler = new SelectionHandler<TExtraProps>(this.cellComponents, onSelectionsChanged, onDeselectionsChanged);
+        this.selectionHandler = new SelectionHandler<TExtraProps>(this.cellComponents, this.headerComponents,
+            onSelectionsChanged, onDeselectionsChanged)
         this.navigationHandler = new NavigationHandler<TExtraProps>(this.gridDimensions, this.cellComponents, pointerPositionCallback);
         this.inputAnalyzer = new InputAnalyzer();
         this.dataHandler = new DataHandler<TExtraProps>(this.cellComponents);
@@ -151,6 +158,18 @@ export default class SmartSheetController<TExtraProps = undefined> {
     unregisterBackground(backgroundComponent: CellBackgroundComponent) {
         const key = `${backgroundComponent.position.row}-${backgroundComponent.position.col}`;
         this.backgroundComponents.delete(key);
+    }
+
+    // Register header component (called from SmartSheet.svelte)
+    registerHeader(headerComponent: HeaderComponent) {
+        const key = `${headerComponent.position.elementType}-${headerComponent.position.index}`;
+        this.headerComponents.set(key, headerComponent);
+    }
+
+    // Unregister header component (for cleanup)
+    unregisterHeader(headerComponent: HeaderComponent) {
+        const key = `${headerComponent.position.elementType}-${headerComponent.position.index}`;
+        this.headerComponents.delete(key);
     }
 
     // Update container reference

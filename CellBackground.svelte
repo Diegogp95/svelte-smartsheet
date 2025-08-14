@@ -74,7 +74,6 @@
                     })
                     .join(' ');
             }
-            console.log(`[CellBackground] New background class: ${element?.style.cssText}`);
         },
         applyTailwindProperties() {
             if (element) {
@@ -89,10 +88,8 @@
                     })
                     .join(' ');
             }
-            console.log(`[CellBackground] New tailwind classes: ${tailwindClasses}`);
         },
         clearBackgroundProperties() {
-            console.log(`[CellBackground] Clearing background properties for cell at (${position.row}, ${position.col})`);
             backgroundProperties = {
                 'background-color': undefined,
                 'border-color': undefined,
@@ -105,7 +102,6 @@
             this.applyBackgroundProperties();
         },
         clearTailwindProperties() {
-            console.log(`[CellBackground] Clearing tailwind properties for cell at (${position.row}, ${position.col})`);
             tailwindProperties = {
                 'bg': undefined,
                 'border': undefined,

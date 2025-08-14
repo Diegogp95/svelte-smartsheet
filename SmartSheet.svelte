@@ -2,6 +2,7 @@
     import Cell from './Cell.svelte';
     import CellBackground from './CellBackground.svelte';
     import CellPointer from './CellPointer.svelte';
+    import Header from './Header.svelte';
     import NavigationOverlay from './NavigationOverlay.svelte';
     import SmartSheetController from './SmartSheetController';
     import { Selection } from './SelectionHandler';
@@ -12,6 +13,7 @@
         CellMouseEvent,
         CellValue,
         CellComponent,
+        HeaderComponent,
     } from './types';
     import SelectionRect from './SelectionRect.svelte';
     import DeselectionRect from './DeselectionRect.svelte';
@@ -179,60 +181,120 @@
         on:focusout={handleFocusOut}
         on:keydown={handleKeyDown}
     >
-        <!-- Grid of cells with auto-sizing -->
-        <div class="grid gap-0 text-tertiaryOnBg" style="grid-template-columns: repeat({gridData[0]?.length || 1}, auto); display: grid;">
-            {#each gridData as row, rowIndex}
-                {#each row as cellValue, colIndex}
-                    <div class="flex z-40" style="grid-row: {rowIndex + 1}; grid-column: {colIndex + 1};">
-                        <Cell
-                            value={cellValue}
-                            position={{ row: rowIndex, col: colIndex }}
-                            extraProps={extraPropsMatrix?.[rowIndex]?.[colIndex]}
-                            onCellCreation={(cell) => controller.registerCell(cell)}
-                            onCellDestruction={(cell) => controller.unregisterCell(cell)}
-                            on:cellInteraction={handleCellMouseEvent}
-                            on:cellDoubleClick={handleCellMouseEvent}
-                            on:inputBlur={handleCellInputBlur}
-                            on:inputKeyCommit={handleCellInputKeyCommand}
-                            on:inputKeyCancel={handleCellInputKeyCommand}
-                        />
-                    </div>
+        <!-- Parent grid with subgrid support -->
+        <div
+            class="parent-grid"
+            style="
+                display: grid;
+                grid-template-columns: auto repeat({gridData[0]?.length || 1}, auto);
+                grid-template-rows: auto repeat({gridData.length}, auto);
+                gap: 0;
+            "
+        >
+            <!-- Headers row -->
+            <div
+                class="headers-row"
+                style="
+                    display: grid;
+                    grid-column: 2 / -1;
+                    grid-row: 1;
+                    grid-template-columns: subgrid;
+                "
+            >
+                {#each gridData[0] || [] as _, colIndex}
+                    <Header
+                        position={{index: colIndex, elementType: 'col'}}
+                        onHeaderCreation={(header) => controller.registerHeader(header)}
+                        onHeaderDestruction={(header) => controller.unregisterHeader(header)}
+                    />
                 {/each}
-            {/each}
+            </div>
 
-            <!-- Background components for styling (lower priority than selections and pointer) -->
-            {#each gridData as row, rowIndex}
-                {#each row as cellValue, colIndex}
-                    <div class="flex z-10" style="grid-row: {rowIndex + 1}; grid-column: {colIndex + 1};">
-                        <!-- Background component for each cell -->
-                        <CellBackground
-                            position={{ row: rowIndex, col: colIndex }}
-                            onBackgroundCreation={(bg) => controller.registerBackground(bg)}
-                            onBackgroundDestruction={(bg) => controller.unregisterBackground(bg)}
-                        />
-                    </div>
+            <!-- Headers column -->
+            <div
+                class="headers-col text-center"
+                style="
+                    display: grid;
+                    grid-column: 1;
+                    grid-row: 2 / -1;
+                    grid-template-rows: subgrid;
+                "
+            >
+                {#each gridData as _, rowIndex}
+                    <Header
+                        position={{index: rowIndex, elementType: 'row'}}
+                        value={undefined}
+                        onHeaderCreation={(header) => controller.registerHeader(header)}
+                        onHeaderDestruction={(header) => controller.unregisterHeader(header)}
+                    />
                 {/each}
-            {/each}
+            </div>
 
-            <!-- Overlaid pointer -->
-            <CellPointer
-                position={pointerPosition} 
-            />
+            <!-- Main grid as subgrid (tu grid actual sin cambios) -->
+            <div
+                class="main-grid text-tertiaryOnBg"
+                style="
+                    display: grid;
+                    grid-column: 2 / -1;
+                    grid-row: 2 / -1;
+                    grid-template-columns: subgrid;
+                    grid-template-rows: subgrid;
+                    gap: 0;
+                "
+            >
+                {#each gridData as row, rowIndex}
+                    {#each row as cellValue, colIndex}
+                        <div class="flex z-40" style="grid-row: {rowIndex + 1}; grid-column: {colIndex + 1};">
+                            <Cell
+                                value={cellValue}
+                                position={{ row: rowIndex, col: colIndex }}
+                                extraProps={extraPropsMatrix?.[rowIndex]?.[colIndex]}
+                                onCellCreation={(cell) => controller.registerCell(cell)}
+                                onCellDestruction={(cell) => controller.unregisterCell(cell)}
+                                on:cellInteraction={handleCellMouseEvent}
+                                on:cellDoubleClick={handleCellMouseEvent}
+                                on:inputBlur={handleCellInputBlur}
+                                on:inputKeyCommit={handleCellInputKeyCommand}
+                                on:inputKeyCancel={handleCellInputKeyCommand}
+                            />
+                        </div>
+                    {/each}
+                {/each}
 
-            <!-- Render selections -->
-            {#each selections as selection}
-                <SelectionRect
-                    gridArea={{...selection.getGridArea()}}
-                    active={selection.isActiveSelection()}
+                <!-- Background components for styling (lower priority than selections and pointer) -->
+                {#each gridData as row, rowIndex}
+                    {#each row as cellValue, colIndex}
+                        <div class="flex z-10" style="grid-row: {rowIndex + 1}; grid-column: {colIndex + 1};">
+                            <!-- Background component for each cell -->
+                            <CellBackground
+                                position={{ row: rowIndex, col: colIndex }}
+                                onBackgroundCreation={(bg) => controller.registerBackground(bg)}
+                                onBackgroundDestruction={(bg) => controller.unregisterBackground(bg)}
+                            />
+                        </div>
+                    {/each}
+                {/each}
+
+                <!-- Overlaid pointer -->
+                <CellPointer
+                    position={pointerPosition}
                 />
-            {/each}
 
-            <!-- Render deselection area -->
-            {#if deSelection}
-                <DeselectionRect
-                    gridArea={{...deSelection.getGridArea()}}
-                />
-            {/if}
+                <!-- Render selections -->
+                {#each selections as selection}
+                    <SelectionRect
+                        gridArea={{...selection.getGridArea()}}
+                        active={selection.isActiveSelection()}
+                    />
+                {/each}
+
+                <!-- Render deselection area -->
+                {#if deSelection}
+                    <DeselectionRect
+                        gridArea={{...deSelection.getGridArea()}}
+                    />
+                {/if}
+            </div>
         </div>
     </div>
 

@@ -3,6 +3,11 @@ export interface GridPosition {
     col: number;
 }
 
+export interface HeaderPosition {
+    index: number;
+    elementType: 'row' | 'col';
+}
+
 export interface GridDimensions {
     maxRow: number;
     maxCol: number;
@@ -18,6 +23,7 @@ export interface NavigationState {
 
 // Type for cell values, can be extended later if needed
 export type CellValue = string | number | boolean | null;
+export type HeaderValue = string | number;
 
 // Interface for Cell component interaction with simplified extraProps
 // T defaults to undefined, but when specified, should extend Record<string, any>
@@ -39,9 +45,30 @@ export interface CellComponent<T = undefined> {
     triggerFlash(): void; // Method to trigger visual flash effect when value changes
 }
 
+export interface HeaderComponent {
+    position: HeaderPosition;
+    element: HTMLElement;
+    selected: boolean;
+    value: HeaderValue;
+    editing: boolean;
+    inputElement: HTMLInputElement;
+    inputValue: HeaderValue;
+    readOnly: boolean;
+    setSelected(selected: boolean): void;
+    setEditing(editing: boolean): void;
+    setInputFocus(): void;
+    setInputValue(value: HeaderValue): void;
+    setValue(value: HeaderValue): void;
+    triggerFlash(): void;
+}
+
 // Function type for cell registration
 export type OnCellCreation<T = undefined> = (cellComponent: CellComponent<T>) => void;
 export type OnCellDestruction<T = undefined> = (cellComponent: CellComponent<T>) => void;
+
+// Function type for header registration
+export type OnHeaderCreation = (headerComponent: HeaderComponent) => void;
+export type OnHeaderDestruction = (headerComponent: HeaderComponent) => void;
 
 // Background properties for cell styling
 export interface BackgroundProperties {
@@ -123,3 +150,11 @@ export interface CellMouseEvent {
     value: CellValue;
     mouseEvent: MouseEvent;
 };
+
+export interface HeaderMouseEvent {
+    type: 'mousedown' | 'mouseenter' | 'mouseup' | 'dblclick';
+    position: HeaderPosition;
+    selected: boolean;
+    value: HeaderValue;
+    mouseEvent: MouseEvent;
+}
