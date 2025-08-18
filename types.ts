@@ -7,7 +7,7 @@ export interface GridPosition {
 
 export interface HeaderPosition {
     index: number;
-    headerType: 'row' | 'col';
+    headerType: 'row' | 'col' | 'corner';
 }
 
 export interface GridDimensions {

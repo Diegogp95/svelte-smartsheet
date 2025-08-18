@@ -48,6 +48,8 @@
         maxCol: (gridData[0]?.length || 1) - 1
     }, subscribeToSelections, subscribeToPointerPosition, subscribeToDeselection);
     let tableContainer: HTMLDivElement;
+    let columnsHeaderContainer: HTMLDivElement;
+    let rowsHeaderContainer: HTMLDivElement;
 
     // Reactive states managed by controller
     let navigationMode = false;
@@ -55,6 +57,15 @@
     // Update container reference when available
     $: if (tableContainer) {
         controller.setTableContainer(tableContainer);
+    }
+
+    // Update header container references when available
+    $: if (columnsHeaderContainer) {
+        controller.setColumnsHeaderContainer(columnsHeaderContainer);
+    }
+
+    $: if (rowsHeaderContainer) {
+        controller.setRowsHeaderContainer(rowsHeaderContainer);
     }
 
     // Cell mouse event handler
@@ -192,9 +203,37 @@
                 gap: 0;
             "
         >
+            <!-- Top-Left Corner -->
+            <div
+                class="corner-header sticky top-0 left-0 z-10 bg-tertiaryBg"
+                style="
+                    display: grid;
+                    grid-column: 1;
+                    grid-row: 1;
+                    grid-template-columns: subgrid;
+                "
+            >
+                <div class="flex z-20" style="grid-row: 1; grid-column: 1;">
+                    <Header
+                        position={{ headerType: 'corner', index: 0 }}
+                        value={''}
+                        onHeaderCreation={(header) => controller.registerHeader(header)}
+                        onHeaderDestruction={(header) => controller.unregisterHeader(header)}
+                    />
+                </div>
+                <div class="flex z-10" style="grid-row: 1; grid-column: 1;">
+                    <HeaderBackground
+                        position={{ headerType: 'corner', index: 0 }}
+                        onBackgroundCreation={(bg) => controller.registerHeaderBackground(bg)}
+                        onBackgroundDestruction={(bg) => controller.unregisterHeaderBackground(bg)}
+                    />
+                </div>
+            </div>
+
             <!-- Columns Headers -->
             <div
-                class="columns-headers"
+                bind:this={columnsHeaderContainer}
+                class="columns-headers sticky top-0 z-[6] bg-tertiaryBg"
                 style="
                     display: grid;
                     grid-column: 2 / -1;
@@ -203,7 +242,7 @@
                 "
             >
                 {#each gridData[0] || [] as _, colIndex}
-                    <div class="flex z-40" style="grid-row: 1; grid-column: {colIndex + 1};">
+                    <div class="flex z-20" style="grid-row: 1; grid-column: {colIndex + 1};">
                         <Header
                             position={{ headerType: 'col', index: colIndex }}
                             onHeaderCreation={(header) => controller.registerHeader(header)}
@@ -222,7 +261,8 @@
 
             <!-- Rows Headers -->
             <div
-                class="rows-headers text-center"
+                bind:this={rowsHeaderContainer}
+                class="rows-headers text-center sticky left-0 z-[6] bg-tertiaryBg"
                 style="
                     display: grid;
                     grid-column: 1;
@@ -231,7 +271,7 @@
                 "
             >
                 {#each gridData as _, rowIndex}
-                    <div class="flex z-40" style="grid-row: {rowIndex + 1}; grid-column: 1;">
+                    <div class="flex z-20" style="grid-row: {rowIndex + 1}; grid-column: 1;">
                         <Header
                             position={{ headerType: 'row', index: rowIndex }}
                             value={undefined}
@@ -249,6 +289,20 @@
                 {/each}
             </div>
 
+            <!-- Corner Header (top-left sticky intersection) -->
+            <div
+                class="corner-header sticky top-0 left-0 z-60 bg-tertiaryBg border-r border-b border-tertiaryOnBg"
+                style="
+                    grid-column: 1;
+                    grid-row: 1;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                "
+            >
+                <!-- Corner content can be added here if needed -->
+            </div>
+
             <!-- Main grid as subgrid (tu grid actual sin cambios) -->
             <div
                 class="main-grid text-tertiaryOnBg"
@@ -263,7 +317,7 @@
             >
                 {#each gridData as row, rowIndex}
                     {#each row as cellValue, colIndex}
-                        <div class="flex z-40" style="grid-row: {rowIndex + 1}; grid-column: {colIndex + 1};">
+                        <div class="flex z-[5]" style="grid-row: {rowIndex + 1}; grid-column: {colIndex + 1};">
                             <Cell
                                 value={cellValue}
                                 position={{ row: rowIndex, col: colIndex }}
@@ -283,7 +337,7 @@
                 <!-- Background components for styling (lower priority than selections and pointer) -->
                 {#each gridData as row, rowIndex}
                     {#each row as cellValue, colIndex}
-                        <div class="flex z-10" style="grid-row: {rowIndex + 1}; grid-column: {colIndex + 1};">
+                        <div class="flex z-[1]" style="grid-row: {rowIndex + 1}; grid-column: {colIndex + 1};">
                             <!-- Background component for each cell -->
                             <CellBackground
                                 position={{ row: rowIndex, col: colIndex }}

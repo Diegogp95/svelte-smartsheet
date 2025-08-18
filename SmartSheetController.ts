@@ -180,6 +180,15 @@ export default class SmartSheetController<TExtraProps = undefined> {
         this.navigationHandler.setTableContainer(container);
     }
 
+    // Update header containers references
+    setColumnsHeaderContainer(container: HTMLDivElement) {
+        this.navigationHandler.setColumnsHeaderContainer(container);
+    }
+
+    setRowsHeaderContainer(container: HTMLDivElement) {
+        this.navigationHandler.setRowsHeaderContainer(container);
+    }
+
     registerHeaderBackground(headerBackgroundComponent: HeaderBackgroundComponent) {
         const key = `${headerBackgroundComponent.position.headerType}-${headerBackgroundComponent.position.index}`;
         this.headerBackgroundComponents.set(key, headerBackgroundComponent);

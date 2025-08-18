@@ -92,7 +92,7 @@
 
     // Register with parent on mount
     onMount(() => {
-        if (!value) {
+        if (value === undefined) {
             value = defaultHeaderValueAssignment();
         }
         onHeaderCreation?.(headerComponent);

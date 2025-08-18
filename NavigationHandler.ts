@@ -13,6 +13,8 @@ export default class NavigationHandler<TExtraProps = undefined> {
     private gridDimensions: GridDimensions;
     private navigationState: NavigationState;
     private tableContainer: HTMLDivElement | undefined;
+    private columnsHeaderContainer: HTMLDivElement | undefined;
+    private rowsHeaderContainer: HTMLDivElement | undefined;
     private cellComponents: Map<string, CellComponent<TExtraProps>>;
     private pointerPositionCallback?: PointerPositionCallback;
 
@@ -33,6 +35,15 @@ export default class NavigationHandler<TExtraProps = undefined> {
     // Update container reference
     setTableContainer(container: HTMLDivElement) {
         this.tableContainer = container;
+    }
+
+    // Update header containers references
+    setColumnsHeaderContainer(container: HTMLDivElement) {
+        this.columnsHeaderContainer = container;
+    }
+
+    setRowsHeaderContainer(container: HTMLDivElement) {
+        this.rowsHeaderContainer = container;
     }
 
     // Update grid dimensions
@@ -247,14 +258,21 @@ export default class NavigationHandler<TExtraProps = undefined> {
 
         const cellElement = cellComponent.element;
         const container = this.tableContainer;
+
+        // Get header dimensions from actual header containers
+        const headerHeight = this.columnsHeaderContainer?.clientHeight || 0;
+        const headerWidth = this.rowsHeaderContainer?.clientWidth || 0;
+
         const containerRect = container.getBoundingClientRect();
         const cellRect = cellElement.getBoundingClientRect();
 
         // Calculate positions relative to container scroll
         const scrollTop = container.scrollTop;
         const scrollLeft = container.scrollLeft;
-        const containerHeight = container.clientHeight;
-        const containerWidth = container.clientWidth;
+
+        // Adjust container dimensions to account for headers
+        const effectiveContainerHeight = container.clientHeight - headerHeight;
+        const effectiveContainerWidth = container.clientWidth - headerWidth;
 
         // Cell position relative to container
         const cellTop = cellRect.top - containerRect.top + scrollTop;
@@ -262,31 +280,31 @@ export default class NavigationHandler<TExtraProps = undefined> {
         const cellLeft = cellRect.left - containerRect.left + scrollLeft;
         const cellRight = cellLeft + cellRect.width;
 
-        // Calculate new vertical scroll
+        // Calculate new vertical scroll (accounting for header height)
         let newScrollTop = scrollTop;
-        if (cellTop < scrollTop) {
-            // Cell is above visible area
-            newScrollTop = cellTop;
-        } else if (cellBottom > scrollTop + containerHeight) {
+        if (cellTop < scrollTop + headerHeight) {
+            // Cell is above visible area (behind column headers)
+            newScrollTop = cellTop - headerHeight;
+        } else if (cellBottom > scrollTop + headerHeight + effectiveContainerHeight) {
             // Cell is below visible area
-            newScrollTop = cellBottom - containerHeight;
+            newScrollTop = cellBottom - headerHeight - effectiveContainerHeight;
         }
 
-        // Calculate new horizontal scroll
+        // Calculate new horizontal scroll (accounting for header width)
         let newScrollLeft = scrollLeft;
-        if (cellLeft < scrollLeft) {
-            // Cell is to the left of visible area
-            newScrollLeft = cellLeft;
-        } else if (cellRight > scrollLeft + containerWidth) {
+        if (cellLeft < scrollLeft + headerWidth) {
+            // Cell is to the left of visible area (behind row headers)
+            newScrollLeft = cellLeft - headerWidth;
+        } else if (cellRight > scrollLeft + headerWidth + effectiveContainerWidth) {
             // Cell is to the right of visible area
-            newScrollLeft = cellRight - containerWidth;
+            newScrollLeft = cellRight - headerWidth - effectiveContainerWidth;
         }
 
         // Apply smooth scroll if there are changes
         if (newScrollTop !== scrollTop || newScrollLeft !== scrollLeft) {
             container.scrollTo({
-                top: newScrollTop,
-                left: newScrollLeft,
+                top: Math.max(0, newScrollTop), // Ensure we don't scroll to negative values
+                left: Math.max(0, newScrollLeft),
                 behavior: 'smooth'
             });
         }
