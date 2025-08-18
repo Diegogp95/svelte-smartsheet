@@ -50,6 +50,7 @@ export default class SelectionHandler<TExtraProps = undefined> {
     // Efficient update: only changes cells that actually changed state
     updateSelection(newSelection: Set<string>, clearPrevious: boolean = true) {
         let finalSelection: Set<string>;
+        let selectedHeaders: Set<string>;
 
         if (clearPrevious) {
             finalSelection = new Set(newSelection);
@@ -70,6 +71,9 @@ export default class SelectionHandler<TExtraProps = undefined> {
                 toSelect.add(key);
             }
         });
+        selectedHeaders = new Set<string>([...finalSelection].map(
+            key => [`row-${key.split('-')[0]}`, `col-${key.split('-')[1]}`]).flat()
+        );
 
         // If no changes, do nothing for performance
         if (toDeselect.size === 0 && (!clearPrevious || toSelect.size === 0)) {
@@ -101,6 +105,24 @@ export default class SelectionHandler<TExtraProps = undefined> {
             const cellComponent = this.cellComponents.get(key);
             if (cellComponent) {
                 cellComponent.setSelected(true);
+            }
+        });
+    }
+
+    private applyHeaderChanges(toDeselect: Set<string>, toSelect: Set<string>) {
+        // Deselect specific headers
+        toDeselect.forEach(key => {
+            const headerComponent = this.headerComponents.get(key);
+            if (headerComponent) {
+                headerComponent.setSelected(false);
+            }
+        });
+
+        // Select specific headers
+        toSelect.forEach(key => {
+            const headerComponent = this.headerComponents.get(key);
+            if (headerComponent) {
+                headerComponent.setSelected(true);
             }
         });
     }
@@ -243,7 +265,7 @@ export default class SelectionHandler<TExtraProps = undefined> {
             selection.getCells().forEach(cell => allCells.add(cell));
         });
 
-        // Usar updateSelection existente para manejar cambios visuales
+        // Update visual representation of selected cells
         this.updateSelection(allCells, true);
     }
 

@@ -1,18 +1,18 @@
 <script lang="ts">
     import type {
-        GridPosition,
-        CellBackgroundComponent,
-        OnBackgroundCreation,
-        OnBackgroundDestruction,
+        HeaderPosition,
+        HeaderBackgroundComponent,
+        OnHeaderBackgroundCreation,
+        OnHeaderBackgroundDestruction,
         BackgroundProperties,
         TailwindProperties,
     } from './types';
     import { onMount } from 'svelte';
 
     // Props from parent
-    export let position: GridPosition;
-    export let onBackgroundCreation: OnBackgroundCreation | undefined = undefined;
-    export let onBackgroundDestruction: OnBackgroundDestruction | undefined = undefined;
+    export let position: HeaderPosition;
+    export let onBackgroundCreation: OnHeaderBackgroundCreation | undefined = undefined;
+    export let onBackgroundDestruction: OnHeaderBackgroundDestruction | undefined = undefined;
 
     // Internal state
     let element: HTMLElement;
@@ -40,8 +40,8 @@
      ** but class variables take priority over tailwind classes, so we advice to use them separately.
     */
 
-    // Implement CellBackgroundComponent interface
-    const backgroundComponent: CellBackgroundComponent = {
+    // Implement HeaderBackgroundComponent interface
+    const backgroundComponent: HeaderBackgroundComponent = {
         get position() { return position; },
         get element() { return element!; },
         get backgroundProperties() { return backgroundProperties; },
@@ -127,10 +127,11 @@
 
 <div
     bind:this={element}
-    class="w-full h-full inset-0 pointer-events-none {tailwindClasses}
+    class="w-full h-full inset-0 pointer-events-none
+        bg-gray-300 border-gray-400 border
         transition-all duration-200 ease-in-out
-        border border-slate-500"
+        {tailwindClasses}"
     style="{backgroundClass}"
-    data-row={position.row}
-    data-col={position.col}
+    data-header-type={position.headerType}
+    data-header-index={position.index}
 ></div>

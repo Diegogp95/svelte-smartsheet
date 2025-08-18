@@ -12,6 +12,7 @@ import type {
     HeaderComponent,
     HeaderMouseEvent,
     HeaderValue,
+    HeaderBackgroundComponent,
 } from './types';
 import InputAnalyzer from './InputAnalyzer';
 import NavigationHandler from './NavigationHandler';
@@ -32,6 +33,7 @@ export default class SmartSheetController<TExtraProps = undefined> {
     private dataHandler: DataHandler<TExtraProps>;
     private colorHandler: ColorHandler<TExtraProps>;
     private headerComponents: Map<string, HeaderComponent>;
+    private headerBackgroundComponents: Map<string, HeaderBackgroundComponent>;
 
     constructor(initialDimensions: GridDimensions,
         onSelectionsChanged?: SelectionChangedCallback,
@@ -42,6 +44,7 @@ export default class SmartSheetController<TExtraProps = undefined> {
         this.backgroundComponents = new Map();
         this.gridDimensions = initialDimensions;
         this.headerComponents = new Map();
+        this.headerBackgroundComponents = new Map();
 
         // Initialize handlers with shared references
         this.selectionHandler = new SelectionHandler<TExtraProps>(this.cellComponents, this.headerComponents,
@@ -162,19 +165,29 @@ export default class SmartSheetController<TExtraProps = undefined> {
 
     // Register header component (called from SmartSheet.svelte)
     registerHeader(headerComponent: HeaderComponent) {
-        const key = `${headerComponent.position.elementType}-${headerComponent.position.index}`;
+        const key = `${headerComponent.position.headerType}-${headerComponent.position.index}`;
         this.headerComponents.set(key, headerComponent);
     }
 
     // Unregister header component (for cleanup)
     unregisterHeader(headerComponent: HeaderComponent) {
-        const key = `${headerComponent.position.elementType}-${headerComponent.position.index}`;
+        const key = `${headerComponent.position.headerType}-${headerComponent.position.index}`;
         this.headerComponents.delete(key);
     }
 
     // Update container reference
     setTableContainer(container: HTMLDivElement) {
         this.navigationHandler.setTableContainer(container);
+    }
+
+    registerHeaderBackground(headerBackgroundComponent: HeaderBackgroundComponent) {
+        const key = `${headerBackgroundComponent.position.headerType}-${headerBackgroundComponent.position.index}`;
+        this.headerBackgroundComponents.set(key, headerBackgroundComponent);
+    }
+
+    unregisterHeaderBackground(headerBackgroundComponent: HeaderBackgroundComponent) {
+        const key = `${headerBackgroundComponent.position.headerType}-${headerBackgroundComponent.position.index}`;
+        this.headerBackgroundComponents.delete(key);
     }
 
     // Update grid dimensions (when data structure changes)

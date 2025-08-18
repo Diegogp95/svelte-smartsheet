@@ -82,7 +82,7 @@
     };
 
     function defaultHeaderValueAssignment() {
-        if (position.elementType === 'row') {
+        if (position.headerType === 'row') {
             return position.index + 1;
         } else {
             // Generate column labels: A, B, C, ..., Z, AA, AB, AC, ..., AZ, BA, BB, ...
@@ -160,19 +160,21 @@
     bind:this={element}
     style="min-width: {minWidth}; min-height: {minHeight};"
     class="
-        flex items-center {position.elementType === 'col' ? 'justify-center' : ''}
+        flex items-center {position.headerType === 'col' ? 'justify-center' : ''}
         w-full h-full
         px-2 py-1
-        bg-gray-300 border border-gray-400
+        {selected ? 'bg-slate-400' : ''}
         text-gray-700 font-semibold
         cursor-pointer select-none
         transition-colors duration-200
+        {selected ? (position.headerType === 'col' ? 'border-b-4 border-green-800' :
+            'border-r-2 border-green-800') : ''}
     "
     on:mousedown={(e) => handleHeaderMouseInteraction('mousedown', e)}
     on:mouseenter={(e) => handleHeaderMouseInteraction('mouseenter', e)}
     on:mouseup={(e) => handleHeaderMouseInteraction('mouseup', e)}
     on:dblclick={handleDoubleClick}
-    data-header-type={position.elementType}
+    data-header-type={position.headerType}
     data-header-index={position.index}
 >
     {#if editing}

@@ -1,3 +1,5 @@
+import { t } from "svelte-i18n";
+
 export interface GridPosition {
     row: number;
     col: number;
@@ -5,7 +7,7 @@ export interface GridPosition {
 
 export interface HeaderPosition {
     index: number;
-    elementType: 'row' | 'col';
+    headerType: 'row' | 'col';
 }
 
 export interface GridDimensions {
@@ -102,9 +104,24 @@ export interface CellBackgroundComponent {
     clearTailwindProperties: () => void;
 }
 
+export interface HeaderBackgroundComponent {
+    position: HeaderPosition;
+    element: HTMLElement;
+    backgroundProperties: BackgroundProperties;
+    tailwindProperties: TailwindProperties;
+    setBackgroundProperties: (props: BackgroundProperties) => void;
+    applyBackgroundProperties: () => void;
+    clearBackgroundProperties: () => void;
+    setTailwindProperties: (props: TailwindProperties) => void;
+    applyTailwindProperties: () => void;
+    clearTailwindProperties: () => void;
+}
+
 // Function type for background registration
 export type OnBackgroundCreation = (backgroundComponent: CellBackgroundComponent) => void;
 export type OnBackgroundDestruction = (backgroundComponent: CellBackgroundComponent) => void;
+export type OnHeaderBackgroundCreation = (backgroundComponent: HeaderBackgroundComponent) => void;
+export type OnHeaderBackgroundDestruction = (backgroundComponent: HeaderBackgroundComponent) => void;
 
 // Keyboard event analysis types
 export type KeyCategory = 'arrow' | 'edit' | 'confirm' | 'backspace' | 'cancel' | 'delete' | 'space' | 'command' | 'write' | 'other';

@@ -17,6 +17,7 @@
     } from './types';
     import SelectionRect from './SelectionRect.svelte';
     import DeselectionRect from './DeselectionRect.svelte';
+    import HeaderBackground from './HeaderBackground.svelte';
 
     // Data
     export let gridData: (CellValue | undefined)[][];
@@ -191,9 +192,9 @@
                 gap: 0;
             "
         >
-            <!-- Headers row -->
+            <!-- Columns Headers -->
             <div
-                class="headers-row"
+                class="columns-headers"
                 style="
                     display: grid;
                     grid-column: 2 / -1;
@@ -202,17 +203,26 @@
                 "
             >
                 {#each gridData[0] || [] as _, colIndex}
-                    <Header
-                        position={{index: colIndex, elementType: 'col'}}
-                        onHeaderCreation={(header) => controller.registerHeader(header)}
-                        onHeaderDestruction={(header) => controller.unregisterHeader(header)}
-                    />
+                    <div class="flex z-40" style="grid-row: 1; grid-column: {colIndex + 1};">
+                        <Header
+                            position={{ headerType: 'col', index: colIndex }}
+                            onHeaderCreation={(header) => controller.registerHeader(header)}
+                            onHeaderDestruction={(header) => controller.unregisterHeader(header)}
+                        />
+                    </div>
+                    <div class="flex z-10" style="grid-row: 1; grid-column: {colIndex + 1};">
+                        <HeaderBackground
+                            position={{ headerType: 'col', index: colIndex }}
+                            onBackgroundCreation={(bg) => controller.registerHeaderBackground(bg)}
+                            onBackgroundDestruction={(bg) => controller.unregisterHeaderBackground(bg)}
+                        />
+                    </div>
                 {/each}
             </div>
 
-            <!-- Headers column -->
+            <!-- Rows Headers -->
             <div
-                class="headers-col text-center"
+                class="rows-headers text-center"
                 style="
                     display: grid;
                     grid-column: 1;
@@ -221,12 +231,21 @@
                 "
             >
                 {#each gridData as _, rowIndex}
-                    <Header
-                        position={{index: rowIndex, elementType: 'row'}}
-                        value={undefined}
-                        onHeaderCreation={(header) => controller.registerHeader(header)}
-                        onHeaderDestruction={(header) => controller.unregisterHeader(header)}
-                    />
+                    <div class="flex z-40" style="grid-row: {rowIndex + 1}; grid-column: 1;">
+                        <Header
+                            position={{ headerType: 'row', index: rowIndex }}
+                            value={undefined}
+                            onHeaderCreation={(header) => controller.registerHeader(header)}
+                            onHeaderDestruction={(header) => controller.unregisterHeader(header)}
+                        />
+                    </div>
+                    <div class="flex z-10" style="grid-row: {rowIndex + 1}; grid-column: 1;">
+                        <HeaderBackground
+                            position={{ headerType: 'row', index: rowIndex }}
+                            onBackgroundCreation={(bg) => controller.registerHeaderBackground(bg)}
+                            onBackgroundDestruction={(bg) => controller.unregisterHeaderBackground(bg)}
+                        />
+                    </div>
                 {/each}
             </div>
 
