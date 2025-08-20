@@ -110,6 +110,14 @@ export class ColorHandler<TExtraProps = undefined> {
         }
     }
 
+    // Reset styles for all cell backgrounds
+    public resetSheetStyles(): void {
+        for (const bg of this.backgroundComponents.values()) {
+            bg.clearBackgroundProperties();
+            bg.clearTailwindProperties();
+        }
+    }
+
     // ==================== FLASH EFFECTS ====================
 
     /**

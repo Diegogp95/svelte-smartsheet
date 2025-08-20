@@ -15,14 +15,23 @@
         CellComponent,
         HeaderComponent,
         HeaderMouseEvent,
+        HeaderPosition,
+        HeaderValue,
     } from './types';
     import SelectionRect from './SelectionRect.svelte';
     import DeselectionRect from './DeselectionRect.svelte';
     import HeaderBackground from './HeaderBackground.svelte';
+    import { onMount } from 'svelte';
 
     // Data
     export let gridData: (CellValue | undefined)[][];
     export let extraPropsMatrix: (TExtraProps | undefined)[][] | undefined = undefined;
+
+    // Header configuration
+    export let columnHeaders: (HeaderValue | undefined)[] | undefined = undefined;
+    export let rowHeaders: (HeaderValue | undefined)[] | undefined = undefined;
+    export let rowsTitle: string = ''; // Title for the row headers column
+    export let headersReadOnly: boolean = true;
 
     // Selections array to render, will be subscribed to controller's selections by a callback
     let selections: Selection[] = [];
@@ -54,20 +63,6 @@
 
     // Reactive states managed by controller
     let navigationMode = false;
-
-    // Update container reference when available
-    $: if (tableContainer) {
-        controller.setTableContainer(tableContainer);
-    }
-
-    // Update header container references when available
-    $: if (columnsHeaderContainer) {
-        controller.setColumnsHeaderContainer(columnsHeaderContainer);
-    }
-
-    $: if (rowsHeaderContainer) {
-        controller.setRowsHeaderContainer(rowsHeaderContainer);
-    }
 
     // Unified mouse event handler
     function handleMouseEvent(event: CustomEvent<CellMouseEvent | HeaderMouseEvent>) {
@@ -117,6 +112,32 @@
             controller.handleCellInputCancel(position, keyboardEvent);
         }
         // Ensure focus is on the table container after input key command
+        if (tableContainer) {
+            tableContainer.focus();
+        }
+    }
+
+    // Header input blur handler
+    function handleHeaderInputBlur(event: CustomEvent<{ event: FocusEvent, position: HeaderPosition }>) {
+        const { position } = event.detail;
+        // Notify controller about header input blur
+        controller.handleHeaderInputBlur(position);
+        // Blur in a header must trigger blur in the table container
+        if (tableContainer) {
+            handleFocusOut(event.detail.event);
+        }
+    }
+
+    // Handle header input keydown events
+    function handleHeaderInputKeyCommand(e: CustomEvent<{ event: KeyboardEvent, position: HeaderPosition }>) {
+        const { event: keyboardEvent, position } = e.detail;
+        // Notify controller about header input key command
+        if (keyboardEvent.key === 'Enter' || keyboardEvent.key === 'Tab') {
+            controller.handleHeaderInputCommit(position, keyboardEvent);
+        } else if (keyboardEvent.key === 'Escape') {
+            controller.handleHeaderInputCancel(position, keyboardEvent);
+        }
+        // Ensure focus is on the table container after header input key command
         if (tableContainer) {
             tableContainer.focus();
         }
@@ -183,6 +204,17 @@
         return controller.applyImputations(imputationGenerator as any);
     }
 
+    export function resetAllBackgrounds(): void {
+        controller.resetAllBackgrounds();
+    }
+
+    // Bind containers references with the controller on mount
+    onMount(() => {
+        controller.setTableContainer(tableContainer);
+        controller.setColumnsHeaderContainer(columnsHeaderContainer);
+        controller.setRowsHeaderContainer(rowsHeaderContainer);
+    });
+
 </script>
 
 <div class="smart-sheet relative">
@@ -217,7 +249,8 @@
                 <div class="flex z-20" style="grid-row: 1; grid-column: 1;">
                     <Header
                         position={{ headerType: 'corner', index: 0 }}
-                        value={''}
+                        value={rowsTitle}
+                        readOnly={true}
                         onHeaderCreation={(header) => controller.registerHeader(header)}
                         onHeaderDestruction={(header) => controller.unregisterHeader(header)}
                     />
@@ -246,9 +279,15 @@
                     <div class="flex z-20" style="grid-row: 1; grid-column: {colIndex + 1};">
                         <Header
                             position={{ headerType: 'col', index: colIndex }}
+                            value={columnHeaders?.[colIndex]}
+                            readOnly={headersReadOnly}
                             onHeaderCreation={(header) => controller.registerHeader(header)}
                             onHeaderDestruction={(header) => controller.unregisterHeader(header)}
                             on:headerInteraction={handleMouseEvent}
+                            on:headerDoubleClick={handleMouseEvent}
+                            on:inputBlur={handleHeaderInputBlur}
+                            on:inputKeyCommit={handleHeaderInputKeyCommand}
+                            on:inputKeyCancel={handleHeaderInputKeyCommand}
                         />
                     </div>
                     <div class="flex z-10" style="grid-row: 1; grid-column: {colIndex + 1};">
@@ -276,10 +315,15 @@
                     <div class="flex z-20" style="grid-row: {rowIndex + 1}; grid-column: 1;">
                         <Header
                             position={{ headerType: 'row', index: rowIndex }}
-                            value={undefined}
+                            value={rowHeaders?.[rowIndex]}
+                            readOnly={headersReadOnly}
                             onHeaderCreation={(header) => controller.registerHeader(header)}
                             onHeaderDestruction={(header) => controller.unregisterHeader(header)}
                             on:headerInteraction={handleMouseEvent}
+                            on:headerDoubleClick={handleMouseEvent}
+                            on:inputBlur={handleHeaderInputBlur}
+                            on:inputKeyCommit={handleHeaderInputKeyCommand}
+                            on:inputKeyCancel={handleHeaderInputKeyCommand}
                         />
                     </div>
                     <div class="flex z-10" style="grid-row: {rowIndex + 1}; grid-column: 1;">

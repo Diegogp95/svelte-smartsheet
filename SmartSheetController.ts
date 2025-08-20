@@ -54,7 +54,7 @@ export default class SmartSheetController<TExtraProps = undefined> {
             this.gridDimensions, this.cellComponents,
             this.headerComponents, pointerPositionCallback);
         this.inputAnalyzer = new InputAnalyzer();
-        this.dataHandler = new DataHandler<TExtraProps>(this.cellComponents);
+        this.dataHandler = new DataHandler<TExtraProps>(this.cellComponents, this.headerComponents);
         this.colorHandler = new ColorHandler<TExtraProps>(this.cellComponents, this.backgroundComponents);
 
         // Setup clipboard event handlers
@@ -262,7 +262,7 @@ export default class SmartSheetController<TExtraProps = undefined> {
             if (analysis.componentType === 'cell') {
                 this.dataHandler.startEditingCell(analysis.position as GridPosition);
             } else if (analysis.componentType === 'header') {
-                console.log(`[SmartSheetController] Start editing header at ${analysis.position}`);
+                this.dataHandler.startEditingHeader(analysis.position as HeaderPosition);
             }
             return;
         }
@@ -360,6 +360,44 @@ export default class SmartSheetController<TExtraProps = undefined> {
         // Re-select the current position after cancel
         this.selectionHandler.selectSingle(this.navigationHandler.getCurrentPosition());
         this.reflectSelectionsOnHeaders();
+    }
+
+    handleHeaderInputCommit(position: HeaderPosition, event: KeyboardEvent) {
+        // Commit the header edit
+        const success = this.dataHandler.finishHeaderEdit(position, 'commit');
+        if (success) {
+            // Move pointer to first cell of the edited header's row/column
+            if (position.headerType === 'col') {
+                // For column headers, move pointer to first row of that column
+                const targetPosition: GridPosition = { row: 0, col: position.index };
+                this.navigateToPosition(targetPosition);
+            } else if (position.headerType === 'row') {
+                // For row headers, move pointer to first column of that row
+                const targetPosition: GridPosition = { row: position.index, col: 0 };
+                this.navigateToPosition(targetPosition);
+            }
+            // Corner headers don't move the pointer anywhere specific
+
+            // Select the new position
+            const currentPosition = this.navigationHandler.getCurrentPosition();
+            this.selectionHandler.selectSingle(currentPosition);
+
+            // Reflect selections on headers after successful commit and navigation
+            this.reflectSelectionsOnHeaders();
+        }
+    }
+
+    handleHeaderInputCancel(position: HeaderPosition, event: KeyboardEvent) {
+        // Cancel the header edit (revert to original value)
+        this.dataHandler.finishHeaderEdit(position, 'cancel');
+    }
+
+    handleHeaderInputBlur(position: HeaderPosition) {
+        // Check if header is still in editing mode before processing blur
+        if (this.dataHandler.isHeaderInEditingMode(position)) {
+            // Delegate to DataHandler to handle blur (commit if valid, exit editing either way)
+            this.dataHandler.finishHeaderEdit(position, 'blur');
+        }
     }
 
     // Handle navigation keys with specialized analysis
@@ -533,6 +571,10 @@ export default class SmartSheetController<TExtraProps = undefined> {
     // Batch tailwind styles via generator
     applyTailwindStyles(styleGenerator: (cells: Map<string, CellComponent>) => [GridPosition, TailwindProperties][]): void {
         this.colorHandler.applyTailwindStyles(styleGenerator as any);
+    }
+
+    resetAllBackgrounds(): void {
+        this.colorHandler.resetSheetStyles();
     }
 
     // Selection API that takes a function aware of cell structure

@@ -2,6 +2,9 @@ import type {
     GridPosition,
     CellComponent,
     CellValue,
+    HeaderPosition,
+    HeaderComponent,
+    HeaderValue,
 } from './types';
 import { CellChange, ChangeSet, HistoryManager } from './HistoryManager';
 
@@ -103,6 +106,34 @@ class ValueValidator {
 
         return { isValid: true, value: parsed, detectedType: 'number' };
     }
+
+    /**
+     * Parse header value - simpler validation than cells
+     * @param inputValue - String value to parse
+     * @returns ValidationResult with parsed value
+     */
+    validateHeader(inputValue: string): ValidationResult {
+        const trimmed = inputValue.trim();
+
+        // Headers cannot be empty
+        if (trimmed === '') {
+            return { isValid: false, error: 'Header value cannot be empty' };
+        }
+
+        // Headers should have reasonable length
+        if (trimmed.length > 100) {
+            return { isValid: false, error: 'Header value is too long (max 100 characters)' };
+        }
+
+        // Try to parse as number first
+        const numberResult = this.tryParseNumber(trimmed);
+        if (numberResult.isValid) {
+            return numberResult;
+        }
+
+        // Default to string
+        return { isValid: true, value: trimmed, detectedType: 'string' };
+    }
 }
 
 // ==================== DATA HANDLER CLASS ====================
@@ -112,9 +143,13 @@ export default class DataHandler<TExtraProps = undefined> {
     private editingCell: CellComponent<TExtraProps> | null = null;
     private validator: ValueValidator;
     private historyManager: HistoryManager;
+    private headerComponents: Map<string, HeaderComponent>;
 
-    constructor(cellComponents: Map<string, CellComponent<TExtraProps>>) {
+    constructor(cellComponents: Map<string, CellComponent<TExtraProps>>,
+        headerComponents: Map<string, HeaderComponent>
+    ) {
         this.cellComponents = cellComponents;
+        this.headerComponents = headerComponents;
         this.validator = new ValueValidator();
         this.historyManager = new HistoryManager();
     }
@@ -526,6 +561,285 @@ export default class DataHandler<TExtraProps = undefined> {
         this.applyChangeSet(changeSet);
 
         return true;
+    }
+
+    // ==================== HEADER MANAGEMENT ====================
+
+    private editingHeader: HeaderComponent | null = null;
+
+    private setHeaderEditing(headerComponent: HeaderComponent): void {
+        if (!headerComponent.editing && !headerComponent.readOnly) {
+            headerComponent.setEditing(true);
+        }
+        this.editingHeader = headerComponent;
+    }
+
+    private setHeaderNotEditing(headerComponent: HeaderComponent): void {
+        if (headerComponent.editing) {
+            headerComponent.setEditing(false);
+
+            // Clear editingHeader reference if it matches
+            if (this.editingHeader &&
+                this.editingHeader.position.index === headerComponent.position.index &&
+                this.editingHeader.position.headerType === headerComponent.position.headerType) {
+                this.editingHeader = null;
+            }
+        }
+    }
+
+    /**
+     * Generate header key from HeaderPosition
+     */
+    private getHeaderKey(position: HeaderPosition): string {
+        return `${position.headerType}-${position.index}`;
+    }
+
+    /**
+     * Start editing a header cell
+     * @param position - HeaderPosition of the header to edit
+     * @param startKey - Optional initial key to set as input value
+     */
+    startEditingHeader(position: HeaderPosition, startKey?: string) {
+        const key = this.getHeaderKey(position);
+        const headerComponent = this.headerComponents.get(key);
+
+        if (!headerComponent) {
+            console.warn(`[DataHandler] Header component not found for key: ${key}`);
+            return;
+        }
+
+        if (headerComponent.readOnly) {
+            console.warn(`[DataHandler] Cannot edit readonly header: ${key}`);
+            return;
+        }
+
+        if (headerComponent && !headerComponent.readOnly) {
+            if (this.editingHeader) {
+                this.endEditingHeader(this.editingHeader.position);
+            }
+
+            this.setHeaderEditing(headerComponent);
+            headerComponent.setInputFocus();
+
+            if (startKey) {
+                const newInputValue = startKey === 'Backspace' ? '' : startKey;
+                headerComponent.setInputValue(newInputValue);
+            }
+        }
+    }
+
+    /**
+     * End editing a header cell without committing changes
+     * @param position - HeaderPosition of the header to stop editing
+     */
+    endEditingHeader(position: HeaderPosition) {
+        const key = this.getHeaderKey(position);
+        const headerComponent = this.headerComponents.get(key);
+
+        if (!headerComponent) {
+            console.warn(`[DataHandler] Header component not found for endEditingHeader: ${key}`);
+            return;
+        }
+
+        if (!headerComponent.editing) {
+            return;
+        }
+
+        if (headerComponent && headerComponent.editing) {
+            headerComponent.setEditing(false);
+
+            // Clear editingHeader reference if it matches
+            if (this.editingHeader &&
+                this.editingHeader.position.index === position.index &&
+                this.editingHeader.position.headerType === position.headerType) {
+                this.editingHeader = null;
+            }
+        }
+    }
+
+    /**
+     * Generate changes for a header by setting its inputValue to newValue
+     * @param position - HeaderPosition of the header to change
+     * @param newValue - New value for the header
+     * @returns HeaderComponent if found, null otherwise
+     */
+    generateChangesHeader(position: HeaderPosition, newValue: HeaderValue): HeaderComponent | null {
+        const key = this.getHeaderKey(position);
+        const headerComponent = this.headerComponents.get(key);
+
+        if (!headerComponent) {
+            console.warn(`[DataHandler] Header component not found for generateChangesHeader: ${key}`);
+            return null;
+        }
+
+        if (headerComponent.readOnly) {
+            console.warn(`[DataHandler] Cannot generate changes for readonly header: ${key}`);
+            return null;
+        }
+
+        // Set inputValue to use existing validation/commit logic
+        headerComponent.setInputValue(newValue);
+
+        return headerComponent;
+    }
+
+    /**
+     * Check if a header is currently in editing mode
+     * @param position - Position of the header to check
+     * @returns true if the header is in editing mode, false otherwise
+     */
+    isHeaderInEditingMode(position: HeaderPosition): boolean {
+        const key = this.getHeaderKey(position);
+        const headerComponent = this.headerComponents.get(key);
+
+        return headerComponent ? headerComponent.editing : false;
+    }
+
+    /**
+     * Handle end of header editing - decides whether to commit or discard based on action
+     * @param position - Position of the header being edited
+     * @param action - What triggered the end of editing ('commit', 'cancel', 'blur')
+     */
+    finishHeaderEdit(position: HeaderPosition, action: 'commit' | 'cancel' | 'blur'): boolean {
+        const key = this.getHeaderKey(position);
+        const headerComponent = this.headerComponents.get(key);
+
+        if (!headerComponent) {
+            console.warn(`[DataHandler] Header component not found for finishHeaderEdit: ${key}`);
+            return false;
+        }
+
+        if (!headerComponent.editing) {
+            console.warn(`[DataHandler] Header not in editing mode: ${key}`, {
+                headerEditing: headerComponent.editing,
+                editingHeaderExists: !!this.editingHeader,
+                editingHeaderMatches: this.editingHeader ?
+                    (this.editingHeader.position.index === position.index &&
+                     this.editingHeader.position.headerType === position.headerType) : false
+            });
+            return false;
+        }
+
+        if (headerComponent.readOnly) {
+            console.warn(`[DataHandler] Cannot finish edit on readonly header: ${key}`);
+            return false;
+        }
+
+        switch (action) {
+            case 'cancel':
+                // Discard changes - revert inputValue to original value
+                headerComponent.setInputValue(headerComponent.value);
+                this.setHeaderNotEditing(headerComponent);
+                return true;
+
+            case 'commit':
+                // Force commit - only if there are changes, keep in editing if validation fails
+                if (headerComponent.inputValue === headerComponent.value) {
+                    this.setHeaderNotEditing(headerComponent);
+                    return true;
+                }
+
+                const commitSuccess = this.attemptCommitHeader(headerComponent);
+
+                if (commitSuccess) {
+                    this.setHeaderNotEditing(headerComponent);
+                } else {
+                    console.warn(`[DataHandler] Header commit failed - staying in edit mode`);
+                }
+                return commitSuccess;
+
+            case 'blur':
+                // Exit editing regardless, but only commit if validation passes and there are changes
+                if (headerComponent.inputValue === headerComponent.value) {
+                    this.setHeaderNotEditing(headerComponent);
+                    return true;
+                }
+
+                const blurCommitSuccess = this.attemptCommitHeader(headerComponent);
+
+                this.setHeaderNotEditing(headerComponent);
+                return true; // Always return true for blur, even if commit failed
+
+            default:
+                console.warn(`[DataHandler] Unknown action for finishHeaderEdit: ${action}`);
+                return false;
+        }
+    }
+
+    /**
+     * Attempt to commit a header edit - validates and applies the change
+     * @param headerComponent - HeaderComponent to commit
+     * @returns boolean indicating success
+     */
+    private attemptCommitHeader(headerComponent: HeaderComponent): boolean {
+        const key = this.getHeaderKey(headerComponent.position);
+
+        if (headerComponent.readOnly) {
+            console.warn(`[DataHandler] Cannot commit readonly header: ${key}`);
+            return false;
+        }
+
+        // Validate header value using the specialized validator
+        const inputValueStr = String(headerComponent.inputValue);
+
+        const validationResult = this.validator.validateHeader(inputValueStr);
+
+        if (!validationResult.isValid) {
+            console.warn(`[DataHandler] Header validation failed: ${validationResult.error}`);
+            return false;
+        }
+
+        // Use the validated value
+        const finalValue = validationResult.value as HeaderValue;
+        const oldValue = headerComponent.value;
+
+        // Commit the change
+        headerComponent.setValue(finalValue);
+        headerComponent.setInputValue(finalValue);
+
+        // Trigger visual feedback
+        headerComponent.triggerFlash();
+
+        return true;
+    }
+
+    /**
+     * Set a header value directly (programmatic API)
+     * @param position - HeaderPosition of the header to update
+     * @param newValue - New value for the header
+     * @returns boolean indicating success
+     */
+    setHeaderValue(position: HeaderPosition, newValue: HeaderValue): boolean {
+        const key = this.getHeaderKey(position);
+        const headerComponent = this.headerComponents.get(key);
+
+        if (!headerComponent) {
+            console.warn(`[DataHandler] Header component not found for setHeaderValue: ${key}`);
+            return false;
+        }
+
+        if (headerComponent.readOnly) {
+            console.warn(`[DataHandler] Cannot set value on readonly header: ${key}`);
+            return false;
+        }
+
+        const oldValue = headerComponent.value;
+
+        headerComponent.setValue(newValue);
+        headerComponent.setInputValue(newValue);
+
+        // Trigger visual feedback
+        headerComponent.triggerFlash();
+
+        return true;
+    }
+
+    /**
+     * Get current editing header (if any)
+     * @returns HeaderComponent currently being edited or null
+     */
+    getCurrentEditingHeader(): HeaderComponent | null {
+        return this.editingHeader;
     }
 
     // ==================== IMPUTATION APIS ====================
