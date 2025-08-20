@@ -1,12 +1,17 @@
 import type {
     GridPosition,
+    HeaderPosition,
     ModifierState,
     RawKeyboardAnalysis,
     NavigationAnalysis,
     CommandAnalysis,
-    ClickAnalysis,
     KeyCategory,
     CellMouseEvent,
+    HeaderMouseEvent,
+    MouseEventAnalysis,
+    MouseActionContext,
+    NavigationAction,
+    SelectionAction,
 } from './types';
 
 export default class InputAnalyzer {
@@ -43,33 +48,149 @@ export default class InputAnalyzer {
         };
     }
 
-    // PHASE 2: Specialized click analysis
-    analyzeMouseEvent(event: CellMouseEvent): ClickAnalysis {
-        const modifiers = event ? this.analyzeMouseModifiers(event.mouseEvent) : { shift: false, ctrl: false, alt: false };
-        const clickType = event.type === 'dblclick' ? 'double' : this.determineClickType(event.mouseEvent);
+    /**
+     * Analyzes mouse events for cells and headers.
+     * @param event The mouse event to analyze.
+     * @param context The context in which the event occurred.
+     * @returns The analysis result for the mouse event.
+     */
+    analyzeMouseEvent(event: CellMouseEvent | HeaderMouseEvent, context: MouseActionContext
+        ): MouseEventAnalysis {
+        const modifiers = this.analyzeMouseModifiers(event.mouseEvent);
+        // ctrl + shift modifiers cancel each other
+        if (modifiers.ctrl && modifiers.shift) {
+            modifiers.ctrl = false;
+            modifiers.shift = false;
+        }
+
+        // Determine component type and position
+        const componentType = 'row' in event.position && 'col' in event.position ? 'cell' : 'header';
+        const position = event.position;
+
+        // CRITICAL: Navigation action based on event type and modifiers
+        const navigationAction = this.createNavigationAction(event, context, componentType, modifiers);
+
+        // Selection action coordinated with navigation
+        const selectionAction = this.createSelectionAction(event, context, modifiers);
+
         return {
-            type: event.type,
-            position: event.position,
-            modifiers,
-            clickType,
+            type: event.type as 'mousedown' | 'mouseenter' | 'mouseup' | 'dblclick',
+            componentType,
+            position,
+            navigationAction,
+            selectionAction,
         };
     }
 
-    // Analyze mouse event and extract modifier state
+    // CRITICAL: Navigation action analysis - translated from processMouseNavigation logic
+    private createNavigationAction(
+        event: CellMouseEvent | HeaderMouseEvent,
+        context: MouseActionContext,
+        componentType: 'cell' | 'header',
+        modifiers: ModifierState
+    ): NavigationAction {
+        const eventType = event.type;
+
+        // MOUSEDOWN: Based on original processMouseNavigation logic
+        if (eventType === 'mousedown') {
+            if (modifiers.shift && !modifiers.ctrl) {
+                // SHIFT+MOUSEDOWN: Update pointer but keep anchor (shift logic)
+                if (context.isDragging) {
+                    // Already dragging, return current position (no navigation change)
+                    return 'none';
+                }
+                // Move pointer and start dragging
+                return componentType === 'cell' ? 'update-drag' :
+                       (event.position as HeaderPosition).headerType === 'row' ? 'start-row-drag' : 'start-col-drag';
+            } else {
+                // NORMAL/CTRL MOUSEDOWN: Set anchor and pointer (normal logic)
+                if (context.isDragging) {
+                    // Already dragging, return current position (no navigation change)
+                    return 'none';
+                }
+                // Set anchor and pointer, start dragging
+                return componentType === 'cell' ? 'start-cell-drag' :
+                       (event.position as HeaderPosition).headerType === 'row' ? 'start-row-drag' : 'start-col-drag';
+            }
+        }
+
+        // MOUSEENTER: Update pointer during drag
+        if (eventType === 'mouseenter') {
+            // Only act if position changed and we're dragging
+            if (context.isDragging) {
+                return 'continue-drag';
+            }
+            // Not dragging, no navigation action
+            return 'none';
+        }
+
+        // MOUSEUP: End drag
+        if (eventType === 'mouseup') {
+            return 'end-drag';
+        }
+
+        // DBLCLICK: End drag state (for editing)
+        if (eventType === 'dblclick') {
+            return 'edit';
+        }
+
+        return 'none';
+    }
+
+    // Selection action analysis - translated from processClickSelection logic
+    private createSelectionAction(
+        event: CellMouseEvent | HeaderMouseEvent,
+        context: MouseActionContext,
+        modifiers: ModifierState,
+    ): SelectionAction {
+        const eventType = event.type;
+
+        // DBLCLICK: Clear selection (for editing)
+        if (eventType === 'dblclick') {
+            return 'clear';
+        }
+
+        // MOUSEDOWN: Based on original processClickSelection logic
+        if (eventType === 'mousedown') {
+            if (modifiers.ctrl && !modifiers.shift) {
+                // CTRL+MOUSEDOWN: Create new selection or start deselecting
+                // Note: Original logic checks isCellSelected - this will be handled by SelectionHandler
+                return 'add-selection'; // or 'remove-selection' - handler will determine based on current state
+            } else if (modifiers.shift && !modifiers.ctrl) {
+                // SHIFT+MOUSEDOWN: Update active selection
+                return 'update-selection';
+            } else {
+                // NORMAL MOUSEDOWN: Clear and add new selection
+                return 'new-selection';
+            }
+        }
+
+        // MOUSEENTER: Continue selection during drag
+        if (eventType === 'mouseenter') {
+            // Only act if we're dragging (context will be checked by handlers)
+            if (context.isDragging) {
+                // Update active selection regardless of modifiers during drag
+                return 'update-selection';
+            }
+            return 'none';
+        }
+
+        // MOUSEUP: Finalize selection
+        if (eventType === 'mouseup') {
+            // Original logic: mouseup on same cell with no modifiers = select single
+            // This will be handled by SelectionHandler based on anchor == current position
+            return 'finalize-selection';
+        }
+
+        return 'none';
+    }
+
     analyzeMouseModifiers(event: MouseEvent): ModifierState {
         return {
             shift: event.shiftKey,
             ctrl: event.ctrlKey,
             alt: event.altKey
         };
-    }
-
-    // Determine click type from mouse event
-    private determineClickType(event: MouseEvent): 'normal' | 'double' | 'right' | 'wheel' {
-        if (event.button === 2) return 'right';
-        if (event.button === 1) return 'wheel';
-        if (event.detail === 2) return 'double';
-        return 'normal';
     }
 
     // Update internal modifier state

@@ -2,8 +2,8 @@ import type {
     GridPosition,
     CellComponent,
     NavigationAnalysis,
-    ClickAnalysis,
     HeaderComponent,
+    MouseEventAnalysis,
 } from './types';
 
 // Callback type for selection changes
@@ -50,7 +50,6 @@ export default class SelectionHandler<TExtraProps = undefined> {
     // Efficient update: only changes cells that actually changed state
     updateSelection(newSelection: Set<string>, clearPrevious: boolean = true) {
         let finalSelection: Set<string>;
-        let selectedHeaders: Set<string>;
 
         if (clearPrevious) {
             finalSelection = new Set(newSelection);
@@ -71,9 +70,6 @@ export default class SelectionHandler<TExtraProps = undefined> {
                 toSelect.add(key);
             }
         });
-        selectedHeaders = new Set<string>([...finalSelection].map(
-            key => [`row-${key.split('-')[0]}`, `col-${key.split('-')[1]}`]).flat()
-        );
 
         // If no changes, do nothing for performance
         if (toDeselect.size === 0 && (!clearPrevious || toSelect.size === 0)) {
@@ -109,24 +105,6 @@ export default class SelectionHandler<TExtraProps = undefined> {
         });
     }
 
-    private applyHeaderChanges(toDeselect: Set<string>, toSelect: Set<string>) {
-        // Deselect specific headers
-        toDeselect.forEach(key => {
-            const headerComponent = this.headerComponents.get(key);
-            if (headerComponent) {
-                headerComponent.setSelected(false);
-            }
-        });
-
-        // Select specific headers
-        toSelect.forEach(key => {
-            const headerComponent = this.headerComponents.get(key);
-            if (headerComponent) {
-                headerComponent.setSelected(true);
-            }
-        });
-    }
-
     clearSelections() {
         this.selections = [];
         this.updateSelection(new Set());
@@ -157,51 +135,64 @@ export default class SelectionHandler<TExtraProps = undefined> {
         }
     }
 
-    // Process mouse click selection with modifiers
-    processClickSelection(analysis: ClickAnalysis, currentPosition: GridPosition, anchor: GridPosition): void {
-        if (analysis.type === 'mousedown' && analysis.modifiers.ctrl && !analysis.modifiers.shift) {
-            // CTRL + mousedown: Create new selection or start deselecting
-            // Need to adress the the case when the cell is already selected, in that case we deselect cells
-            // For now only select case
-            if (this.isCellSelected(currentPosition)) {
-                this.isDeselecting = true;
-                this.createDeselection(anchor, currentPosition);
-            } else {
-                // Create new selection
+    // Process mouse selection based on new action system
+    processMouseSelection(analysis: MouseEventAnalysis, currentPosition: GridPosition, anchor: GridPosition): void {
+        const { selectionAction } = analysis;
+
+        // Switch case based on selection action
+        switch (selectionAction) {
+            case 'new-selection':
+                // Clear existing selections and create new single selection
+                this.clearSelections();
                 this.addNewSelection(anchor, currentPosition);
-            }
-        } else if (analysis.type === 'mousedown' && analysis.modifiers.shift && !analysis.modifiers.ctrl) {
-            // SHIFT + mousedown: Update active selection
-            this.updateActiveSelection(anchor, currentPosition);
-        } else if (analysis.type === 'mousedown') {
-            // Normal mousedown: First clear and add new selection
-            this.clearSelections();
-            this.addNewSelection(currentPosition, currentPosition);
-        } else if (analysis.type === 'mouseenter') {
-            // This whole method is not supposed to be triggered if no changes are detected for position or anchor
-            // And in case one of these changes, we update the active selection no matter the modifiers
-            if (this.isDeselecting) {
-                // If deselecting, update the deselection area
-                this.updateDeselection(anchor, currentPosition);
-            } else {
-                // Otherwise update the active selection
-                this.updateActiveSelection(anchor, currentPosition);
-            }
-        } else if (analysis.type === 'mouseup') {
-            // Mouse up: The selections should already be handled by the mouseenter
-            // except if the mousedown and mouseup are on the same cell and no modifiers are pressed
-            // But in the case of deselection, we finalize it, so skipping this needs to be carefully
-            if (anchor.row === currentPosition.row && anchor.col === currentPosition.col &&
-                !analysis.modifiers.shift && !analysis.modifiers.ctrl) {
-                // If mouse up is on the same cell, we select it
-                this.selectSingle(currentPosition);
-            }
-            if (this.isDeselecting) {
-                // If deselecting, finalize deselection
-                this.isDeselecting = false;
-                this.deselectArea();
-                this.clearDeselection();
-            }
+                break;
+
+            case 'add-selection':
+                // CTRL+mousedown: Add to multi-selection or start deselecting
+                if (this.isCellSelected(currentPosition)) {
+                    // Cell is already selected, start deselecting
+                    this.isDeselecting = true;
+                    this.createDeselection(anchor, currentPosition);
+                } else {
+                    // Create new selection, keep existing ones
+                    this.addNewSelection(anchor, currentPosition);
+                }
+                break;
+
+            case 'update-selection':
+                // Update active selection (drag continues or shift+mousedown)
+                if (this.isDeselecting) {
+                    // If deselecting, update the deselection area
+                    this.updateDeselection(anchor, currentPosition);
+                } else {
+                    // Otherwise update the active selection
+                    this.updateActiveSelection(anchor, currentPosition);
+                }
+                break;
+
+            case 'finalize-selection':
+                // Mouseup: Finalize current selection state
+                // Finalize deselection if active
+                if (this.isDeselecting) {
+                    this.isDeselecting = false;
+                    this.deselectArea();
+                    this.clearDeselection();
+                }
+                break;
+
+            case 'clear':
+                // Clear selection
+                this.clearSelections();
+                break;
+
+            case 'none':
+                // No selection action needed
+                break;
+
+            default:
+                // Unknown action - log for debugging
+                console.warn('Unknown selection action:', selectionAction);
+                break;
         }
     }
 
@@ -323,6 +314,144 @@ export default class SelectionHandler<TExtraProps = undefined> {
     getDeselection(): Selection | null {
         return this.deselection;
     }
+
+    // ==================== HEADERS SELECTION METHODS ====================
+
+    private applyHeaderChanges(toDeselect: Set<string>, toSelect: Set<string>) {
+		// Deselect specific headers
+		toDeselect.forEach(key => {
+			const headerComponent = this.headerComponents.get(key);
+			if (headerComponent) {
+				headerComponent.setSelected(false);
+			}
+		});
+
+		// Select specific headers
+		toSelect.forEach(key => {
+			const headerComponent = this.headerComponents.get(key);
+			if (headerComponent) {
+				headerComponent.setSelected(true);
+			}
+		});
+	}
+
+	// ==================== SELECTION REFLECTION METHODS ====================
+
+	/**
+	 * Reflects cell selections onto headers
+	 * This method receives information about cell selections and updates header visual state
+	 * @param selectedCells - Set of selected cell keys in format "row-col"
+	 */
+	reflectCellSelections(selectedCells: Set<string>): void {
+
+		const rowsToSelect = new Set<number>();
+		const colsToSelect = new Set<number>();
+
+		// Analyze selected cells to determine which headers should be selected
+		selectedCells.forEach(cellKey => {
+			const [rowStr, colStr] = cellKey.split('-');
+			const row = parseInt(rowStr, 10);
+			const col = parseInt(colStr, 10);
+
+			if (!isNaN(row) && !isNaN(col)) {
+				rowsToSelect.add(row);
+				colsToSelect.add(col);
+			}
+		});
+
+		// Generate header keys for visual update
+		const headersToSelect = new Set<string>();
+
+		// Add row headers
+		rowsToSelect.forEach(row => {
+			headersToSelect.add(`row-${row}`);
+		});
+
+		// Add column headers
+		colsToSelect.forEach(col => {
+			headersToSelect.add(`col-${col}`);
+		});
+
+		// Calculate visual changes
+		const toDeselect = new Set<string>();
+		this.selectedHeaders.forEach(headerKey => {
+			if (!headersToSelect.has(headerKey)) {
+				toDeselect.add(headerKey);
+			}
+		});
+
+		const toSelect = new Set<string>();
+		headersToSelect.forEach(headerKey => {
+			if (!this.selectedHeaders.has(headerKey)) {
+				toSelect.add(headerKey);
+			}
+		});
+
+		// Apply visual changes only if there are changes
+		if (toDeselect.size > 0 || toSelect.size > 0) {
+			this.applyHeaderChanges(toDeselect, toSelect);
+			this.selectedHeaders = headersToSelect;
+		}
+	}
+
+	/**
+	 * Reflects header-originated selections onto headers
+	 * This method is used when selection originates from header clicks, reflecting only rows or columns
+	 * @param anchor - Corner position of the selection
+	 * @param pointer - Other corner position of the selection
+	 * @param headerType - Type of header that originated the selection ('row' | 'col')
+	 */
+	reflectHeadersSelections(anchor: GridPosition, pointer: GridPosition, headerType: 'row' | 'col'): void {
+
+		const headersToSelect = new Set<string>();
+
+		if (headerType === 'row') {
+			// Row selection: select all rows in the range
+			const startRow = Math.min(anchor.row, pointer.row);
+			const endRow = Math.max(anchor.row, pointer.row);
+
+			for (let row = startRow; row <= endRow; row++) {
+				headersToSelect.add(`row-${row}`);
+			}
+
+		} else if (headerType === 'col') {
+			// Column selection: select all columns in the range
+			const startCol = Math.min(anchor.col, pointer.col);
+			const endCol = Math.max(anchor.col, pointer.col);
+
+			for (let col = startCol; col <= endCol; col++) {
+				headersToSelect.add(`col-${col}`);
+			}
+		}
+
+		// Calculate visual changes
+		const toDeselect = new Set<string>();
+		this.selectedHeaders.forEach(headerKey => {
+			if (!headersToSelect.has(headerKey)) {
+				toDeselect.add(headerKey);
+			}
+		});
+
+		const toSelect = new Set<string>();
+		headersToSelect.forEach(headerKey => {
+			if (!this.selectedHeaders.has(headerKey)) {
+				toSelect.add(headerKey);
+			}
+		});
+
+		// Apply visual changes only if there are changes
+		if (toDeselect.size > 0 || toSelect.size > 0) {
+			this.applyHeaderChanges(toDeselect, toSelect);
+			this.selectedHeaders = headersToSelect;
+		}
+	}
+
+	/**
+	 * Get currently selected headers (for debugging or other purposes)
+	 */
+	getSelectedHeaders(): Set<string> {
+		return new Set(this.selectedHeaders);
+	}
 
 }
 

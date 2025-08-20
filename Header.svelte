@@ -168,7 +168,7 @@
         cursor-pointer select-none
         transition-colors duration-200
         {selected ? (position.headerType === 'col' ? 'border-b-4 border-green-800' :
-            'border-r-2 border-green-800') : ''}
+            'border-r-4 border-green-800') : ''}
     "
     on:mousedown={(e) => handleHeaderMouseInteraction('mousedown', e)}
     on:mouseenter={(e) => handleHeaderMouseInteraction('mouseenter', e)}

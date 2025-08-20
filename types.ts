@@ -1,5 +1,3 @@
-import { t } from "svelte-i18n";
-
 export interface GridPosition {
     row: number;
     col: number;
@@ -15,12 +13,42 @@ export interface GridDimensions {
     maxCol: number;
 }
 
+export interface MouseActionContext {
+    isDragging: boolean;
+    dragType?: 'cell' | 'row' | 'col';
+
+    dragOrigin?: GridPosition | HeaderPosition;
+
+    lastEventType?: 'mousedown' | 'mouseenter' | 'mouseup';
+    lastEventPosition?: GridPosition | HeaderPosition;
+}
+
+export type NavigationAction =
+    | 'start-cell-drag'
+    | 'start-row-drag'
+    | 'start-col-drag'
+    | 'update-drag'
+    | 'continue-drag'
+    | 'end-drag'
+    | 'edit'
+    | 'none';
+
+export type SelectionAction =
+    | 'new-selection'
+    | 'add-selection'
+    | 'remove-selection'
+    | 'update-selection'
+    | 'finalize-selection'
+    | 'clear'
+    | 'none';
+
 export interface NavigationState {
     pointerPosition: GridPosition;
     navigationMode: boolean;
     anchorPosition: GridPosition;  // For rectangular selection,
     mousePosition?: GridPosition; // For mouse-based navigation
     isDragging: boolean; // Indicates if a drag operation is in progress
+    dragType?: 'cell' | 'row' | 'col';
 }
 
 // Type for cell values, can be extended later if needed
@@ -153,13 +181,6 @@ export interface CommandAnalysis {
     command: 'undo' | 'redo' | 'select-all' | 'save' | 'invalid-command';
 }
 
-export interface ClickAnalysis {
-    type: 'mousedown' | 'mouseenter' | 'mouseup' | 'dblclick';
-    position: GridPosition;
-    modifiers: ModifierState;
-    clickType: 'normal' | 'double' | 'right' | 'wheel';
-}
-
 export interface CellMouseEvent {
     type: 'mousedown' | 'mouseenter' | 'mouseup' | 'dblclick';
     position: GridPosition;
@@ -174,4 +195,12 @@ export interface HeaderMouseEvent {
     selected: boolean;
     value: HeaderValue;
     mouseEvent: MouseEvent;
+}
+
+export interface MouseEventAnalysis {
+    type: 'mousedown' | 'mouseenter' | 'mouseup' | 'dblclick';
+    componentType: 'cell' | 'header';
+    position: GridPosition | HeaderPosition;
+    navigationAction: NavigationAction;
+    selectionAction: SelectionAction;
 }

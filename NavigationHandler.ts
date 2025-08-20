@@ -1,10 +1,13 @@
 import type {
     GridPosition,
+    HeaderPosition,
     GridDimensions,
     NavigationState,
     CellComponent,
     NavigationAnalysis,
-    ClickAnalysis,
+    HeaderComponent,
+    MouseActionContext,
+    MouseEventAnalysis,
 } from './types';
 
 export type PointerPositionCallback = (handler: NavigationHandler<any>) => void;
@@ -17,16 +20,23 @@ export default class NavigationHandler<TExtraProps = undefined> {
     private rowsHeaderContainer: HTMLDivElement | undefined;
     private cellComponents: Map<string, CellComponent<TExtraProps>>;
     private pointerPositionCallback?: PointerPositionCallback;
+    private headerComponents: Map<string, HeaderComponent>;
+    private mouseActionContext: MouseActionContext;
 
     constructor(gridDimensions: GridDimensions, cellComponents: Map<string, CellComponent<TExtraProps>>,
+        headerComponents: Map<string, HeaderComponent>,
         pointerPositionCallback?: PointerPositionCallback
     ) {
         this.gridDimensions = gridDimensions;
         this.cellComponents = cellComponents;
+        this.headerComponents = headerComponents;
         this.navigationState = {
             pointerPosition: { row: 0, col: 0 },
             anchorPosition: { row: 0, col: 0 },
             navigationMode: false,
+            isDragging: false,
+        };
+        this.mouseActionContext = {
             isDragging: false,
         };
         this.pointerPositionCallback = pointerPositionCallback;
@@ -131,59 +141,204 @@ export default class NavigationHandler<TExtraProps = undefined> {
         return this.navigationState.pointerPosition;
     }
 
+    // TODO: Reimplement with new MouseEventAnalysis
     // Process mouse navigation and selection logic
-    processMouseNavigation(analysis: ClickAnalysis): GridPosition {
-        // Modifiers have priority over clickType
-        const { type, position, modifiers, clickType } = analysis;
+    processMouseNavigation(analysis: MouseEventAnalysis) {
+        const { type, position, navigationAction, componentType } = analysis;
+        const context = this.getMouseActionContext();
 
-        // Shift modifier: update pointer but not anchor
-        // ctrl modifier behaves just like normal event
-        // shift + ctrl behaves like normal event
-        if (modifiers.shift && !modifiers.ctrl ) {
-            if (type === 'mousedown') {
+        // Switch case based on navigation action
+        switch (navigationAction) {
+            case 'start-cell-drag':
+                // Cell drag: Normal behavior - set anchor and pointer to clicked cell
                 if (this.isDragging()) {
-                    // Already dragging, probably from a previous mousedown followed by mouseup outside the grid
-                    return this.getCurrentPosition();
+                    // If dragging state is stuck it means the mouseup event was not registered
+                    // ignore this current event
+                    return;
                 }
-                this.movePointer(position);
+                const cellPosition = position as GridPosition;
+                this.setAnchor(cellPosition);
+                this.movePointer(cellPosition);
                 this.setDragging(true);
-            } else if (type === 'mouseenter') {
-                // Update pointer during drag
-                if (!this.comparePositions(position, this.getMousePosition() || { row: -1, col: -1 })) {
-                    this.setMousePosition(position);
-                    if (this.isDragging()) {
-                        this.movePointer(position);
+                break;
+
+            case 'start-row-drag':
+                // Row drag: Set selection to entire row
+                if (this.isDragging()) {
+                    return;
+                }
+                const headerRowPos = position as HeaderPosition;
+                const rowSelection = this.getRowSelectionRange(headerRowPos.index);
+                // Pointer in the start, anchor in the end
+                this.movePointer(rowSelection.start);
+                this.setAnchor(rowSelection.end);
+                this.setDragging(true);
+                break;
+
+            case 'start-col-drag':
+                // Column drag: Set selection to entire column
+                if (this.isDragging()) {
+                    return;
+                }
+                const headerColPos = position as HeaderPosition;
+                const colSelection = this.getColumnSelectionRange(headerColPos.index);
+                this.movePointer(colSelection.start);
+                this.setAnchor(colSelection.end);
+                this.setDragging(true);
+                break;
+
+            case 'update-drag':
+                // Shift+mousedown: Update pointer but keep anchor unchanged
+                // For shift+drag, we need to handle based on original component type
+                if (componentType === 'cell') {
+                    this.movePointer(position as GridPosition);
+                } else {
+                    // Select rows/cols. Move pointer to start of the new row/col
+                    // and anchor to the end of its actual row/col
+                    if ((position as HeaderPosition).headerType === 'col') {
+                        const colHeaderPos = position as HeaderPosition;
+                        const colStart = this.getColumnSelectionRange(colHeaderPos.index);
+                        this.movePointer(colStart.start);
+                        const colEnd = this.getColumnSelectionRange(this.getAnchor().col);
+                        this.setAnchor(colEnd.end);
+                    } else {
+                        const rowHeaderPos = position as HeaderPosition;
+                        const rowStart = this.getRowSelectionRange(rowHeaderPos.index);
+                        this.movePointer(rowStart.start);
+                        const rowEnd = this.getRowSelectionRange(this.getAnchor().row);
+                        this.setAnchor(rowEnd.end);
                     }
                 }
-            } else if (type === 'mouseup') {
-                // End selection by setting isDragging to false
-                // need to move pointer?
-                this.setDragging(false);
-            }
-        } else {
-            if (type === 'mousedown') {
-                if (this.isDragging()) {
-                    // Already dragging, probably from a previous mousedown followed by mouseup outside the grid
-                    return this.getCurrentPosition();
-                }
-                // Set anchor and pointer
-                this.setAnchor(position);
-                this.movePointer(position);
-                this.setDragging(true);
-            } else if (type === 'mouseenter') {
-                // Update pointer during drag
-                if (!this.comparePositions(position, this.getMousePosition() || { row: -1, col: -1 })) {
-                    this.setMousePosition(position);
-                    if (this.isDragging()) {
-                        this.movePointer(position);
+                break;
+
+            case 'continue-drag':
+                if (componentType === 'cell') {
+                    // If the drag was in cell context, just move the pointer
+                    if (context.dragType === 'cell') {
+                        this.movePointer(position as GridPosition);
+                    } else if (context.dragType === 'row') {
+                        // If the drag was in row context, move pointer to start of the cell's row
+                        const cellPos = position as GridPosition;
+                        const rowStart = this.getRowSelectionRange(cellPos.row);
+                        this.movePointer(rowStart.start);
+                    } else if (context.dragType === 'col') {
+                        // If the drag was in col context, move pointer to start of the cell's column
+                        const cellPos = position as GridPosition;
+                        const colStart = this.getColumnSelectionRange(cellPos.col);
+                        this.movePointer(colStart.start);
+                    } else {
+                        console.warn('Unknown drag type in continue-drag');
+                        return;
+                    }
+                } else {
+                    // If the drag was in cell context, just move the pointer
+                    // position pointer in the first cell of row/col
+                    if (context.dragType === 'cell') {
+                        if ((position as HeaderPosition).headerType === 'col') {
+                            const colHeaderPos = position as HeaderPosition;
+                            const colStart = this.getColumnSelectionRange(colHeaderPos.index);
+                            this.movePointer(colStart.start);
+                        } else {
+                            const rowHeaderPos = position as HeaderPosition;
+                            const rowStart = this.getRowSelectionRange(rowHeaderPos.index);
+                            this.movePointer(rowStart.start);
+                        }
+                    } else if (context.dragType === 'row') {
+                        const rowHeaderPos = position as HeaderPosition;
+                        const rowStart = this.getRowSelectionRange(rowHeaderPos.index);
+                        this.movePointer(rowStart.start);
+                    } else if (context.dragType === 'col') {
+                        const colHeaderPos = position as HeaderPosition;
+                        const colStart = this.getColumnSelectionRange(colHeaderPos.index);
+                        this.movePointer(colStart.start);
+                    } else {
+                        console.warn('Unknown drag type in continue-drag');
+                        return;
                     }
                 }
-            } else if (type === 'mouseup') {
-                // End selection
-                this.setDragging(false);
-            }
+                break;
+
+            case 'end-drag':
+                if (this.isDragging()) {
+                    this.setDragging(false);
+                }
+                break;
+
+            case 'none':
+                // No navigation action needed
+                break;
+
+            default:
+                break;
         }
-        return this.getCurrentPosition();
+        // Update mouse action context based on analysis
+        this.updateMouseActionContextFromAnalysis(analysis);
+    }
+
+    // Helper method: Get selection range for entire row
+    private getRowSelectionRange(rowIndex: number): { start: GridPosition; end: GridPosition } {
+        const { maxCol } = this.gridDimensions;
+        return {
+            start: { row: rowIndex, col: 0 },
+            end: { row: rowIndex, col: maxCol }
+        };
+    }
+
+    // Helper method: Get selection range for entire column
+    private getColumnSelectionRange(colIndex: number): { start: GridPosition; end: GridPosition } {
+        const { maxRow } = this.gridDimensions;
+        return {
+            start: { row: 0, col: colIndex },
+            end: { row: maxRow, col: colIndex }
+        };
+    }
+
+    // Update mouse action context based on processed analysis
+    updateMouseActionContextFromAnalysis(analysis: MouseEventAnalysis): void {
+        const { type, position, navigationAction, componentType } = analysis;
+
+        // Determine drag state based on navigation action
+        let isDragging = this.mouseActionContext.isDragging;
+        let dragType = this.mouseActionContext.dragType;
+        let dragOrigin = this.mouseActionContext.dragOrigin;
+
+        // Start drag actions
+        if (navigationAction === 'start-cell-drag') {
+            isDragging = true;
+            dragType = 'cell';
+            dragOrigin = position;
+        } else if (navigationAction === 'start-row-drag') {
+            isDragging = true;
+            dragType = 'row';
+            dragOrigin = position;
+        } else if (navigationAction === 'start-col-drag') {
+            isDragging = true;
+            dragType = 'col';
+            dragOrigin = position;
+        } else if (navigationAction === 'update-drag') {
+            // update-drag maintains existing drag state but starts if not dragging
+            isDragging = true;
+            // Keep existing dragType and dragOrigin if already set, otherwise set based on component
+            if (!dragType) {
+                dragType = componentType === 'cell' ? 'cell' :
+                          (position as HeaderPosition).headerType === 'row' ? 'row' : 'col';
+                dragOrigin = position;
+            }
+        } else if (navigationAction === 'end-drag') {
+            isDragging = false;
+            dragType = undefined;
+            dragOrigin = undefined;
+        }
+        // 'continue-drag' and 'none' maintain current state
+
+        // Update context
+        this.updateMouseActionContext({
+            isDragging,
+            dragType,
+            dragOrigin,
+            lastEventType: type as 'mousedown' | 'mouseenter' | 'mouseup',
+            lastEventPosition: position
+        });
     }
 
     comparePositions(pos1: GridPosition, pos2: GridPosition): boolean {
@@ -334,8 +489,8 @@ export default class NavigationHandler<TExtraProps = undefined> {
         this.navigationState.anchorPosition = { ...position };
     }
 
-    getAnchor(): GridPosition | undefined {
-        return this.navigationState.anchorPosition ? { ...this.navigationState.anchorPosition } : undefined;
+    getAnchor(): GridPosition {
+        return this.navigationState.anchorPosition;
     }
 
     setMousePosition(position: GridPosition): void {
@@ -514,4 +669,18 @@ export default class NavigationHandler<TExtraProps = undefined> {
 
         return false;
     }
+
+    // Mouse Action Context management
+    getMouseActionContext(): MouseActionContext {
+        return { ...this.mouseActionContext };
+    }
+
+    setMouseActionContext(context: MouseActionContext): void {
+        this.mouseActionContext = { ...context };
+    }
+
+    updateMouseActionContext(updates: Partial<MouseActionContext>): void {
+        this.mouseActionContext = { ...this.mouseActionContext, ...updates };
+    }
+
 }

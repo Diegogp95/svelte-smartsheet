@@ -47,15 +47,24 @@ export default class SmartSheetController<TExtraProps = undefined> {
         this.headerBackgroundComponents = new Map();
 
         // Initialize handlers with shared references
-        this.selectionHandler = new SelectionHandler<TExtraProps>(this.cellComponents, this.headerComponents,
-            onSelectionsChanged, onDeselectionsChanged)
-        this.navigationHandler = new NavigationHandler<TExtraProps>(this.gridDimensions, this.cellComponents, pointerPositionCallback);
+        this.selectionHandler = new SelectionHandler<TExtraProps>(this.cellComponents,
+            this.headerComponents,
+            onSelectionsChanged, onDeselectionsChanged);
+        this.navigationHandler = new NavigationHandler<TExtraProps>(
+            this.gridDimensions, this.cellComponents,
+            this.headerComponents, pointerPositionCallback);
         this.inputAnalyzer = new InputAnalyzer();
         this.dataHandler = new DataHandler<TExtraProps>(this.cellComponents);
         this.colorHandler = new ColorHandler<TExtraProps>(this.cellComponents, this.backgroundComponents);
 
         // Setup clipboard event handlers
         this.setupClipboardHandlers();
+    }
+
+    // Helper method to reflect cell selections on headers after any selection change
+    private reflectSelectionsOnHeaders(): void {
+        const selectedCells = this.selectionHandler.getSelectedCells();
+        this.selectionHandler.reflectCellSelections(selectedCells);
     }
 
     // Setup clipboard event handlers for better clipboard detection
@@ -205,7 +214,7 @@ export default class SmartSheetController<TExtraProps = undefined> {
         this.navigationHandler.updateGridDimensions(dimensions);
     }
 
-    // Click on cell: navigate + select with modifier support
+    /*
     handleMouseEvent(cellMouseEvent: CellMouseEvent) {
         // Analyze click with specialized analysis
         const clickAnalysis = this.inputAnalyzer.analyzeMouseEvent(cellMouseEvent);
@@ -239,6 +248,44 @@ export default class SmartSheetController<TExtraProps = undefined> {
         }
 
         this.selectionHandler.processClickSelection(clickAnalysis, newPosition, anchorPosition);
+    }
+    */
+
+    // Unified mouse event handler: process both cell and header events
+    handleMouseEvent(event: CustomEvent<CellMouseEvent | HeaderMouseEvent>) {
+        const context = this.navigationHandler.getMouseActionContext();
+        const analysis = this.inputAnalyzer.analyzeMouseEvent(event.detail, context);
+
+        // Double click sets the cell or header in editing
+        if (analysis.type === 'dblclick') {
+            this.selectionHandler.clearSelections();
+            if (analysis.componentType === 'cell') {
+                this.dataHandler.startEditingCell(analysis.position as GridPosition);
+            } else if (analysis.componentType === 'header') {
+                console.log(`[SmartSheetController] Start editing header at ${analysis.position}`);
+            }
+            return;
+        }
+
+        // Store old state for comparison
+        const oldPosition = this.navigationHandler.getCurrentPosition();
+        const oldAnchor = this.navigationHandler.getAnchor();
+
+        // Process navigation actions
+        this.navigationHandler.processMouseNavigation(analysis);
+
+        // Update navigation context after processing
+        this.navigationHandler.updateMouseActionContextFromAnalysis(analysis);
+
+        // Get new positions after navigation
+        const newPosition = this.navigationHandler.getCurrentPosition();
+        const anchorPosition = this.navigationHandler.getAnchor();
+
+        // Process selection actions
+        this.selectionHandler.processMouseSelection(analysis, newPosition, anchorPosition);
+
+        // Reflect selections on headers
+        this.reflectSelectionsOnHeaders();
     }
 
     // Keyboard navigation: process input and update selection
@@ -277,6 +324,7 @@ export default class SmartSheetController<TExtraProps = undefined> {
             // Handle writing input (e.g. typing in a cell)
             this.dataHandler.startEditingCell(currentPosition, basicAnalysis.key);
             this.selectionHandler.clearSelections();
+            this.reflectSelectionsOnHeaders();
             return;
         } else if (basicAnalysis.keyCategory === 'delete') {
             const selections = this.selectionHandler.getSelectedPositions();
@@ -286,6 +334,7 @@ export default class SmartSheetController<TExtraProps = undefined> {
             // Handle edit input (e.g. pressing Enter in a cell)
             this.dataHandler.startEditingCell(currentPosition);
             this.selectionHandler.clearSelections();
+            this.reflectSelectionsOnHeaders();
             return;
         } else if (basicAnalysis.keyCategory === 'space') {
             // TODO: Implement Delete/Backspace handling
@@ -303,12 +352,14 @@ export default class SmartSheetController<TExtraProps = undefined> {
         } // Shouuldn't be triggered by other keys
         // Re-select the current position after commit
         this.selectionHandler.selectSingle(this.navigationHandler.getCurrentPosition());
+        this.reflectSelectionsOnHeaders();
     }
 
     handleCellInputCancel(position: GridPosition, event: KeyboardEvent) {
         this.dataHandler.finishCellEdit(position, 'cancel');
         // Re-select the current position after cancel
         this.selectionHandler.selectSingle(this.navigationHandler.getCurrentPosition());
+        this.reflectSelectionsOnHeaders();
     }
 
     // Handle navigation keys with specialized analysis
@@ -322,6 +373,7 @@ export default class SmartSheetController<TExtraProps = undefined> {
 
         // Delegate selection logic to SelectionHandler with complete context
         this.selectionHandler.processNavigationSelection(navAnalysis, currentPosition, anchorPosition);
+        this.reflectSelectionsOnHeaders();
 
     }
 
@@ -338,6 +390,7 @@ export default class SmartSheetController<TExtraProps = undefined> {
         if (currentSelection.size === 0) {
             const currentPosition = this.navigationHandler.getCurrentPosition();
             this.selectionHandler.selectSingle(currentPosition);
+            this.reflectSelectionsOnHeaders();
         }
         return true;
     }
@@ -379,6 +432,7 @@ export default class SmartSheetController<TExtraProps = undefined> {
         this.selectionHandler.clearSelections();
         // Add individual selections for each position
         this.selectionHandler.addMultipleSelections(positions);
+        this.reflectSelectionsOnHeaders();
     }
 
     navigateToPosition(position: GridPosition): boolean {
@@ -499,6 +553,7 @@ export default class SmartSheetController<TExtraProps = undefined> {
         if (success) {
             const currentPosition = this.navigationHandler.getCurrentPosition();
             this.selectionHandler.selectSingle(currentPosition);
+            this.reflectSelectionsOnHeaders();
         }
 
         return success;
@@ -512,6 +567,7 @@ export default class SmartSheetController<TExtraProps = undefined> {
         if (success) {
             const currentPosition = this.navigationHandler.getCurrentPosition();
             this.selectionHandler.selectSingle(currentPosition);
+            this.reflectSelectionsOnHeaders();
         }
         return success;
     }

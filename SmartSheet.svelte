@@ -14,6 +14,7 @@
         CellValue,
         CellComponent,
         HeaderComponent,
+        HeaderMouseEvent,
     } from './types';
     import SelectionRect from './SelectionRect.svelte';
     import DeselectionRect from './DeselectionRect.svelte';
@@ -68,12 +69,12 @@
         controller.setRowsHeaderContainer(rowsHeaderContainer);
     }
 
-    // Cell mouse event handler
-    function handleCellMouseEvent(event: CustomEvent<CellMouseEvent>) {
+    // Unified mouse event handler
+    function handleMouseEvent(event: CustomEvent<CellMouseEvent | HeaderMouseEvent>) {
         if (!navigationMode) {
             handleNavigationActivate();
         }
-        controller.handleMouseEvent(event.detail);
+        controller.handleMouseEvent(event);
     }
 
     // Cell input blur handler
@@ -247,6 +248,7 @@
                             position={{ headerType: 'col', index: colIndex }}
                             onHeaderCreation={(header) => controller.registerHeader(header)}
                             onHeaderDestruction={(header) => controller.unregisterHeader(header)}
+                            on:headerInteraction={handleMouseEvent}
                         />
                     </div>
                     <div class="flex z-10" style="grid-row: 1; grid-column: {colIndex + 1};">
@@ -277,6 +279,7 @@
                             value={undefined}
                             onHeaderCreation={(header) => controller.registerHeader(header)}
                             onHeaderDestruction={(header) => controller.unregisterHeader(header)}
+                            on:headerInteraction={handleMouseEvent}
                         />
                     </div>
                     <div class="flex z-10" style="grid-row: {rowIndex + 1}; grid-column: 1;">
@@ -324,8 +327,8 @@
                                 extraProps={extraPropsMatrix?.[rowIndex]?.[colIndex]}
                                 onCellCreation={(cell) => controller.registerCell(cell)}
                                 onCellDestruction={(cell) => controller.unregisterCell(cell)}
-                                on:cellInteraction={handleCellMouseEvent}
-                                on:cellDoubleClick={handleCellMouseEvent}
+                                on:cellInteraction={handleMouseEvent}
+                                on:cellDoubleClick={handleMouseEvent}
                                 on:inputBlur={handleCellInputBlur}
                                 on:inputKeyCommit={handleCellInputKeyCommand}
                                 on:inputKeyCancel={handleCellInputKeyCommand}
