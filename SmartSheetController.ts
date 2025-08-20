@@ -13,6 +13,7 @@ import type {
     HeaderMouseEvent,
     HeaderValue,
     HeaderBackgroundComponent,
+    FlashOptions,
 } from './types';
 import InputAnalyzer from './InputAnalyzer';
 import NavigationHandler from './NavigationHandler';
@@ -307,13 +308,17 @@ export default class SmartSheetController<TExtraProps = undefined> {
             if (commandAnalysis.command === 'undo') {
                 const affectedPositions = this.dataHandler.undo();
                 if (affectedPositions.length > 0) {
-                    this.colorHandler.flashCells(affectedPositions);
+                    this.colorHandler.flashCells(affectedPositions,
+                        { color: 'red' }
+                    );
                 }
                 return;
             } else if (commandAnalysis.command === 'redo') {
                 const affectedPositions = this.dataHandler.redo();
                 if (affectedPositions.length > 0) {
-                    this.colorHandler.flashCells(affectedPositions);
+                    this.colorHandler.flashCells(affectedPositions,
+                        { color: 'blue' }
+                    );
                 }
                 return;
             } else {
@@ -618,7 +623,9 @@ export default class SmartSheetController<TExtraProps = undefined> {
     imputeValues(imputations: [GridPosition, CellValue][]): GridPosition[] {
         const affectedPositions = this.dataHandler.imputeValues(imputations);
         if (affectedPositions.length > 0) {
-            this.colorHandler.flashCells(affectedPositions);
+            this.colorHandler.flashCells(affectedPositions,
+                { color: 'green' }
+            );
         }
         return affectedPositions;
     }
@@ -628,7 +635,9 @@ export default class SmartSheetController<TExtraProps = undefined> {
     ): GridPosition[] {
         const affectedPositions = this.dataHandler.applyImputations(imputationGenerator);
         if (affectedPositions.length > 0) {
-            this.colorHandler.flashCells(affectedPositions);
+            this.colorHandler.flashCells(affectedPositions,
+                { color: 'green' }
+            );
         }
         return affectedPositions;
     }
@@ -638,24 +647,25 @@ export default class SmartSheetController<TExtraProps = undefined> {
     /**
      * Trigger flash effect on a single cell
      */
-    flashCell(position: GridPosition): void {
-        this.colorHandler.flashCell(position);
+    flashCell(position: GridPosition, options?: FlashOptions): void {
+        this.colorHandler.flashCell(position, options);
     }
 
     /**
      * Trigger flash effect on multiple cells
      */
-    flashCells(positions: GridPosition[]): void {
-        this.colorHandler.flashCells(positions);
+    flashCells(positions: GridPosition[], options?: FlashOptions): void {
+        this.colorHandler.flashCells(positions, options);
     }
 
     /**
      * Trigger flash effect using a generator function
      */
     applyFlashEffect(
-        flashGenerator: (cells: Map<string, CellComponent<TExtraProps>>) => GridPosition[]
+        flashGenerator: (cells: Map<string, CellComponent<TExtraProps>>) => GridPosition[],
+        options?: FlashOptions
     ): void {
-        this.colorHandler.applyFlashEffect(flashGenerator);
+        this.colorHandler.applyFlashEffect(flashGenerator, options);
     }
 
 }

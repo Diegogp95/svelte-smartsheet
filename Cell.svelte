@@ -7,8 +7,11 @@
         OnCellDestruction,
         CellMouseEvent,
         CellValue,
+        FlashOptions,
+        FlashColor,
     } from './types';
     import { tick } from 'svelte';
+    import { getFlashColors } from './utils';
 
     // Visual props
     export let minWidth: string = '5rem';
@@ -72,14 +75,24 @@
         setExtraProps(props: TExtraProps) {
             extraProps = props; // Simplified: no more casting needed
         },
-        triggerFlash() {
-            // Trigger flash animation by toggling class
+        triggerFlash(options?: FlashOptions) {
+            const color = options?.color || 'blue';
+            const duration = options?.duration || 600;
+
             if (element) {
+                const colors = getFlashColors(color);
+
+                // Set CSS custom properties for the animation
+                element.style.setProperty('--flash-primary-color', colors.primary);
+                element.style.setProperty('--flash-secondary-color', colors.secondary);
+                element.style.setProperty('--flash-duration', `${duration}ms`);
+
                 element.classList.add('cell-changed-flash');
+
                 // Remove class after animation completes
                 setTimeout(() => {
                     element.classList.remove('cell-changed-flash');
-                }, 800); // Duration should match CSS animation
+                }, duration);
             }
         }
     };
@@ -179,17 +192,17 @@
 <style>
     /* Flash animation for value changes */
     :global(.cell-changed-flash) {
-        animation: cell-flash 0.8s ease-out;
+        animation: cell-flash var(--flash-duration, 800ms) ease-out;
     }
 
     @keyframes cell-flash {
         0% {
-            background-color: rgba(59, 130, 246, 0.3); /* blue-500 with opacity */
-            box-shadow: 0 0 8px rgba(59, 130, 246, 0.6);
+            background-color: var(--flash-primary-color, rgba(59, 130, 246, 0.3));
+            box-shadow: 0 0 8px var(--flash-secondary-color, rgba(59, 130, 246, 0.6));
         }
         50% {
-            background-color: rgba(59, 130, 246, 0.5);
-            box-shadow: 0 0 12px rgba(59, 130, 246, 0.8);
+            background-color: var(--flash-secondary-color, rgba(59, 130, 246, 0.5));
+            box-shadow: 0 0 12px var(--flash-secondary-color, rgba(59, 130, 246, 0.8));
         }
         100% {
             background-color: transparent;

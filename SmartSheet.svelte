@@ -33,6 +33,9 @@
     export let rowsTitle: string = ''; // Title for the row headers column
     export let headersReadOnly: boolean = true;
 
+    // Configuration
+    export let fontSize: string = '1rem'; // Default font size for cells and headers
+
     // Selections array to render, will be subscribed to controller's selections by a callback
     let selections: Selection[] = [];
     // Callback to get selections from controller
@@ -217,14 +220,24 @@
 
 </script>
 
+<style>
+    .active-state {
+        box-shadow:
+            0 0 0 3px rgba(59, 130, 246, 0.9),   /* borde sólido */
+            0 0 10px 4px rgba(59, 130, 246, 0.25); /* halo más claro */
+    }
+</style>
+
 <div class="smart-sheet relative">
     <!-- Scroll container for large tables -->
     <div
         bind:this={tableContainer}
         class="overflow-auto max-h-96 max-w-full border border-tertiaryOnBg bg-tertiaryBg relative outline-none"
         tabindex="-1"
+        class:active-state={navigationMode}
         on:focusout={handleFocusOut}
         on:keydown={handleKeyDown}
+        style="font-size: {fontSize};"
     >
         <!-- Parent grid with subgrid support -->
         <div

@@ -55,6 +55,22 @@ export interface NavigationState {
 export type CellValue = string | number | boolean | null;
 export type HeaderValue = string | number;
 
+// Flash color options
+export type FlashColor = 'blue'
+    | 'green'
+    | 'red'
+    | 'orange'
+    | 'yellow'
+    | 'purple'
+    | 'pink'
+    | 'cyan'
+    | 'magenta';
+
+export interface FlashOptions {
+    color?: FlashColor | string; // Predefined color or custom RGB/hex
+    duration?: number; // Duration in milliseconds, default 800
+}
+
 // Interface for Cell component interaction with simplified extraProps
 // T defaults to undefined, but when specified, should extend Record<string, any>
 export interface CellComponent<T = undefined> {
@@ -72,7 +88,7 @@ export interface CellComponent<T = undefined> {
     setInputValue(value: CellValue): void;
     setValue(value: CellValue): void; // Method to update the cell's value
     setExtraProps(props: T): void; // Simplified: just T directly
-    triggerFlash(): void; // Method to trigger visual flash effect when value changes
+    triggerFlash(options?: FlashOptions): void; // Method to trigger visual flash effect when value changes
 }
 
 export interface HeaderComponent {
@@ -89,7 +105,7 @@ export interface HeaderComponent {
     setInputFocus(): void;
     setInputValue(value: HeaderValue): void;
     setValue(value: HeaderValue): void;
-    triggerFlash(): void;
+    triggerFlash(options?: FlashOptions): void;
 }
 
 // Function type for cell registration

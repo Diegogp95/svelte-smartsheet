@@ -5,6 +5,7 @@ import type {
     CellBackgroundComponent,
     BackgroundProperties,
     TailwindProperties,
+    FlashOptions,
 } from './types';
 
 /** * Handles color and style management for SmartSheet cells.
@@ -123,20 +124,20 @@ export class ColorHandler<TExtraProps = undefined> {
     /**
      * Trigger flash effect on a single cell
      */
-    public flashCell(position: GridPosition): void {
+    public flashCell(position: GridPosition, options?: FlashOptions): void {
         const key = `${position.row}-${position.col}`;
         const cellComponent = this.cellComponents.get(key);
         if (cellComponent) {
-            cellComponent.triggerFlash();
+            cellComponent.triggerFlash(options);
         }
     }
 
     /**
      * Trigger flash effect on multiple cells
      */
-    public flashCells(positions: GridPosition[]): void {
+    public flashCells(positions: GridPosition[], options?: FlashOptions): void {
         for (const position of positions) {
-            this.flashCell(position);
+            this.flashCell(position, options);
         }
     }
 
@@ -144,10 +145,11 @@ export class ColorHandler<TExtraProps = undefined> {
      * Trigger flash effect using a generator function that determines which cells to flash
      */
     public applyFlashEffect(
-        flashGenerator: (cells: Map<string, CellComponent<TExtraProps>>) => GridPosition[]
+        flashGenerator: (cells: Map<string, CellComponent<TExtraProps>>) => GridPosition[],
+        options?: FlashOptions
     ): void {
         const positions = flashGenerator(this.cellComponents);
-        this.flashCells(positions);
+        this.flashCells(positions, options);
     }
 
 }
