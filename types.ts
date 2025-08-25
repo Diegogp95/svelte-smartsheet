@@ -13,14 +13,23 @@ export interface GridDimensions {
     maxCol: number;
 }
 
-export interface MouseActionContext {
-    isDragging: boolean;
+// Outside scroll analysis for auto-scroll behavior
+export interface OutsideScrollAnalysis {
+    direction: { row: number; col: number };           // -1, 0, 1
+    intervals: { row?: number; col?: number };         // Intervals in ms per dimension
+    distances: { top?: number; bottom?: number; left?: number; right?: number };
+    edges: ('top' | 'bottom' | 'left' | 'right')[];   // Edges that are affecting
+}
+
+export interface DraggingActionContext {
     dragType?: 'cell' | 'row' | 'col';
-
+    isOutsideDragging: boolean; // Indicates if dragging outside the table
     dragOrigin?: GridPosition | HeaderPosition;
-
-    lastEventType?: 'mousedown' | 'mouseenter' | 'mouseup';
-    lastEventPosition?: GridPosition | HeaderPosition;
+    outsideDraggingState?: OutsideScrollAnalysis;
+    activeTimers?: {                                    // Active timers for auto-scroll
+        rowTimerId?: number;                           // Timer for vertical scroll
+        colTimerId?: number;                           // Timer for horizontal scroll
+    };
 }
 
 export type NavigationAction =
@@ -47,8 +56,8 @@ export interface NavigationState {
     navigationMode: boolean;
     anchorPosition: GridPosition;  // For rectangular selection,
     mousePosition?: GridPosition; // For mouse-based navigation
-    isDragging: boolean; // Indicates if a drag operation is in progress
-    dragType?: 'cell' | 'row' | 'col';
+    isDragging: boolean;
+    draggingContext: DraggingActionContext;
 }
 
 // Type for cell values, can be extended later if needed
@@ -197,8 +206,10 @@ export interface CommandAnalysis {
     command: 'undo' | 'redo' | 'select-all' | 'save' | 'invalid-command';
 }
 
+export type GridMouseInteractionType = 'mousedown' | 'mouseenter' | 'mouseup' | 'dblclick' | 'middleclick' | 'contextmenu';
+
 export interface CellMouseEvent {
-    type: 'mousedown' | 'mouseenter' | 'mouseup' | 'dblclick';
+    type: GridMouseInteractionType;
     position: GridPosition;
     selected: boolean;
     value: CellValue;
@@ -206,7 +217,7 @@ export interface CellMouseEvent {
 };
 
 export interface HeaderMouseEvent {
-    type: 'mousedown' | 'mouseenter' | 'mouseup' | 'dblclick';
+    type: GridMouseInteractionType;
     position: HeaderPosition;
     selected: boolean;
     value: HeaderValue;
@@ -214,9 +225,11 @@ export interface HeaderMouseEvent {
 }
 
 export interface MouseEventAnalysis {
-    type: 'mousedown' | 'mouseenter' | 'mouseup' | 'dblclick';
-    componentType: 'cell' | 'header';
-    position: GridPosition | HeaderPosition;
+    type: GridMouseInteractionType;
+    componentType: 'cell' | 'header' | undefined;
+    position: GridPosition | HeaderPosition | undefined;
     navigationAction: NavigationAction;
     selectionAction: SelectionAction;
+    draggingContext: DraggingActionContext;
+    outsideScrollAnalysis?: OutsideScrollAnalysis; // Optional analysis for outside scrolling
 }

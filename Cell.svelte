@@ -116,6 +116,26 @@
         }
         if (event.detail === 2) {
             return;
+        } else if (event.button === 2) {
+            // Right mouse button
+            dispatch('cellInteraction', {
+                type: 'contextmenu',
+                position,
+                selected,
+                value,
+                mouseEvent: event
+            });
+            return;
+        } else if (event.button === 1) {
+            // Middle mouse button
+            dispatch('cellInteraction', {
+                type: 'middleclick',
+                position,
+                selected,
+                value,
+                mouseEvent: event
+            });
+            return;
         }
 
         dispatch('cellInteraction', {

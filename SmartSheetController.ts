@@ -20,7 +20,7 @@ import NavigationHandler from './NavigationHandler';
 import SelectionHandler from './SelectionHandler';
 import DataHandler from './DataHandler';
 import type { SelectionChangedCallback } from './SelectionHandler';
-import type { PointerPositionCallback } from './NavigationHandler';
+import type { PointerPositionCallback, AutoScrollSelectionCallback } from './NavigationHandler';
 import { ColorHandler } from './ColorHandler';
 
 // Main Controller - Mediates between navigation and selection
@@ -53,13 +53,51 @@ export default class SmartSheetController<TExtraProps = undefined> {
             onSelectionsChanged, onDeselectionsChanged);
         this.navigationHandler = new NavigationHandler<TExtraProps>(
             this.gridDimensions, this.cellComponents,
-            this.headerComponents, pointerPositionCallback);
+            this.headerComponents, pointerPositionCallback, this.handleDocumentMouseMove, this.handleAutoScrollSelection);
         this.inputAnalyzer = new InputAnalyzer();
         this.dataHandler = new DataHandler<TExtraProps>(this.cellComponents, this.headerComponents);
         this.colorHandler = new ColorHandler<TExtraProps>(this.cellComponents, this.backgroundComponents);
 
         // Setup clipboard event handlers
         this.setupClipboardHandlers();
+    }
+
+    /**
+     * Handle document mouse move events during outside dragging
+     * This will be called by NavigationHandler when mouse is outside table during drag
+     */
+    private handleDocumentMouseMove = (event: MouseEvent): void => {
+        // Create synthetic analysis for outside dragging
+        const draggingContext = this.navigationHandler.getDraggingActionContext();
+        const analysis = this.inputAnalyzer.createOutsideScrollAnalysis(
+            event,
+            this.navigationHandler.getTableContainer() as HTMLDivElement,
+            draggingContext,
+        );
+
+        // Process the navigation action through the normal flow
+        this.navigationHandler.processMouseNavigation(analysis);
+    }
+
+    /**
+     * Handle auto-scroll selection updates during outside dragging
+     * This will be called by NavigationHandler when auto-scroll moves the pointer
+     */
+    private handleAutoScrollSelection = (position: GridPosition): void => {
+        if (!this.navigationHandler.isDragging()) {
+            return;
+        }
+
+        const anchor = this.navigationHandler.getAnchor();
+
+        // Create synthetic analysis for continue-drag with update-selection
+        const analysis = this.inputAnalyzer.createContinueDragAnalysis(position, anchor);
+
+        // Process selection update
+        this.selectionHandler.processMouseSelection(analysis, position, anchor);
+
+        // Reflect selections on headers
+        this.reflectSelectionsOnHeaders();
     }
 
     // Helper method to reflect cell selections on headers after any selection change
@@ -215,47 +253,11 @@ export default class SmartSheetController<TExtraProps = undefined> {
         this.navigationHandler.updateGridDimensions(dimensions);
     }
 
-    /*
-    handleMouseEvent(cellMouseEvent: CellMouseEvent) {
-        // Analyze click with specialized analysis
-        const clickAnalysis = this.inputAnalyzer.analyzeMouseEvent(cellMouseEvent);
-
-        // Wheel should not trigger neither navigation nor selection
-        if (clickAnalysis.clickType === 'wheel') {
-            return;
-        }
-
-        const oldPosition = this.navigationHandler.getCurrentPosition();
-        const oldAnchor = this.navigationHandler.getAnchor();
-
-        // dblclick should not navigate, since the previous mousedown already did
-        // Delegate selection logic to SelectionHandler with complete context
-        if (clickAnalysis.clickType === 'double') {
-            this.dataHandler.startEditingCell(oldPosition);
-            this.selectionHandler.clearSelections();
-            return;
-        }
-
-        // Delegate navigation and anchor coordination to NavigationHandler
-        const newPosition = this.navigationHandler.processMouseNavigation(clickAnalysis);
-        const anchorPosition = this.navigationHandler.getAnchor() || newPosition;
-
-        // If the position didn't change, we can skip selection logic
-        // Except for mouseup, since mousedown + mouseup in the same cell must select the cell
-        if (this.navigationHandler.comparePositions(oldPosition, newPosition) &&
-        this.navigationHandler.comparePositions(oldAnchor || { row: -1, col: -1 }, anchorPosition) &&
-        clickAnalysis.type !== 'mouseup') {
-            return;
-        }
-
-        this.selectionHandler.processClickSelection(clickAnalysis, newPosition, anchorPosition);
-    }
-    */
-
     // Unified mouse event handler: process both cell and header events
     handleMouseEvent(event: CustomEvent<CellMouseEvent | HeaderMouseEvent>) {
-        const context = this.navigationHandler.getMouseActionContext();
-        const analysis = this.inputAnalyzer.analyzeMouseEvent(event.detail, context);
+        const context = this.navigationHandler.getDraggingActionContext();
+        const isDragging = this.navigationHandler.isDragging();
+        const analysis = this.inputAnalyzer.analyzeMouseEvent(event.detail, isDragging, context);
 
         // Double click sets the cell or header in editing
         if (analysis.type === 'dblclick') {
@@ -266,17 +268,20 @@ export default class SmartSheetController<TExtraProps = undefined> {
                 this.dataHandler.startEditingHeader(analysis.position as HeaderPosition);
             }
             return;
+        } else if (analysis.type === 'middleclick') {
+            // Middle click should not trigger navigation or selection
+            event.stopPropagation();
+            return;
+        } else if (analysis.type === 'contextmenu') {
+            // Handle context menu (right-click) events
+            event.preventDefault();
+            event.stopPropagation();
+            // For future implementation
+            return;
         }
-
-        // Store old state for comparison
-        const oldPosition = this.navigationHandler.getCurrentPosition();
-        const oldAnchor = this.navigationHandler.getAnchor();
 
         // Process navigation actions
         this.navigationHandler.processMouseNavigation(analysis);
-
-        // Update navigation context after processing
-        this.navigationHandler.updateMouseActionContextFromAnalysis(analysis);
 
         // Get new positions after navigation
         const newPosition = this.navigationHandler.getCurrentPosition();

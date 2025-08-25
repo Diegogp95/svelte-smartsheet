@@ -6,11 +6,14 @@ import type {
     CellComponent,
     NavigationAnalysis,
     HeaderComponent,
-    MouseActionContext,
+    DraggingActionContext,
     MouseEventAnalysis,
+    OutsideScrollAnalysis,
 } from './types';
 
 export type PointerPositionCallback = (handler: NavigationHandler<any>) => void;
+export type DocumentMouseMoveCallback = (event: MouseEvent) => void;
+export type AutoScrollSelectionCallback = (position: GridPosition) => void;
 
 export default class NavigationHandler<TExtraProps = undefined> {
     private gridDimensions: GridDimensions;
@@ -21,11 +24,19 @@ export default class NavigationHandler<TExtraProps = undefined> {
     private cellComponents: Map<string, CellComponent<TExtraProps>>;
     private pointerPositionCallback?: PointerPositionCallback;
     private headerComponents: Map<string, HeaderComponent>;
-    private mouseActionContext: MouseActionContext;
+
+    // Outside dragging listeners
+    private tableMouseEnterListener?: (event: MouseEvent) => void;
+    private tableMouseLeaveListener?: (event: MouseEvent) => void;
+    private documentMouseMoveListener?: (event: MouseEvent) => void;
+    private documentMouseMoveCallback?: DocumentMouseMoveCallback;
+    private autoScrollSelectionCallback?: AutoScrollSelectionCallback;
 
     constructor(gridDimensions: GridDimensions, cellComponents: Map<string, CellComponent<TExtraProps>>,
         headerComponents: Map<string, HeaderComponent>,
-        pointerPositionCallback?: PointerPositionCallback
+        pointerPositionCallback?: PointerPositionCallback,
+        documentMouseMoveCallback?: DocumentMouseMoveCallback,
+        autoScrollSelectionCallback?: AutoScrollSelectionCallback
     ) {
         this.gridDimensions = gridDimensions;
         this.cellComponents = cellComponents;
@@ -35,16 +46,24 @@ export default class NavigationHandler<TExtraProps = undefined> {
             anchorPosition: { row: 0, col: 0 },
             navigationMode: false,
             isDragging: false,
-        };
-        this.mouseActionContext = {
-            isDragging: false,
+            draggingContext: {
+                isOutsideDragging: false,
+                outsideDraggingState: undefined,
+                activeTimers: undefined,
+            },
         };
         this.pointerPositionCallback = pointerPositionCallback;
+        this.documentMouseMoveCallback = documentMouseMoveCallback;
+        this.autoScrollSelectionCallback = autoScrollSelectionCallback;
     }
 
     // Update container reference
     setTableContainer(container: HTMLDivElement) {
         this.tableContainer = container;
+    }
+
+    getTableContainer(): HTMLDivElement | undefined {
+        return this.tableContainer;
     }
 
     // Update header containers references
@@ -145,7 +164,7 @@ export default class NavigationHandler<TExtraProps = undefined> {
     // Process mouse navigation and selection logic
     processMouseNavigation(analysis: MouseEventAnalysis) {
         const { type, position, navigationAction, componentType } = analysis;
-        const context = this.getMouseActionContext();
+        const context = this.getDraggingActionContext();
 
         // Switch case based on navigation action
         switch (navigationAction) {
@@ -160,6 +179,9 @@ export default class NavigationHandler<TExtraProps = undefined> {
                 this.setAnchor(cellPosition);
                 this.movePointer(cellPosition);
                 this.setDragging(true);
+
+                // Setup outside dragging listeners
+                this.setupTableOutsideListeners();
                 break;
 
             case 'start-row-drag':
@@ -173,6 +195,9 @@ export default class NavigationHandler<TExtraProps = undefined> {
                 this.movePointer(rowSelection.start);
                 this.setAnchor(rowSelection.end);
                 this.setDragging(true);
+
+                // Setup outside dragging listeners
+                this.setupTableOutsideListeners();
                 break;
 
             case 'start-col-drag':
@@ -185,6 +210,9 @@ export default class NavigationHandler<TExtraProps = undefined> {
                 this.movePointer(colSelection.start);
                 this.setAnchor(colSelection.end);
                 this.setDragging(true);
+
+                // Setup outside dragging listeners
+                this.setupTableOutsideListeners();
                 break;
 
             case 'update-drag':
@@ -212,6 +240,36 @@ export default class NavigationHandler<TExtraProps = undefined> {
                 break;
 
             case 'continue-drag':
+                // Check if we are in outside dragging mode
+                if (context.isOutsideDragging) {
+                    // Process outside scroll analysis if available
+                    if (analysis.outsideScrollAnalysis) {
+                        const scrollAnalysis = analysis.outsideScrollAnalysis;
+
+                        // Update outside dragging state with scroll analysis
+                        const outsideDraggingState: OutsideScrollAnalysis = {
+                            direction: scrollAnalysis.direction,
+                            intervals: {
+                                row: scrollAnalysis.intervals.row,
+                                col: scrollAnalysis.intervals.col
+                            },
+                            edges: scrollAnalysis.edges,
+                            distances: scrollAnalysis.distances
+                        };
+
+                        // Update dragging context
+                        this.updateDraggingActionContext({
+                            outsideDraggingState
+                        });
+
+                        // Update auto-scroll timers based on scroll analysis
+                        this.updateAutoScrollTimers(scrollAnalysis);
+                    }
+
+                    return;
+                }
+
+                // Normal continue-drag processing (existing logic)
                 if (componentType === 'cell') {
                     // If the drag was in cell context, just move the pointer
                     if (context.dragType === 'cell') {
@@ -261,6 +319,20 @@ export default class NavigationHandler<TExtraProps = undefined> {
             case 'end-drag':
                 if (this.isDragging()) {
                     this.setDragging(false);
+
+                    // Cleanup outside dragging listeners
+                    this.removeTableOutsideListeners();
+                    this.removeDocumentMouseMoveListener();
+
+                    // Clear auto-scroll timers
+                    this.clearAutoScrollTimers();
+
+                    // Reset outside dragging state
+                    this.updateDraggingActionContext({
+                        isOutsideDragging: false,
+                        outsideDraggingState: undefined,
+                        activeTimers: undefined
+                    });
                 }
                 break;
 
@@ -298,9 +370,9 @@ export default class NavigationHandler<TExtraProps = undefined> {
         const { type, position, navigationAction, componentType } = analysis;
 
         // Determine drag state based on navigation action
-        let isDragging = this.mouseActionContext.isDragging;
-        let dragType = this.mouseActionContext.dragType;
-        let dragOrigin = this.mouseActionContext.dragOrigin;
+        let isDragging = this.navigationState.isDragging;
+        let dragType = this.navigationState.draggingContext.dragType;
+        let dragOrigin = this.navigationState.draggingContext.dragOrigin;
 
         // Start drag actions
         if (navigationAction === 'start-cell-drag') {
@@ -332,12 +404,9 @@ export default class NavigationHandler<TExtraProps = undefined> {
         // 'continue-drag' and 'none' maintain current state
 
         // Update context
-        this.updateMouseActionContext({
-            isDragging,
+        this.updateDraggingActionContext({
             dragType,
             dragOrigin,
-            lastEventType: type as 'mousedown' | 'mouseenter' | 'mouseup',
-            lastEventPosition: position
         });
     }
 
@@ -670,17 +739,280 @@ export default class NavigationHandler<TExtraProps = undefined> {
         return false;
     }
 
-    // Mouse Action Context management
-    getMouseActionContext(): MouseActionContext {
-        return { ...this.mouseActionContext };
+    // Dragging Action Context management
+    getDraggingActionContext(): DraggingActionContext {
+        return { ...this.navigationState.draggingContext };
     }
 
-    setMouseActionContext(context: MouseActionContext): void {
-        this.mouseActionContext = { ...context };
+    setDraggingActionContext(context: DraggingActionContext): void {
+        this.navigationState.draggingContext = { ...context };
     }
 
-    updateMouseActionContext(updates: Partial<MouseActionContext>): void {
-        this.mouseActionContext = { ...this.mouseActionContext, ...updates };
+    updateDraggingActionContext(updates: Partial<DraggingActionContext>): void {
+        this.navigationState.draggingContext = { ...this.navigationState.draggingContext, ...updates };
     }
 
+    // ================== OUTSIDE DRAGGING METHODS ==================
+
+    /**
+     * Update auto-scroll timers based on outside scroll analysis
+     * Uses estado centralizado + setTimeout recursivo approach
+     */
+    private updateAutoScrollTimers(analysis: OutsideScrollAnalysis): void {
+        // Update dragging context with outside scroll analysis
+        this.updateDraggingActionContext({
+            outsideDraggingState: analysis
+        });
+        // Ensure timers are running
+        this.ensureTimersRunning();
+    }
+
+    /**
+     * Ensure auto-scroll timers are running based on current analysis
+     * Creates timers only if they don't exist and directions are active
+     */
+    private ensureTimersRunning(): void {
+        const timers = this.navigationState.draggingContext.activeTimers;
+        const analysis = this.getCurrentAnalysis();
+
+        if (!analysis) return;
+
+        // Ensure timers object exists
+        this.navigationState.draggingContext.activeTimers = timers || {};
+        const activeTimers = this.navigationState.draggingContext.activeTimers!;
+
+        // Start row timer if needed and not already running
+        if (analysis.direction.row !== 0 && analysis.intervals.row && !activeTimers.rowTimerId) {
+            this.startRecursiveRowTimer();
+        }
+
+        // Start col timer if needed and not already running
+        if (analysis.direction.col !== 0 && analysis.intervals.col && !activeTimers.colTimerId) {
+            this.startRecursiveColTimer();
+        }
+
+        // Stop timers if directions are no longer active
+        if (analysis.direction.row === 0 && activeTimers.rowTimerId) {
+            clearTimeout(activeTimers.rowTimerId);
+            activeTimers.rowTimerId = undefined;
+        }
+
+        if (analysis.direction.col === 0 && activeTimers.colTimerId) {
+            clearTimeout(activeTimers.colTimerId);
+            activeTimers.colTimerId = undefined;
+        }
+    }
+
+    /**
+     * Get current scroll analysis from dragging context
+     */
+    private getCurrentAnalysis(): OutsideScrollAnalysis | undefined {
+        return this.navigationState.draggingContext.outsideDraggingState;
+    }
+
+    /**
+     * Clear all active auto-scroll timers (now using setTimeout)
+     */
+    private clearAutoScrollTimers(): void {
+        const timers = this.navigationState.draggingContext.activeTimers;
+        if (timers) {
+            if (timers.rowTimerId) {
+                clearTimeout(timers.rowTimerId);
+            }
+            if (timers.colTimerId) {
+                clearTimeout(timers.colTimerId);
+            }
+            this.navigationState.draggingContext.activeTimers = undefined;
+        }
+    }
+
+    /**
+     * Start recursive row timer that reads current state for each execution
+     * Uses setTimeout recursivo pattern
+     */
+    private startRecursiveRowTimer(): void {
+        const executeRowScroll = () => {
+            const analysis = this.getCurrentAnalysis();
+
+            if (!analysis || analysis.direction.row === 0) {
+                // Direction changed to 0, auto-stop timer
+                const timers = this.navigationState.draggingContext.activeTimers;
+                if (timers?.rowTimerId) {
+                    timers.rowTimerId = undefined;
+                }
+                return;
+            }
+
+            // Execute scroll with current direction
+            this.executeAutoScroll('row', analysis.direction.row);
+
+            // Schedule next execution with current interval
+            const nextInterval = analysis.intervals.row || 100;
+            const timers = this.navigationState.draggingContext.activeTimers;
+            if (timers) {
+                timers.rowTimerId = window.setTimeout(executeRowScroll, nextInterval);
+            }
+        };
+
+        // Start the recursive timer
+        executeRowScroll();
+    }
+
+    /**
+     * Start recursive col timer that reads current state for each execution
+     * Uses setTimeout recursivo pattern
+     */
+    private startRecursiveColTimer(): void {
+        const executeColScroll = () => {
+            const analysis = this.getCurrentAnalysis();
+
+            if (!analysis || analysis.direction.col === 0) {
+                // Direction changed to 0, auto-stop timer
+                const timers = this.navigationState.draggingContext.activeTimers;
+                if (timers?.colTimerId) {
+                    timers.colTimerId = undefined;
+                }
+                return;
+            }
+
+            // Execute scroll with current direction
+            this.executeAutoScroll('col', analysis.direction.col);
+
+            // Schedule next execution with current interval (dynamic!)
+            const nextInterval = analysis.intervals.col || 100;
+            const timers = this.navigationState.draggingContext.activeTimers;
+            if (timers) {
+                timers.colTimerId = window.setTimeout(executeColScroll, nextInterval);
+            }
+        };
+
+        // Start the recursive timer
+        executeColScroll();
+    }
+
+    /**
+     * Execute auto-scroll by moving the pointer in the specified direction
+     * Called by timer intervals during outside dragging
+     */
+    private executeAutoScroll(dimension: 'row' | 'col', direction: number): void {
+        const currentPos = this.navigationState.pointerPosition;
+        const { maxRow, maxCol } = this.gridDimensions;
+
+        let newPosition: GridPosition;
+
+        if (dimension === 'row') {
+            // Calculate new row position
+            const newRow = Math.max(0, Math.min(maxRow, currentPos.row + direction));
+            newPosition = { row: newRow, col: currentPos.col };
+        } else {
+            // Calculate new col position
+            const newCol = Math.max(0, Math.min(maxCol, currentPos.col + direction));
+            newPosition = { row: currentPos.row, col: newCol };
+        }
+
+        // Only move if position actually changed
+        if (newPosition.row !== currentPos.row || newPosition.col !== currentPos.col) {
+            this.movePointer(newPosition);
+
+            // Trigger selection update via callback
+            if (this.autoScrollSelectionCallback && this.isDragging()) {
+                this.autoScrollSelectionCallback(newPosition);
+            }
+        }
+    }
+
+    /**
+     * Setup listeners for table mouse enter/leave events during drag operations
+     */
+    private setupTableOutsideListeners(): void {
+        if (!this.tableContainer) {
+            console.warn('[NavigationHandler] No table container available for outside listeners');
+            return;
+        }
+
+        // Create bound handler functions
+        this.tableMouseEnterListener = this.handleTableMouseEnter;
+        this.tableMouseLeaveListener = this.handleTableMouseLeave;
+
+        // Add listeners to table container
+        this.tableContainer.addEventListener('mouseenter', this.tableMouseEnterListener);
+        this.tableContainer.addEventListener('mouseleave', this.tableMouseLeaveListener);
+    }
+
+    /**
+     * Remove listeners for table mouse enter/leave events
+     */
+    private removeTableOutsideListeners(): void {
+        if (!this.tableContainer || !this.tableMouseEnterListener || !this.tableMouseLeaveListener) {
+            return;
+        }
+
+        // Remove listeners from table container
+        this.tableContainer.removeEventListener('mouseenter', this.tableMouseEnterListener);
+        this.tableContainer.removeEventListener('mouseleave', this.tableMouseLeaveListener);
+
+        // Clear references
+        this.tableMouseEnterListener = undefined;
+        this.tableMouseLeaveListener = undefined;
+    }
+
+    /**
+     * Setup document mouse move listener with callback from controller
+     */
+    private setupDocumentMouseMoveListener(): void {
+        if (!this.documentMouseMoveCallback) {
+            console.warn('[NavigationHandler] No document mouse move callback available');
+            return;
+        }
+
+        // Create bound listener using stored callback
+        this.documentMouseMoveListener = this.documentMouseMoveCallback;
+
+        // Add listener to document
+        document.addEventListener('mousemove', this.documentMouseMoveListener);
+    }
+
+    /**
+     * Remove document mouse move listener
+     */
+    private removeDocumentMouseMoveListener(): void {
+        if (!this.documentMouseMoveListener) {
+            return;
+        }
+
+        // Remove listener from document
+        document.removeEventListener('mousemove', this.documentMouseMoveListener);
+
+        // Clear listener reference but KEEP callback reference
+        this.documentMouseMoveListener = undefined;
+        // NOTE: documentMouseMoveCallback is kept for reuse
+    }
+
+    /**
+     * Handle table mouse enter event - mouse enters table during drag
+     */
+    private handleTableMouseEnter = (event: MouseEvent): void => {
+        // Clear auto-scroll timers when mouse re-enters table
+        this.clearAutoScrollTimers();
+
+        // Set outside dragging to false
+        this.updateDraggingActionContext({
+            isOutsideDragging: false
+        });
+
+        // Remove document mouse move listener
+        this.removeDocumentMouseMoveListener();
+    }
+
+    /**
+     * Handle table mouse leave event - mouse leaves table during drag
+     */
+    private handleTableMouseLeave = (event: MouseEvent): void => {
+        // Set outside dragging to true
+        this.updateDraggingActionContext({
+            isOutsideDragging: true
+        });
+        // Setup document mouse move listener using stored callback
+        this.setupDocumentMouseMoveListener();
+    }
 }

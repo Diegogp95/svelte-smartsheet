@@ -9,9 +9,10 @@ import type {
     CellMouseEvent,
     HeaderMouseEvent,
     MouseEventAnalysis,
-    MouseActionContext,
+    DraggingActionContext,
     NavigationAction,
     SelectionAction,
+    OutsideScrollAnalysis,
 } from './types';
 
 export default class InputAnalyzer {
@@ -54,7 +55,8 @@ export default class InputAnalyzer {
      * @param context The context in which the event occurred.
      * @returns The analysis result for the mouse event.
      */
-    analyzeMouseEvent(event: CellMouseEvent | HeaderMouseEvent, context: MouseActionContext
+    analyzeMouseEvent(event: CellMouseEvent | HeaderMouseEvent, isDragging: boolean,
+        context: DraggingActionContext
         ): MouseEventAnalysis {
         const modifiers = this.analyzeMouseModifiers(event.mouseEvent);
         // ctrl + shift modifiers cancel each other
@@ -68,24 +70,26 @@ export default class InputAnalyzer {
         const position = event.position;
 
         // CRITICAL: Navigation action based on event type and modifiers
-        const navigationAction = this.createNavigationAction(event, context, componentType, modifiers);
+        const navigationAction = this.createNavigationAction(event, isDragging, context, componentType, modifiers);
 
         // Selection action coordinated with navigation
-        const selectionAction = this.createSelectionAction(event, context, modifiers);
+        const selectionAction = this.createSelectionAction(event, isDragging, context, modifiers);
 
         return {
-            type: event.type as 'mousedown' | 'mouseenter' | 'mouseup' | 'dblclick',
+            type: event.type,
             componentType,
             position,
             navigationAction,
             selectionAction,
+            draggingContext: { ...context } // Include the current dragging context
         };
     }
 
     // CRITICAL: Navigation action analysis - translated from processMouseNavigation logic
     private createNavigationAction(
         event: CellMouseEvent | HeaderMouseEvent,
-        context: MouseActionContext,
+        isDragging: boolean,
+        context: DraggingActionContext,
         componentType: 'cell' | 'header',
         modifiers: ModifierState
     ): NavigationAction {
@@ -95,7 +99,7 @@ export default class InputAnalyzer {
         if (eventType === 'mousedown') {
             if (modifiers.shift && !modifiers.ctrl) {
                 // SHIFT+MOUSEDOWN: Update pointer but keep anchor (shift logic)
-                if (context.isDragging) {
+                if (isDragging) {
                     // Already dragging, return current position (no navigation change)
                     return 'none';
                 }
@@ -104,7 +108,7 @@ export default class InputAnalyzer {
                        (event.position as HeaderPosition).headerType === 'row' ? 'start-row-drag' : 'start-col-drag';
             } else {
                 // NORMAL/CTRL MOUSEDOWN: Set anchor and pointer (normal logic)
-                if (context.isDragging) {
+                if (isDragging) {
                     // Already dragging, return current position (no navigation change)
                     return 'none';
                 }
@@ -117,7 +121,7 @@ export default class InputAnalyzer {
         // MOUSEENTER: Update pointer during drag
         if (eventType === 'mouseenter') {
             // Only act if position changed and we're dragging
-            if (context.isDragging) {
+            if (isDragging) {
                 return 'continue-drag';
             }
             // Not dragging, no navigation action
@@ -140,7 +144,8 @@ export default class InputAnalyzer {
     // Selection action analysis - translated from processClickSelection logic
     private createSelectionAction(
         event: CellMouseEvent | HeaderMouseEvent,
-        context: MouseActionContext,
+        isDragging: boolean,
+        context: DraggingActionContext,
         modifiers: ModifierState,
     ): SelectionAction {
         const eventType = event.type;
@@ -168,7 +173,7 @@ export default class InputAnalyzer {
         // MOUSEENTER: Continue selection during drag
         if (eventType === 'mouseenter') {
             // Only act if we're dragging (context will be checked by handlers)
-            if (context.isDragging) {
+            if (isDragging) {
                 // Update active selection regardless of modifiers during drag
                 return 'update-selection';
             }
@@ -282,5 +287,154 @@ export default class InputAnalyzer {
     // Get current modifier state
     getCurrentModifiers(): ModifierState {
         return { ...this.modifierState };
+    }
+
+    /**
+     * Create comprehensive outside dragging analysis with auto-scroll calculations
+     * Used when mouse moves outside table during drag operations
+     */
+    createOutsideScrollAnalysis(
+        mouseEvent: MouseEvent,
+        tableContainer: HTMLDivElement,
+        draggingContext: DraggingActionContext,
+        gridDimensions?: { maxRow: number; maxCol: number }
+    ): MouseEventAnalysis {
+        const containerRect = tableContainer.getBoundingClientRect();
+        const scrollAnalysis = this.analyzeScrollProximity(
+            mouseEvent.clientX,
+            mouseEvent.clientY,
+            containerRect,
+            gridDimensions
+        );
+
+        return {
+            type: 'mouseenter', // Using mouseenter as placeholder for outside mouse movement
+            componentType: undefined,
+            position: undefined,
+            navigationAction: 'continue-drag',
+            selectionAction: 'none',
+            draggingContext,
+            outsideScrollAnalysis: scrollAnalysis
+        };
+    }
+
+    /**
+     * Create continue-drag analysis for auto-scroll selection updates
+     * Used when auto-scroll moves pointer and needs to update selection
+     */
+    createContinueDragAnalysis(
+        position: GridPosition,
+        anchor: GridPosition
+    ): MouseEventAnalysis {
+        // Create a synthetic dragging context for continue-drag
+        const syntheticContext: DraggingActionContext = {
+            isOutsideDragging: false, // We're updating selection, not outside dragging
+            dragType: 'cell', // Assume cell drag for auto-scroll
+            dragOrigin: anchor
+        };
+
+        return {
+            type: 'mouseenter', // Synthetic event type
+            componentType: 'cell',
+            position: position,
+            navigationAction: 'continue-drag',
+            selectionAction: 'update-selection',
+            draggingContext: syntheticContext
+        };
+    }
+
+    /**
+     * Analyze scroll proximity and calculate auto-scroll parameters
+     * Helper method for outside dragging analysis
+     */
+    private analyzeScrollProximity(
+        mouseX: number,
+        mouseY: number,
+        containerRect: DOMRect,
+        gridDimensions?: { maxRow: number; maxCol: number }
+    ): OutsideScrollAnalysis {
+        // Absolute limits
+        const absoluteMinInterval = 10;   // Fastest possible scroll
+        const absoluteMaxInterval = 200;  // Slowest possible scroll
+
+        // Calculate dynamic limits based on table size
+        // For very large tables, make minimum even smaller (faster scroll)
+        const tableSizeFactor = gridDimensions
+            ? Math.sqrt((gridDimensions.maxRow + 1) * (gridDimensions.maxCol + 1)) / 100
+            : 1;
+
+        // For large tables: smaller minimum interval (faster scroll)
+        const minInterval = Math.max(absoluteMinInterval / Math.max(tableSizeFactor, 1), absoluteMinInterval * 0.5);
+        const maxInterval = absoluteMaxInterval;
+
+        // Calculate distances to each edge (positive when outside)
+        const distanceTop = containerRect.top - mouseY;
+        const distanceBottom = mouseY - containerRect.bottom;
+        const distanceLeft = containerRect.left - mouseX;
+        const distanceRight = mouseX - containerRect.right;
+
+        // Initialize analysis result
+        const analysis: OutsideScrollAnalysis = {
+            direction: { row: 0, col: 0 },
+            intervals: {},
+            distances: {},
+            edges: []
+        };
+
+        // Check vertical edges - NO THRESHOLD: scroll if mouse is outside (any distance)
+        if (distanceTop > 0) {
+            // Mouse above container - scroll up
+            analysis.direction.row = -1;
+            analysis.edges.push('top');
+            analysis.distances.top = distanceTop;
+            analysis.intervals.row = this.calculateScrollInterval(distanceTop, minInterval, maxInterval);
+        } else if (distanceBottom > 0) {
+            // Mouse below container - scroll down
+            analysis.direction.row = 1;
+            analysis.edges.push('bottom');
+            analysis.distances.bottom = distanceBottom;
+            analysis.intervals.row = this.calculateScrollInterval(distanceBottom, minInterval, maxInterval);
+        }
+
+        // Check horizontal edges - NO THRESHOLD: scroll if mouse is outside (any distance)
+        if (distanceLeft > 0) {
+            // Mouse to the left of container - scroll left
+            analysis.direction.col = -1;
+            analysis.edges.push('left');
+            analysis.distances.left = distanceLeft;
+            analysis.intervals.col = this.calculateScrollInterval(distanceLeft, minInterval, maxInterval);
+        } else if (distanceRight > 0) {
+            // Mouse to the right of container - scroll right
+            analysis.direction.col = 1;
+            analysis.edges.push('right');
+            analysis.distances.right = distanceRight;
+            analysis.intervals.col = this.calculateScrollInterval(distanceRight, minInterval, maxInterval);
+        }
+
+        return analysis;
+    }
+
+    /**
+     * Calculate scroll interval based on distance from edge
+     * The further from the edge = the smaller the interval (faster scroll)
+     * No threshold - scrolls at any distance outside the table
+     */
+    private calculateScrollInterval(
+        distance: number,
+        minInterval: number,
+        maxInterval: number
+    ): number {
+        // Use 100px as reference distance for speed calculation
+        const referenceDistance = 100;
+
+        // Normalize distance: 0 at edge, 1.0 at reference distance
+        const normalizedDistance = Math.min(distance / referenceDistance, 1);
+
+        // Linear interpolation: the further from the edge, the smaller the interval (faster scroll)
+        // At the edge (distance = 0): maxInterval (slow)
+        // At referenceDistance: minInterval (fast)
+        const interval = maxInterval - (normalizedDistance * (maxInterval - minInterval));
+
+        return Math.round(Math.max(minInterval, interval));
     }
 }

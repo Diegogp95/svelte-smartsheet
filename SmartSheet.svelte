@@ -232,7 +232,8 @@
     <!-- Scroll container for large tables -->
     <div
         bind:this={tableContainer}
-        class="overflow-auto max-h-96 max-w-full border border-tertiaryOnBg bg-tertiaryBg relative outline-none"
+        class="overflow-auto max-h-96 max-w-full border border-tertiaryOnBg bg-tertiaryBg relative outline-none
+            overscroll-contain"
         tabindex="-1"
         class:active-state={navigationMode}
         on:focusout={handleFocusOut}
