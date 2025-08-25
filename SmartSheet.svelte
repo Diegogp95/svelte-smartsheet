@@ -228,16 +228,21 @@
     }
 </style>
 
-<div class="smart-sheet relative">
+<div class="contents">
     <!-- Scroll container for large tables -->
     <div
         bind:this={tableContainer}
-        class="overflow-auto max-h-96 max-w-full border border-tertiaryOnBg bg-tertiaryBg relative outline-none
+        class="relative overflow-auto max-h-full max-w-full border border-tertiaryOnBg bg-tertiaryBg outline-none
             overscroll-contain"
         tabindex="-1"
         class:active-state={navigationMode}
         on:focusout={handleFocusOut}
         on:keydown={handleKeyDown}
+        on:wheel={(e) => {
+            if (!navigationMode) {
+                e.preventDefault();
+            }
+        }}
         style="font-size: {fontSize};"
     >
         <!-- Parent grid with subgrid support -->
@@ -430,11 +435,10 @@
                 {/if}
             </div>
         </div>
+        <!-- Navigation overlay -->
+        <NavigationOverlay
+            visible={!navigationMode}
+            on:activate={handleNavigationActivate}
+        />
     </div>
-
-    <!-- Navigation overlay OUTSIDE scroll container -->
-    <NavigationOverlay
-        visible={!navigationMode}
-        on:activate={handleNavigationActivate}
-    />
 </div>
