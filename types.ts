@@ -100,7 +100,7 @@ export interface CellComponent<T = undefined> {
     triggerFlash(options?: FlashOptions): void; // Method to trigger visual flash effect when value changes
 }
 
-export interface HeaderComponent {
+export interface HeaderComponent<T = undefined> {
     position: HeaderPosition;
     element: HTMLElement;
     selected: boolean;
@@ -108,12 +108,14 @@ export interface HeaderComponent {
     editing: boolean;
     inputElement: HTMLInputElement;
     inputValue: HeaderValue;
+    extraProps: T;
     readOnly: boolean;
     setSelected(selected: boolean): void;
     setEditing(editing: boolean): void;
     setInputFocus(): void;
     setInputValue(value: HeaderValue): void;
     setValue(value: HeaderValue): void;
+    setExtraProps(props: T): void;
     triggerFlash(options?: FlashOptions): void;
 }
 
@@ -122,8 +124,8 @@ export type OnCellCreation<T = undefined> = (cellComponent: CellComponent<T>) =>
 export type OnCellDestruction<T = undefined> = (cellComponent: CellComponent<T>) => void;
 
 // Function type for header registration
-export type OnHeaderCreation = (headerComponent: HeaderComponent) => void;
-export type OnHeaderDestruction = (headerComponent: HeaderComponent) => void;
+export type OnHeaderCreation<T = undefined> = (headerComponent: HeaderComponent<T>) => void;
+export type OnHeaderDestruction<T = undefined> = (headerComponent: HeaderComponent<T>) => void;
 
 // Background properties for cell styling
 export interface BackgroundProperties {

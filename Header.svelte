@@ -1,4 +1,4 @@
-<script lang="ts">
+<script lang="ts" generics="TExtraProps = undefined">
     import { createEventDispatcher, onMount } from 'svelte';
     import type {
         HeaderPosition,
@@ -23,9 +23,10 @@
     // Props from parent
     export let value: HeaderValue | undefined = undefined;
     export let position: HeaderPosition;
+    export let extraProps: TExtraProps = undefined as TExtraProps;
     export let readOnly: boolean = true; // Headers are typically read-only
-    export let onHeaderCreation: OnHeaderCreation | undefined = undefined;
-    export let onHeaderDestruction: OnHeaderDestruction | undefined = undefined;
+    export let onHeaderCreation: OnHeaderCreation<TExtraProps> | undefined = undefined;
+    export let onHeaderDestruction: OnHeaderDestruction<TExtraProps> | undefined = undefined;
 
     // Internal state
     let selected = false;
@@ -44,7 +45,7 @@
     }>();
 
     // Implement HeaderComponent interface
-    const headerComponent: HeaderComponent = {
+    const headerComponent: HeaderComponent<TExtraProps> = {
         get position() { return position; },
         get element() { return element!; }, // Will be assigned in template
         get selected() { return selected; },
@@ -52,6 +53,7 @@
         get editing() { return editing; },
         get inputElement() { return inputElement!; },
         get inputValue() { return inputValue; },
+        get extraProps() { return extraProps; },
         get readOnly() { return readOnly; },
         setSelected(newSelected: boolean) {
             selected = newSelected;
@@ -73,6 +75,9 @@
         // Maybe useful later
         setInputValue(newInputValue: HeaderValue) {
             inputValue = newInputValue;
+        },
+        setExtraProps(props: TExtraProps) {
+            extraProps = props;
         },
         triggerFlash(options?: FlashOptions) {
             const color = options?.color || 'blue';
@@ -195,7 +200,7 @@
     bind:this={element}
     style="min-width: {minWidth}; min-height: {minHeight};"
     class="
-        flex items-center {position.headerType === 'col' ? 'justify-center' : ''}
+        flex items-center {position.headerType === 'col' ? 'justify-center pr-4' : ''}
         w-full h-full
         px-2 py-1
         {selected ? 'bg-slate-400' : ''}

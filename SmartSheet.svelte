@@ -1,4 +1,4 @@
-<script lang="ts" generics="TExtraProps = undefined">
+<script lang="ts" generics="TExtraProps = undefined, TRowHeaderProps = undefined, TColHeaderProps = undefined">
     import Cell from './Cell.svelte';
     import CellBackground from './CellBackground.svelte';
     import CellPointer from './CellPointer.svelte';
@@ -26,6 +26,8 @@
     // Data
     export let gridData: (CellValue | undefined)[][];
     export let extraPropsMatrix: (TExtraProps | undefined)[][] | undefined = undefined;
+    export let rowHeaderExtraProps: (TRowHeaderProps | undefined)[] | undefined = undefined;
+    export let colHeaderExtraProps: (TColHeaderProps | undefined)[] | undefined = undefined;
 
     // Header configuration
     export let columnHeaders: (HeaderValue | undefined)[] | undefined = undefined;
@@ -56,7 +58,7 @@
     };
 
     // Create controller with grid dimensions
-    let controller = new SmartSheetController<TExtraProps>({
+    let controller = new SmartSheetController<TExtraProps, TRowHeaderProps, TColHeaderProps>({
         maxRow: gridData.length - 1,
         maxCol: (gridData[0]?.length || 1) - 1
     }, subscribeToSelections, subscribeToPointerPosition, subscribeToDeselection);
@@ -211,6 +213,40 @@
         controller.resetAllBackgrounds();
     }
 
+    // Header + Row/Column styling APIs
+    export function styleRowHeaderAndCells(row: number, headerProps: any, cellProps: any): void {
+        controller.styleRowHeaderAndCells(row, headerProps, cellProps);
+    }
+
+    export function styleColHeaderAndCells(col: number, headerProps: any, cellProps: any): void {
+        controller.styleColHeaderAndCells(col, headerProps, cellProps);
+    }
+
+    export function styleRowHeaderAndCellsTailwind(row: number, headerProps: any, cellProps: any): void {
+        controller.styleRowHeaderAndCellsTailwind(row, headerProps, cellProps);
+    }
+
+    export function styleColHeaderAndCellsTailwind(col: number, headerProps: any, cellProps: any): void {
+        controller.styleColHeaderAndCellsTailwind(col, headerProps, cellProps);
+    }
+
+    // Batch header + cells styling APIs
+    export function applyRowHeaderAndCellsBackgroundStyles(styleGenerator: (headers: Map<string, HeaderComponent<TRowHeaderProps>>) => [number, any, any][]): void {
+        controller.applyRowHeaderAndCellsBackgroundStyles(styleGenerator as any);
+    }
+
+    export function applyColHeaderAndCellsBackgroundStyles(styleGenerator: (headers: Map<string, HeaderComponent<TColHeaderProps>>) => [number, any, any][]): void {
+        controller.applyColHeaderAndCellsBackgroundStyles(styleGenerator as any);
+    }
+
+    export function applyRowHeaderAndCellsTailwindStyles(styleGenerator: (headers: Map<string, HeaderComponent<TRowHeaderProps>>) => [number, any, any][]): void {
+        controller.applyRowHeaderAndCellsTailwindStyles(styleGenerator as any);
+    }
+
+    export function applyColHeaderAndCellsTailwindStyles(styleGenerator: (headers: Map<string, HeaderComponent<TColHeaderProps>>) => [number, any, any][]): void {
+        controller.applyColHeaderAndCellsTailwindStyles(styleGenerator as any);
+    }
+
     // Bind containers references with the controller on mount
     onMount(() => {
         controller.setTableContainer(tableContainer);
@@ -228,7 +264,7 @@
     }
 </style>
 
-<div class="contents">
+<div class="h-full w-full max-h-full relative">
     <!-- Scroll container for large tables -->
     <div
         bind:this={tableContainer}
@@ -270,8 +306,8 @@
                         position={{ headerType: 'corner', index: 0 }}
                         value={rowsTitle}
                         readOnly={true}
-                        onHeaderCreation={(header) => controller.registerHeader(header)}
-                        onHeaderDestruction={(header) => controller.unregisterHeader(header)}
+                        onHeaderCreation={(header) => controller.registerCornerHeader(header)}
+                        onHeaderDestruction={(header) => controller.unregisterCornerHeader(header)}
                     />
                 </div>
                 <div class="flex z-10" style="grid-row: 1; grid-column: 1;">
@@ -299,9 +335,10 @@
                         <Header
                             position={{ headerType: 'col', index: colIndex }}
                             value={columnHeaders?.[colIndex]}
+                            extraProps={colHeaderExtraProps?.[colIndex]}
                             readOnly={headersReadOnly}
-                            onHeaderCreation={(header) => controller.registerHeader(header)}
-                            onHeaderDestruction={(header) => controller.unregisterHeader(header)}
+                            onHeaderCreation={(header) => controller.registerColHeader(header)}
+                            onHeaderDestruction={(header) => controller.unregisterColHeader(header)}
                             on:headerInteraction={handleMouseEvent}
                             on:headerDoubleClick={handleMouseEvent}
                             on:inputBlur={handleHeaderInputBlur}
@@ -335,9 +372,10 @@
                         <Header
                             position={{ headerType: 'row', index: rowIndex }}
                             value={rowHeaders?.[rowIndex]}
+                            extraProps={rowHeaderExtraProps?.[rowIndex]}
                             readOnly={headersReadOnly}
-                            onHeaderCreation={(header) => controller.registerHeader(header)}
-                            onHeaderDestruction={(header) => controller.unregisterHeader(header)}
+                            onHeaderCreation={(header) => controller.registerRowHeader(header)}
+                            onHeaderDestruction={(header) => controller.unregisterRowHeader(header)}
                             on:headerInteraction={handleMouseEvent}
                             on:headerDoubleClick={handleMouseEvent}
                             on:inputBlur={handleHeaderInputBlur}
@@ -435,10 +473,12 @@
                 {/if}
             </div>
         </div>
-        <!-- Navigation overlay -->
-        <NavigationOverlay
-            visible={!navigationMode}
-            on:activate={handleNavigationActivate}
-        />
     </div>
+
+    <!-- Navigation overlay -->
+    <NavigationOverlay
+        visible={!navigationMode}
+        on:activate={handleNavigationActivate}
+    />
+
 </div>

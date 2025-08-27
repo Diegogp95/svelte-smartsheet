@@ -7,9 +7,9 @@ import type {
 } from './types';
 
 // Callback type for selection changes
-export type SelectionChangedCallback = (handler: SelectionHandler<any>) => void;
+export type SelectionChangedCallback = (handler: SelectionHandler<any, any, any>) => void;
 
-export default class SelectionHandler<TExtraProps = undefined> {
+export default class SelectionHandler<TExtraProps = undefined, TRowHeaderProps = undefined, TColHeaderProps = undefined> {
     private selectedCells: Set<string>;
     private cellComponents: Map<string, CellComponent<TExtraProps>>;
     private selections: Selection[];
@@ -17,11 +17,17 @@ export default class SelectionHandler<TExtraProps = undefined> {
     private onDeselectionsChanged?: SelectionChangedCallback;
     private isDeselecting: boolean;
     private deselection: Selection | null;
-    private headerComponents: Map<string, HeaderComponent>;
+    // Separate header components by type
+    private rowHeaderComponents: Map<string, HeaderComponent<TRowHeaderProps>>;
+    private colHeaderComponents: Map<string, HeaderComponent<TColHeaderProps>>;
+    private cornerHeaderComponent: HeaderComponent | null;
     private selectedHeaders: Set<string>;
 
-    constructor(cellComponents: Map<string, CellComponent<TExtraProps>>,
-        headerComponents: Map<string, HeaderComponent>,
+    constructor(
+        cellComponents: Map<string, CellComponent<TExtraProps>>,
+        rowHeaderComponents: Map<string, HeaderComponent<TRowHeaderProps>>,
+        colHeaderComponents: Map<string, HeaderComponent<TColHeaderProps>>,
+        cornerHeaderComponent: HeaderComponent | null,
         onSelectionsChanged?: SelectionChangedCallback,
         onDeselectionsChanged?: SelectionChangedCallback,
     ) {
@@ -32,7 +38,9 @@ export default class SelectionHandler<TExtraProps = undefined> {
         this.onDeselectionsChanged = onDeselectionsChanged;
         this.isDeselecting = false;
         this.deselection = null;
-        this.headerComponents = headerComponents;
+        this.rowHeaderComponents = rowHeaderComponents;
+        this.colHeaderComponents = colHeaderComponents;
+        this.cornerHeaderComponent = cornerHeaderComponent;
         this.selectedHeaders = new Set<string>();
     }
 
@@ -317,10 +325,29 @@ export default class SelectionHandler<TExtraProps = undefined> {
 
     // ==================== HEADERS SELECTION METHODS ====================
 
+    // Helper method to get header component from any of the header maps
+    private getHeaderComponent(key: string): HeaderComponent<any> | null {
+        // Try row headers
+        let headerComponent: HeaderComponent<any> | undefined = this.rowHeaderComponents.get(key);
+        if (headerComponent) return headerComponent;
+
+        // Try column headers
+        headerComponent = this.colHeaderComponents.get(key);
+        if (headerComponent) return headerComponent;
+
+        // Try corner header if the key matches
+        if (this.cornerHeaderComponent) {
+            const cornerKey = `${this.cornerHeaderComponent.position.headerType}-${this.cornerHeaderComponent.position.index}`;
+            if (key === cornerKey) return this.cornerHeaderComponent;
+        }
+
+        return null;
+    }
+
     private applyHeaderChanges(toDeselect: Set<string>, toSelect: Set<string>) {
 		// Deselect specific headers
 		toDeselect.forEach(key => {
-			const headerComponent = this.headerComponents.get(key);
+			const headerComponent = this.getHeaderComponent(key);
 			if (headerComponent) {
 				headerComponent.setSelected(false);
 			}
@@ -328,7 +355,7 @@ export default class SelectionHandler<TExtraProps = undefined> {
 
 		// Select specific headers
 		toSelect.forEach(key => {
-			const headerComponent = this.headerComponents.get(key);
+			const headerComponent = this.getHeaderComponent(key);
 			if (headerComponent) {
 				headerComponent.setSelected(true);
 			}

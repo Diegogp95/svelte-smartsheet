@@ -21,19 +21,23 @@ import SelectionHandler from './SelectionHandler';
 import DataHandler from './DataHandler';
 import type { SelectionChangedCallback } from './SelectionHandler';
 import type { PointerPositionCallback, AutoScrollSelectionCallback } from './NavigationHandler';
-import { ColorHandler } from './ColorHandler';
+import ColorHandler from './ColorHandler';
 
 // Main Controller - Mediates between navigation and selection
-export default class SmartSheetController<TExtraProps = undefined> {
+export default class SmartSheetController<TExtraProps = undefined,
+    TRowHeaderProps = undefined, TColHeaderProps = undefined> {
     private gridDimensions: GridDimensions;
     private cellComponents: Map<string, CellComponent<TExtraProps>>;
     private backgroundComponents: Map<string, CellBackgroundComponent>;
-    private navigationHandler: NavigationHandler<TExtraProps>;
-    private selectionHandler: SelectionHandler<TExtraProps>;
+    private navigationHandler: NavigationHandler<TExtraProps, TRowHeaderProps, TColHeaderProps>;
+    private selectionHandler: SelectionHandler<TExtraProps, TRowHeaderProps, TColHeaderProps>;
     private inputAnalyzer: InputAnalyzer;
-    private dataHandler: DataHandler<TExtraProps>;
-    private colorHandler: ColorHandler<TExtraProps>;
-    private headerComponents: Map<string, HeaderComponent>;
+    private dataHandler: DataHandler<TExtraProps, TRowHeaderProps, TColHeaderProps>;
+    private colorHandler: ColorHandler<TExtraProps, TRowHeaderProps, TColHeaderProps>;
+    // Separate header components by type for different extraProps handling
+    private rowHeaderComponents: Map<string, HeaderComponent<TRowHeaderProps>>;
+    private colHeaderComponents: Map<string, HeaderComponent<TColHeaderProps>>;
+    private cornerHeaderComponent: HeaderComponent | null;
     private headerBackgroundComponents: Map<string, HeaderBackgroundComponent>;
 
     constructor(initialDimensions: GridDimensions,
@@ -44,19 +48,46 @@ export default class SmartSheetController<TExtraProps = undefined> {
         this.cellComponents = new Map();
         this.backgroundComponents = new Map();
         this.gridDimensions = initialDimensions;
-        this.headerComponents = new Map();
+        // Initialize separate header component maps
+        this.rowHeaderComponents = new Map();
+        this.colHeaderComponents = new Map();
+        this.cornerHeaderComponent = null;
         this.headerBackgroundComponents = new Map();
 
-        // Initialize handlers with shared references
-        this.selectionHandler = new SelectionHandler<TExtraProps>(this.cellComponents,
-            this.headerComponents,
-            onSelectionsChanged, onDeselectionsChanged);
-        this.navigationHandler = new NavigationHandler<TExtraProps>(
-            this.gridDimensions, this.cellComponents,
-            this.headerComponents, pointerPositionCallback, this.handleDocumentMouseMove, this.handleAutoScrollSelection);
+        // Initialize handlers with separate header types
+        this.selectionHandler = new SelectionHandler<TExtraProps, TRowHeaderProps, TColHeaderProps>(
+            this.cellComponents,
+            this.rowHeaderComponents,
+            this.colHeaderComponents,
+            this.cornerHeaderComponent,
+            onSelectionsChanged,
+            onDeselectionsChanged
+        );
+        this.navigationHandler = new NavigationHandler<TExtraProps, TRowHeaderProps, TColHeaderProps>(
+            this.gridDimensions,
+            this.cellComponents,
+            this.rowHeaderComponents,
+            this.colHeaderComponents,
+            this.cornerHeaderComponent,
+            pointerPositionCallback,
+            this.handleDocumentMouseMove,
+            this.handleAutoScrollSelection
+        );
         this.inputAnalyzer = new InputAnalyzer();
-        this.dataHandler = new DataHandler<TExtraProps>(this.cellComponents, this.headerComponents);
-        this.colorHandler = new ColorHandler<TExtraProps>(this.cellComponents, this.backgroundComponents);
+        this.dataHandler = new DataHandler<TExtraProps, TRowHeaderProps, TColHeaderProps>(
+            this.cellComponents,
+            this.rowHeaderComponents,
+            this.colHeaderComponents,
+            this.cornerHeaderComponent
+        );
+        this.colorHandler = new ColorHandler<TExtraProps, TRowHeaderProps, TColHeaderProps>(
+            this.cellComponents,
+            this.backgroundComponents,
+            this.rowHeaderComponents,
+            this.colHeaderComponents,
+            this.cornerHeaderComponent,
+            this.headerBackgroundComponents
+        );
 
         // Setup clipboard event handlers
         this.setupClipboardHandlers();
@@ -211,16 +242,34 @@ export default class SmartSheetController<TExtraProps = undefined> {
         this.backgroundComponents.delete(key);
     }
 
-    // Register header component (called from SmartSheet.svelte)
-    registerHeader(headerComponent: HeaderComponent) {
-        const key = `${headerComponent.position.headerType}-${headerComponent.position.index}`;
-        this.headerComponents.set(key, headerComponent);
+    // Register header components separately by type (called from SmartSheet.svelte)
+    registerRowHeader(headerComponent: HeaderComponent<TRowHeaderProps>) {
+        const key = `row-${headerComponent.position.index}`;
+        this.rowHeaderComponents.set(key, headerComponent);
     }
 
-    // Unregister header component (for cleanup)
-    unregisterHeader(headerComponent: HeaderComponent) {
-        const key = `${headerComponent.position.headerType}-${headerComponent.position.index}`;
-        this.headerComponents.delete(key);
+    registerColHeader(headerComponent: HeaderComponent<TColHeaderProps>) {
+        const key = `col-${headerComponent.position.index}`;
+        this.colHeaderComponents.set(key, headerComponent);
+    }
+
+    registerCornerHeader(headerComponent: HeaderComponent) {
+        this.cornerHeaderComponent = headerComponent;
+    }
+
+    // Unregister header components separately by type (for cleanup)
+    unregisterRowHeader(headerComponent: HeaderComponent<TRowHeaderProps>) {
+        const key = `row-${headerComponent.position.index}`;
+        this.rowHeaderComponents.delete(key);
+    }
+
+    unregisterColHeader(headerComponent: HeaderComponent<TColHeaderProps>) {
+        const key = `col-${headerComponent.position.index}`;
+        this.colHeaderComponents.delete(key);
+    }
+
+    unregisterCornerHeader(headerComponent: HeaderComponent) {
+        this.cornerHeaderComponent = null;
     }
 
     // Update container reference
@@ -671,6 +720,141 @@ export default class SmartSheetController<TExtraProps = undefined> {
         options?: FlashOptions
     ): void {
         this.colorHandler.applyFlashEffect(flashGenerator, options);
+    }
+
+    // ==================== HEADER STYLING API ====================
+
+    // Row header styling methods
+    setRowHeaderBackgroundColor(row: number, color: string): void {
+        this.colorHandler.changeRowHeaderBackgroundColor(row, color);
+    }
+
+    setRowHeaderTextColor(row: number, color: string): void {
+        this.colorHandler.changeRowHeaderTextColor(row, color);
+    }
+
+    setRowHeaderStyle(row: number, props: BackgroundProperties): void {
+        this.colorHandler.setRowHeaderBackgroundProperties(row, props);
+    }
+
+    setRowHeaderTailwindStyle(row: number, props: TailwindProperties): void {
+        this.colorHandler.setRowHeaderTailwindProperties(row, props);
+    }
+
+    // Column header styling methods
+    setColHeaderBackgroundColor(col: number, color: string): void {
+        this.colorHandler.changeColHeaderBackgroundColor(col, color);
+    }
+
+    setColHeaderTextColor(col: number, color: string): void {
+        this.colorHandler.changeColHeaderTextColor(col, color);
+    }
+
+    setColHeaderStyle(col: number, props: BackgroundProperties): void {
+        this.colorHandler.setColHeaderBackgroundProperties(col, props);
+    }
+
+    setColHeaderTailwindStyle(col: number, props: TailwindProperties): void {
+        this.colorHandler.setColHeaderTailwindProperties(col, props);
+    }
+
+    // Corner header styling methods
+    setCornerHeaderBackgroundColor(color: string): void {
+        this.colorHandler.changeCornerHeaderBackgroundColor(color);
+    }
+
+    setCornerHeaderTextColor(color: string): void {
+        this.colorHandler.changeCornerHeaderTextColor(color);
+    }
+
+    setCornerHeaderStyle(props: BackgroundProperties): void {
+        this.colorHandler.setCornerHeaderBackgroundProperties(props);
+    }
+
+    setCornerHeaderTailwindStyle(props: TailwindProperties): void {
+        this.colorHandler.setCornerHeaderTailwindProperties(props);
+    }
+
+    // Batch header styles via generators
+    applyRowHeaderBackgroundStyles(
+        styleGenerator: (headers: Map<string, HeaderComponent<TRowHeaderProps>>) => [number, BackgroundProperties][]
+    ): void {
+        this.colorHandler.applyRowHeaderBackgroundStyles(styleGenerator);
+    }
+
+    applyColHeaderBackgroundStyles(
+        styleGenerator: (headers: Map<string, HeaderComponent<TColHeaderProps>>) => [number, BackgroundProperties][]
+    ): void {
+        this.colorHandler.applyColHeaderBackgroundStyles(styleGenerator);
+    }
+
+    applyRowHeaderTailwindStyles(
+        styleGenerator: (headers: Map<string, HeaderComponent<TRowHeaderProps>>) => [number, TailwindProperties][]
+    ): void {
+        this.colorHandler.applyRowHeaderTailwindStyles(styleGenerator);
+    }
+
+    applyColHeaderTailwindStyles(
+        styleGenerator: (headers: Map<string, HeaderComponent<TColHeaderProps>>) => [number, TailwindProperties][]
+    ): void {
+        this.colorHandler.applyColHeaderTailwindStyles(styleGenerator);
+    }
+
+    // Reset header styles
+    resetHeaderStyles(): void {
+        this.colorHandler.resetHeaderStyles();
+    }
+
+    // Reset all styles (cells and headers)
+    resetAllStyles(): void {
+        this.colorHandler.resetAllStyles();
+    }
+
+    // ==================== HEADER + ROW/COLUMN STYLING API ====================
+
+    // Style row header and all cells in that row
+    styleRowHeaderAndCells(row: number, headerProps: BackgroundProperties, cellProps: BackgroundProperties): void {
+        this.colorHandler.styleRowHeaderAndCells(row, headerProps, cellProps);
+    }
+
+    // Style column header and all cells in that column
+    styleColHeaderAndCells(col: number, headerProps: BackgroundProperties, cellProps: BackgroundProperties): void {
+        this.colorHandler.styleColHeaderAndCells(col, headerProps, cellProps);
+    }
+
+    // Style row header and all cells in that row with Tailwind classes
+    styleRowHeaderAndCellsTailwind(row: number, headerProps: TailwindProperties, cellProps: TailwindProperties): void {
+        this.colorHandler.styleRowHeaderAndCellsTailwind(row, headerProps, cellProps);
+    }
+
+    // Style column header and all cells in that column with Tailwind classes
+    styleColHeaderAndCellsTailwind(col: number, headerProps: TailwindProperties, cellProps: TailwindProperties): void {
+        this.colorHandler.styleColHeaderAndCellsTailwind(col, headerProps, cellProps);
+    }
+
+    // Batch header + cells styles via generators
+    applyRowHeaderAndCellsBackgroundStyles(
+        styleGenerator: (headers: Map<string, HeaderComponent<TRowHeaderProps>>) => [number, BackgroundProperties, BackgroundProperties][]
+    ): void {
+        this.colorHandler.applyRowHeaderAndCellsBackgroundStyles(styleGenerator);
+    }
+
+    applyColHeaderAndCellsBackgroundStyles(
+        styleGenerator: (headers: Map<string, HeaderComponent<TColHeaderProps>>) => [number, BackgroundProperties, BackgroundProperties][]
+    ): void {
+        this.colorHandler.applyColHeaderAndCellsBackgroundStyles(styleGenerator);
+    }
+
+    applyRowHeaderAndCellsTailwindStyles(
+        styleGenerator: (headers: Map<string, HeaderComponent<TRowHeaderProps>>) => [number, TailwindProperties, TailwindProperties][]
+    ): void {
+        this.colorHandler.applyRowHeaderAndCellsTailwindStyles(styleGenerator);
+    }
+
+    applyColHeaderAndCellsTailwindStyles(
+        styleGenerator: (headers: Map<string, HeaderComponent<TColHeaderProps>>) => [number, TailwindProperties, TailwindProperties][]
+    ): void {
+        this.colorHandler.applyColHeaderAndCellsTailwindStyles(styleGenerator);
     }
 
 }

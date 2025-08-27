@@ -138,20 +138,47 @@ class ValueValidator {
 
 // ==================== DATA HANDLER CLASS ====================
 
-export default class DataHandler<TExtraProps = undefined> {
+export default class DataHandler<TExtraProps = undefined, TRowHeaderProps = undefined, TColHeaderProps = undefined> {
     private cellComponents: Map<string, CellComponent<TExtraProps>>;
     private editingCell: CellComponent<TExtraProps> | null = null;
     private validator: ValueValidator;
     private historyManager: HistoryManager;
-    private headerComponents: Map<string, HeaderComponent>;
+    // Separate header components by type
+    private rowHeaderComponents: Map<string, HeaderComponent<TRowHeaderProps>>;
+    private colHeaderComponents: Map<string, HeaderComponent<TColHeaderProps>>;
+    private cornerHeaderComponent: HeaderComponent | null;
 
-    constructor(cellComponents: Map<string, CellComponent<TExtraProps>>,
-        headerComponents: Map<string, HeaderComponent>
+    constructor(
+        cellComponents: Map<string, CellComponent<TExtraProps>>,
+        rowHeaderComponents: Map<string, HeaderComponent<TRowHeaderProps>>,
+        colHeaderComponents: Map<string, HeaderComponent<TColHeaderProps>>,
+        cornerHeaderComponent: HeaderComponent | null
     ) {
         this.cellComponents = cellComponents;
-        this.headerComponents = headerComponents;
+        this.rowHeaderComponents = rowHeaderComponents;
+        this.colHeaderComponents = colHeaderComponents;
+        this.cornerHeaderComponent = cornerHeaderComponent;
         this.validator = new ValueValidator();
         this.historyManager = new HistoryManager();
+    }
+
+    // Helper method to get header component from any of the header maps
+    private getHeaderComponent(key: string): HeaderComponent<any> | null {
+        // Try row headers
+        let headerComponent: HeaderComponent<any> | undefined = this.rowHeaderComponents.get(key);
+        if (headerComponent) return headerComponent;
+
+        // Try column headers
+        headerComponent = this.colHeaderComponents.get(key);
+        if (headerComponent) return headerComponent;
+
+        // Try corner header if the key matches
+        if (this.cornerHeaderComponent) {
+            const cornerKey = `${this.cornerHeaderComponent.position.headerType}-${this.cornerHeaderComponent.position.index}`;
+            if (key === cornerKey) return this.cornerHeaderComponent;
+        }
+
+        return null;
     }
 
     private setCellEditing(cellComponent: CellComponent<TExtraProps>): void {
@@ -601,7 +628,7 @@ export default class DataHandler<TExtraProps = undefined> {
      */
     startEditingHeader(position: HeaderPosition, startKey?: string) {
         const key = this.getHeaderKey(position);
-        const headerComponent = this.headerComponents.get(key);
+        const headerComponent = this.getHeaderComponent(key);
 
         if (!headerComponent) {
             console.warn(`[DataHandler] Header component not found for key: ${key}`);
@@ -634,7 +661,7 @@ export default class DataHandler<TExtraProps = undefined> {
      */
     endEditingHeader(position: HeaderPosition) {
         const key = this.getHeaderKey(position);
-        const headerComponent = this.headerComponents.get(key);
+        const headerComponent = this.getHeaderComponent(key);
 
         if (!headerComponent) {
             console.warn(`[DataHandler] Header component not found for endEditingHeader: ${key}`);
@@ -665,7 +692,7 @@ export default class DataHandler<TExtraProps = undefined> {
      */
     generateChangesHeader(position: HeaderPosition, newValue: HeaderValue): HeaderComponent | null {
         const key = this.getHeaderKey(position);
-        const headerComponent = this.headerComponents.get(key);
+        const headerComponent = this.getHeaderComponent(key);
 
         if (!headerComponent) {
             console.warn(`[DataHandler] Header component not found for generateChangesHeader: ${key}`);
@@ -690,7 +717,7 @@ export default class DataHandler<TExtraProps = undefined> {
      */
     isHeaderInEditingMode(position: HeaderPosition): boolean {
         const key = this.getHeaderKey(position);
-        const headerComponent = this.headerComponents.get(key);
+        const headerComponent = this.getHeaderComponent(key);
 
         return headerComponent ? headerComponent.editing : false;
     }
@@ -702,7 +729,7 @@ export default class DataHandler<TExtraProps = undefined> {
      */
     finishHeaderEdit(position: HeaderPosition, action: 'commit' | 'cancel' | 'blur'): boolean {
         const key = this.getHeaderKey(position);
-        const headerComponent = this.headerComponents.get(key);
+        const headerComponent = this.getHeaderComponent(key);
 
         if (!headerComponent) {
             console.warn(`[DataHandler] Header component not found for finishHeaderEdit: ${key}`);
@@ -811,7 +838,7 @@ export default class DataHandler<TExtraProps = undefined> {
      */
     setHeaderValue(position: HeaderPosition, newValue: HeaderValue): boolean {
         const key = this.getHeaderKey(position);
-        const headerComponent = this.headerComponents.get(key);
+        const headerComponent = this.getHeaderComponent(key);
 
         if (!headerComponent) {
             console.warn(`[DataHandler] Header component not found for setHeaderValue: ${key}`);

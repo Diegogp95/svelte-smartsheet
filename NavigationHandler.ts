@@ -11,11 +11,11 @@ import type {
     OutsideScrollAnalysis,
 } from './types';
 
-export type PointerPositionCallback = (handler: NavigationHandler<any>) => void;
+export type PointerPositionCallback = (handler: NavigationHandler<any, any, any>) => void;
 export type DocumentMouseMoveCallback = (event: MouseEvent) => void;
 export type AutoScrollSelectionCallback = (position: GridPosition) => void;
 
-export default class NavigationHandler<TExtraProps = undefined> {
+export default class NavigationHandler<TExtraProps = undefined, TRowHeaderProps = undefined, TColHeaderProps = undefined> {
     private gridDimensions: GridDimensions;
     private navigationState: NavigationState;
     private tableContainer: HTMLDivElement | undefined;
@@ -23,7 +23,10 @@ export default class NavigationHandler<TExtraProps = undefined> {
     private rowsHeaderContainer: HTMLDivElement | undefined;
     private cellComponents: Map<string, CellComponent<TExtraProps>>;
     private pointerPositionCallback?: PointerPositionCallback;
-    private headerComponents: Map<string, HeaderComponent>;
+    // Separate header components by type
+    private rowHeaderComponents: Map<string, HeaderComponent<TRowHeaderProps>>;
+    private colHeaderComponents: Map<string, HeaderComponent<TColHeaderProps>>;
+    private cornerHeaderComponent: HeaderComponent | null;
 
     // Outside dragging listeners
     private tableMouseEnterListener?: (event: MouseEvent) => void;
@@ -32,15 +35,21 @@ export default class NavigationHandler<TExtraProps = undefined> {
     private documentMouseMoveCallback?: DocumentMouseMoveCallback;
     private autoScrollSelectionCallback?: AutoScrollSelectionCallback;
 
-    constructor(gridDimensions: GridDimensions, cellComponents: Map<string, CellComponent<TExtraProps>>,
-        headerComponents: Map<string, HeaderComponent>,
+    constructor(
+        gridDimensions: GridDimensions,
+        cellComponents: Map<string, CellComponent<TExtraProps>>,
+        rowHeaderComponents: Map<string, HeaderComponent<TRowHeaderProps>>,
+        colHeaderComponents: Map<string, HeaderComponent<TColHeaderProps>>,
+        cornerHeaderComponent: HeaderComponent | null,
         pointerPositionCallback?: PointerPositionCallback,
         documentMouseMoveCallback?: DocumentMouseMoveCallback,
         autoScrollSelectionCallback?: AutoScrollSelectionCallback
     ) {
         this.gridDimensions = gridDimensions;
         this.cellComponents = cellComponents;
-        this.headerComponents = headerComponents;
+        this.rowHeaderComponents = rowHeaderComponents;
+        this.colHeaderComponents = colHeaderComponents;
+        this.cornerHeaderComponent = cornerHeaderComponent;
         this.navigationState = {
             pointerPosition: { row: 0, col: 0 },
             anchorPosition: { row: 0, col: 0 },

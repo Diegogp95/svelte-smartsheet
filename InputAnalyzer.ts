@@ -424,8 +424,8 @@ export default class InputAnalyzer {
         minInterval: number,
         maxInterval: number
     ): number {
-        // Use 100px as reference distance for speed calculation
-        const referenceDistance = 100;
+        // Use 50px as reference distance for speed calculation
+        const referenceDistance = 50;
 
         // Normalize distance: 0 at edge, 1.0 at reference distance
         const normalizedDistance = Math.min(distance / referenceDistance, 1);
