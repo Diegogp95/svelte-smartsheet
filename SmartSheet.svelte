@@ -1,6 +1,6 @@
 <script lang="ts" generics="TExtraProps = undefined, TRowHeaderProps = undefined, TColHeaderProps = undefined">
     import Cell from './Cell.svelte';
-    import CellBackground from './CellBackground.svelte';
+    import InputCell from './InputCell.svelte';
     import CellPointer from './CellPointer.svelte';
     import Header from './Header.svelte';
     import NavigationOverlay from './NavigationOverlay.svelte';
@@ -8,6 +8,8 @@
     import { Selection } from './SelectionHandler';
     import type { SelectionChangedCallback } from './SelectionHandler';
     import type { PointerPositionCallback } from './NavigationHandler';
+    import type { VisibleComponentsCallback } from './VirtualizeHandler';
+    import type { EditingStateCallback } from './DataHandler';
     import type {
         GridPosition,
         CellMouseEvent,
@@ -17,26 +19,36 @@
         HeaderMouseEvent,
         HeaderPosition,
         HeaderValue,
+        VisibleComponents,
+        FlashOptions,
+        BackgroundProperties,
+        TailwindProperties,
     } from './types';
     import SelectionRect from './SelectionRect.svelte';
     import DeselectionRect from './DeselectionRect.svelte';
-    import HeaderBackground from './HeaderBackground.svelte';
-    import { onMount } from 'svelte';
+    import { tick } from 'svelte';
+    import DimensionScanner from './DimensionScanner.svelte';
 
     // Data
     export let gridData: (CellValue | undefined)[][];
-    export let extraPropsMatrix: (TExtraProps | undefined)[][] | undefined = undefined;
-    export let rowHeaderExtraProps: (TRowHeaderProps | undefined)[] | undefined = undefined;
-    export let colHeaderExtraProps: (TColHeaderProps | undefined)[] | undefined = undefined;
+    export let extraPropsMatrix: TExtraProps[][] | undefined = undefined;
+    export let rowHeaderExtraProps: TRowHeaderProps[] | undefined = undefined;
+    export let colHeaderExtraProps: TColHeaderProps[] | undefined = undefined;
 
     // Header configuration
-    export let columnHeaders: (HeaderValue | undefined)[] | undefined = undefined;
-    export let rowHeaders: (HeaderValue | undefined)[] | undefined = undefined;
+    export let columnHeaders: HeaderValue[] | undefined = undefined;
+    export let rowHeaders: HeaderValue[] | undefined = undefined;
     export let rowsTitle: string = ''; // Title for the row headers column
     export let headersReadOnly: boolean = true;
 
     // Configuration
     export let fontSize: string = '1rem'; // Default font size for cells and headers
+    export let styleMode: 'style' | 'tailwind' = 'style'; // Choose between inline styles or Tailwind CSS classes
+
+    // Scan phase
+    let scanning: boolean = true;
+    let rowHeights: number[] = [];
+    let colWidths: number[] = [];
 
     // Selections array to render, will be subscribed to controller's selections by a callback
     let selections: Selection[] = [];
@@ -57,14 +69,45 @@
         deSelection = handler.getDeselection();
     };
 
+    // EDITING STATE: Centralized editing state managed by DataHandler
+    let currentEditingPosition: GridPosition | null = null;
+    let currentEditingCell: CellComponent<TExtraProps> | null = null;
+    // Callback to get editing state from DataHandler
+    const subscribeToEditingState: EditingStateCallback = (handler) => {
+        currentEditingPosition = handler.getCurrentEditingPosition();
+        currentEditingCell = handler.getCurrentEditingCell();
+//        console.log('currentEditingCell', currentEditingCell);
+//        console.log('currentEditingPosition', currentEditingPosition);
+//        console.log('currentEditingInputValue', currentEditingInputValue);
+    };
+
+    // VIRTUALIZATION: Visible components and render area state managed by VirtualizeHandler
+    let visibleComponents: VisibleComponents<TExtraProps, TRowHeaderProps, TColHeaderProps> = {
+        cells: [],
+        rowHeaders: [],
+        colHeaders: [],
+        cornerHeader: undefined
+    };
+
+    // Callback to get visible components from VirtualizeHandler
+    const subscribeToVisibleComponents: VisibleComponentsCallback<TExtraProps, TRowHeaderProps, TColHeaderProps> = (handler) => {
+        visibleComponents = handler.getVisibleComponents();
+    };
+
     // Create controller with grid dimensions
     let controller = new SmartSheetController<TExtraProps, TRowHeaderProps, TColHeaderProps>({
         maxRow: gridData.length - 1,
         maxCol: (gridData[0]?.length || 1) - 1
-    }, subscribeToSelections, subscribeToPointerPosition, subscribeToDeselection);
+    }, gridData as CellValue[][], rowHeaders, columnHeaders, rowsTitle,
+    extraPropsMatrix, rowHeaderExtraProps, colHeaderExtraProps, styleMode,
+    subscribeToSelections, subscribeToPointerPosition, subscribeToDeselection,
+    subscribeToVisibleComponents, undefined, subscribeToEditingState);
+
     let tableContainer: HTMLDivElement;
     let columnsHeaderContainer: HTMLDivElement;
     let rowsHeaderContainer: HTMLDivElement;
+    let mainGridContainer: HTMLDivElement;
+    let Element: HTMLDivElement;
 
     // Reactive states managed by controller
     let navigationMode = false;
@@ -100,11 +143,6 @@
         if (!related || !tableContainer.contains(related)) {
             navigationMode = controller.deactivateNavigation();
         }
-    }
-
-    // Handle keyboard navigation
-    function handleKeyDown(event: KeyboardEvent) {
-        controller.handleKeyDown(event);
     }
 
     // Handle cell input keydown events
@@ -148,7 +186,10 @@
         }
     }
 
-    // PUBLIC API - Methods exposed for external control
+    // =============================================================================================
+    // ===================== PUBLIC API - Methods exposed for external control =====================
+    // =============================================================================================
+
     export function selectPositions(positions: GridPosition[]) {
         controller.selectPositions(positions);
     }
@@ -174,7 +215,7 @@
     }
 
     export function colorizeCellTailwind(position: GridPosition, bg: string) {
-        controller.setCellTailwindBackgroundColor(position, [bg]);
+        controller.setCellTailwindBackgroundColor(position, bg);
     }
 
     // Batch styling helpers exposed
@@ -231,28 +272,57 @@
     }
 
     // Batch header + cells styling APIs
-    export function applyRowHeaderAndCellsBackgroundStyles(styleGenerator: (headers: Map<string, HeaderComponent<TRowHeaderProps>>) => [number, any, any][]): void {
+    export function applyRowHeaderAndCellsBackgroundStyles(styleGenerator: (headers: Map<string,
+    HeaderComponent<TRowHeaderProps>>) => [number, BackgroundProperties, BackgroundProperties][]): void {
         controller.applyRowHeaderAndCellsBackgroundStyles(styleGenerator as any);
     }
 
-    export function applyColHeaderAndCellsBackgroundStyles(styleGenerator: (headers: Map<string, HeaderComponent<TColHeaderProps>>) => [number, any, any][]): void {
+    export function applyColHeaderAndCellsBackgroundStyles(styleGenerator: (headers: Map<string,
+    HeaderComponent<TColHeaderProps>>) => [number, BackgroundProperties, BackgroundProperties][]): void {
         controller.applyColHeaderAndCellsBackgroundStyles(styleGenerator as any);
     }
 
-    export function applyRowHeaderAndCellsTailwindStyles(styleGenerator: (headers: Map<string, HeaderComponent<TRowHeaderProps>>) => [number, any, any][]): void {
+    export function applyRowHeaderAndCellsTailwindStyles(styleGenerator: (headers: Map<string,
+    HeaderComponent<TRowHeaderProps>>) => [number, TailwindProperties, TailwindProperties][]): void {
         controller.applyRowHeaderAndCellsTailwindStyles(styleGenerator as any);
     }
 
-    export function applyColHeaderAndCellsTailwindStyles(styleGenerator: (headers: Map<string, HeaderComponent<TColHeaderProps>>) => [number, any, any][]): void {
+    export function applyColHeaderAndCellsTailwindStyles(styleGenerator: (headers: Map<string,
+    HeaderComponent<TColHeaderProps>>) => [number, TailwindProperties, TailwindProperties][]): void {
         controller.applyColHeaderAndCellsTailwindStyles(styleGenerator as any);
     }
 
-    // Bind containers references with the controller on mount
-    onMount(() => {
-        controller.setTableContainer(tableContainer);
-        controller.setColumnsHeaderContainer(columnsHeaderContainer);
-        controller.setRowsHeaderContainer(rowsHeaderContainer);
-    });
+    // Flash effect APIs
+    export function flashCells(positions: GridPosition[], options?: FlashOptions) {
+        controller.flashCells(positions, options);
+    }
+
+    export function flashHeaders(positions: HeaderPosition[], options?: FlashOptions) {
+        controller.flashHeaders(positions, options);
+    }
+
+    function initializeVirtualizerOnTableMount(event: CustomEvent<{ rowHeights: number[], colWidths: number[] }>) {
+        rowHeights = event.detail.rowHeights;
+        colWidths = event.detail.colWidths;
+        scanning = false;
+
+        // Initialize VirtualizeHandler now that dimensions are available
+        // We need to wait for the next tick to ensure tableContainer is available
+        // We also need to bind the tableContainer and the columns/rows header containers
+        tick().then(() => {
+            if (tableContainer) {
+                controller.initializeVirtualization(
+                    tableContainer,
+                    rowHeights,
+                    colWidths,
+                );
+                controller.setUpNavigator(tableContainer, rowHeights, colWidths);
+                controller.setColumnsHeaderContainer(columnsHeaderContainer);
+                controller.setRowsHeaderContainer(rowsHeaderContainer);
+                controller.setMainGridContainer(mainGridContainer);
+            }
+        });
+    }
 
 </script>
 
@@ -264,31 +334,42 @@
     }
 </style>
 
+{#if scanning}
+    <!-- Phase to scan dimensions -->
+    <DimensionScanner
+        {gridData}
+        {columnHeaders}
+        {rowHeaders}
+        {rowsTitle}
+        {fontSize}
+        on:done={initializeVirtualizerOnTableMount}
+    />
+{:else}
+
 <div class="h-full w-full max-h-full relative">
     <!-- Scroll container for large tables -->
     <div
         bind:this={tableContainer}
-        class="relative overflow-auto max-h-full max-w-full border border-tertiaryOnBg bg-tertiaryBg outline-none
-            overscroll-contain"
+        class="relative max-h-full max-w-full border border-tertiaryOnBg
+            bg-tertiaryBg outline-none text-tertiaryOnBg
+            overflow-auto overscroll-contain"
         tabindex="-1"
         class:active-state={navigationMode}
         on:focusout={handleFocusOut}
-        on:keydown={handleKeyDown}
-        on:wheel={(e) => {
-            if (!navigationMode) {
-                e.preventDefault();
-            }
-        }}
-        style="font-size: {fontSize};"
+        on:keydown={(e) => controller.handleKeyDown(e)}
+        on:scroll={(e) => controller.handleVirtualizationScroll()}
+        style="font-size: {fontSize}; overflow-anchor: none;"
     >
         <!-- Parent grid with subgrid support -->
         <div
             class="parent-grid"
             style="
                 display: grid;
-                grid-template-columns: auto repeat({gridData[0]?.length || 1}, auto);
-                grid-template-rows: auto repeat({gridData.length}, auto);
+                grid-template-columns: {colWidths.map(w => w + 'px').join(' ')};
+                grid-template-rows: {rowHeights.map(h => h + 'px').join(' ')};
                 gap: 0;
+                width: {colWidths.reduce((sum, w) => sum + w, 0)}px;
+                height: {rowHeights.reduce((sum, h) => sum + h, 0)}px;
             "
         >
             <!-- Top-Left Corner -->
@@ -300,23 +381,18 @@
                     grid-row: 1;
                     grid-template-columns: subgrid;
                 "
+                on:mousedown={(e) => controller.handleCornerHeaderMouseEvent(e, 'mousedown')}
+                on:contextmenu={(e) => controller.handleCornerHeaderMouseEvent(e, 'contextmenu')}
+                on:auxclick={(e) => e.button === 1 && controller.handleCornerHeaderMouseEvent(e, 'middleclick')}
             >
-                <div class="flex z-20" style="grid-row: 1; grid-column: 1;">
-                    <Header
-                        position={{ headerType: 'corner', index: 0 }}
-                        value={rowsTitle}
-                        readOnly={true}
-                        onHeaderCreation={(header) => controller.registerCornerHeader(header)}
-                        onHeaderDestruction={(header) => controller.unregisterCornerHeader(header)}
-                    />
-                </div>
-                <div class="flex z-10" style="grid-row: 1; grid-column: 1;">
-                    <HeaderBackground
-                        position={{ headerType: 'corner', index: 0 }}
-                        onBackgroundCreation={(bg) => controller.registerHeaderBackground(bg)}
-                        onBackgroundDestruction={(bg) => controller.unregisterHeaderBackground(bg)}
-                    />
-                </div>
+            {#if visibleComponents.cornerHeader}
+                <Header
+                    position={visibleComponents.cornerHeader.position}
+                    value={visibleComponents.cornerHeader.value}
+                    styling={visibleComponents.cornerHeader.styles.styling}
+                    tailwindStyling={visibleComponents.cornerHeader.styles.tailwindStyling}
+                />
+            {/if}
             </div>
 
             <!-- Columns Headers -->
@@ -329,30 +405,21 @@
                     grid-row: 1;
                     grid-template-columns: subgrid;
                 "
+                on:mousedown={(e) => controller.handleColHeaderMouseEvent(e, 'mousedown')}
+                on:mouseenter={(e) => controller.handleColHeaderMouseEvent(e, 'mouseenter')}
+                on:mouseup={(e) => controller.handleColHeaderMouseEvent(e, 'mouseup')}
+                on:contextmenu={(e) => controller.handleColHeaderMouseEvent(e, 'contextmenu')}
+                on:auxclick={(e) => e.button === 1 && controller.handleColHeaderMouseEvent(e, 'middleclick')}
+                on:mousemove={(e) => controller.handleUnifiedMouseMove(e, 'colHeaders')}
+                on:mouseleave={() => controller.handleContainerMouseLeave('colHeaders')}
             >
-                {#each gridData[0] || [] as _, colIndex}
-                    <div class="flex z-20" style="grid-row: 1; grid-column: {colIndex + 1};">
-                        <Header
-                            position={{ headerType: 'col', index: colIndex }}
-                            value={columnHeaders?.[colIndex]}
-                            extraProps={colHeaderExtraProps?.[colIndex]}
-                            readOnly={headersReadOnly}
-                            onHeaderCreation={(header) => controller.registerColHeader(header)}
-                            onHeaderDestruction={(header) => controller.unregisterColHeader(header)}
-                            on:headerInteraction={handleMouseEvent}
-                            on:headerDoubleClick={handleMouseEvent}
-                            on:inputBlur={handleHeaderInputBlur}
-                            on:inputKeyCommit={handleHeaderInputKeyCommand}
-                            on:inputKeyCancel={handleHeaderInputKeyCommand}
-                        />
-                    </div>
-                    <div class="flex z-10" style="grid-row: 1; grid-column: {colIndex + 1};">
-                        <HeaderBackground
-                            position={{ headerType: 'col', index: colIndex }}
-                            onBackgroundCreation={(bg) => controller.registerHeaderBackground(bg)}
-                            onBackgroundDestruction={(bg) => controller.unregisterHeaderBackground(bg)}
-                        />
-                    </div>
+                {#each visibleComponents.colHeaders as headerComponent}
+                    <Header
+                        position={headerComponent.position}
+                        value={headerComponent.value}
+                        styling={headerComponent.styles.styling}
+                        tailwindStyling={headerComponent.styles.tailwindStyling}
+                    />
                 {/each}
             </div>
 
@@ -366,30 +433,21 @@
                     grid-row: 2 / -1;
                     grid-template-rows: subgrid;
                 "
+                on:mousedown={(e) => controller.handleRowHeaderMouseEvent(e, 'mousedown')}
+                on:mouseenter={(e) => controller.handleRowHeaderMouseEvent(e, 'mouseenter')}
+                on:mouseup={(e) => controller.handleRowHeaderMouseEvent(e, 'mouseup')}
+                on:contextmenu={(e) => controller.handleRowHeaderMouseEvent(e, 'contextmenu')}
+                on:auxclick={(e) => e.button === 1 && controller.handleRowHeaderMouseEvent(e, 'middleclick')}
+                on:mousemove={(e) => controller.handleUnifiedMouseMove(e, 'rowHeaders')}
+                on:mouseleave={() => controller.handleContainerMouseLeave('rowHeaders')}
             >
-                {#each gridData as _, rowIndex}
-                    <div class="flex z-20" style="grid-row: {rowIndex + 1}; grid-column: 1;">
-                        <Header
-                            position={{ headerType: 'row', index: rowIndex }}
-                            value={rowHeaders?.[rowIndex]}
-                            extraProps={rowHeaderExtraProps?.[rowIndex]}
-                            readOnly={headersReadOnly}
-                            onHeaderCreation={(header) => controller.registerRowHeader(header)}
-                            onHeaderDestruction={(header) => controller.unregisterRowHeader(header)}
-                            on:headerInteraction={handleMouseEvent}
-                            on:headerDoubleClick={handleMouseEvent}
-                            on:inputBlur={handleHeaderInputBlur}
-                            on:inputKeyCommit={handleHeaderInputKeyCommand}
-                            on:inputKeyCancel={handleHeaderInputKeyCommand}
-                        />
-                    </div>
-                    <div class="flex z-10" style="grid-row: {rowIndex + 1}; grid-column: 1;">
-                        <HeaderBackground
-                            position={{ headerType: 'row', index: rowIndex }}
-                            onBackgroundCreation={(bg) => controller.registerHeaderBackground(bg)}
-                            onBackgroundDestruction={(bg) => controller.unregisterHeaderBackground(bg)}
-                        />
-                    </div>
+                {#each visibleComponents.rowHeaders as headerComponent}
+                    <Header
+                        position={headerComponent.position}
+                        value={headerComponent.value}
+                        styling={headerComponent.styles.styling}
+                        tailwindStyling={headerComponent.styles.tailwindStyling}
+                    />
                 {/each}
             </div>
 
@@ -409,7 +467,8 @@
 
             <!-- Main grid as subgrid (tu grid actual sin cambios) -->
             <div
-                class="main-grid text-tertiaryOnBg"
+                bind:this={mainGridContainer}
+                class="main-grid"
                 style="
                     display: grid;
                     grid-column: 2 / -1;
@@ -418,38 +477,38 @@
                     grid-template-rows: subgrid;
                     gap: 0;
                 "
+                on:mousedown={(e) => controller.handleMainGridMouseEvent(e, 'mousedown')}
+                on:mouseenter={(e) => controller.handleMainGridMouseEvent(e, 'mouseenter')}
+                on:mouseup={(e) => controller.handleMainGridMouseEvent(e, 'mouseup')}
+                on:dblclick={(e) => controller.handleMainGridMouseEvent(e, 'dblclick')}
+                on:contextmenu={(e) => controller.handleMainGridMouseEvent(e, 'contextmenu')}
+                on:auxclick={(e) => e.button === 1 && controller.handleMainGridMouseEvent(e, 'middleclick')}
+                on:mousemove={(e) => controller.handleUnifiedMouseMove(e, 'main')}
+                on:mouseleave={() => controller.handleContainerMouseLeave('main')}
             >
-                {#each gridData as row, rowIndex}
-                    {#each row as cellValue, colIndex}
-                        <div class="flex z-[5]" style="grid-row: {rowIndex + 1}; grid-column: {colIndex + 1};">
-                            <Cell
-                                value={cellValue}
-                                position={{ row: rowIndex, col: colIndex }}
-                                extraProps={extraPropsMatrix?.[rowIndex]?.[colIndex]}
-                                onCellCreation={(cell) => controller.registerCell(cell)}
-                                onCellDestruction={(cell) => controller.unregisterCell(cell)}
-                                on:cellInteraction={handleMouseEvent}
-                                on:cellDoubleClick={handleMouseEvent}
-                                on:inputBlur={handleCellInputBlur}
-                                on:inputKeyCommit={handleCellInputKeyCommand}
-                                on:inputKeyCancel={handleCellInputKeyCommand}
-                            />
-                        </div>
-                    {/each}
-                {/each}
-
-                <!-- Background components for styling (lower priority than selections and pointer) -->
-                {#each gridData as row, rowIndex}
-                    {#each row as cellValue, colIndex}
-                        <div class="flex z-[1]" style="grid-row: {rowIndex + 1}; grid-column: {colIndex + 1};">
-                            <!-- Background component for each cell -->
-                            <CellBackground
-                                position={{ row: rowIndex, col: colIndex }}
-                                onBackgroundCreation={(bg) => controller.registerBackground(bg)}
-                                onBackgroundDestruction={(bg) => controller.unregisterBackground(bg)}
-                            />
-                        </div>
-                    {/each}
+                <!-- Render InputCell if existing -->
+                {#if currentEditingPosition && currentEditingCell}
+                    <InputCell
+                        position={currentEditingPosition}
+                        styling={currentEditingCell.styles.styling}
+                        tailwindStyling={currentEditingCell.styles.tailwindStyling}
+                        on:inputBlur={handleCellInputBlur}
+                        on:inputKeyCommit={handleCellInputKeyCommand}
+                        on:inputKeyCancel={handleCellInputKeyCommand}
+                    />
+                {/if}
+                <!-- Render visible cells from VirtualizeHandler -->
+                {#each visibleComponents.cells as cellComponent}
+                    <!-- Only render if the cell is not being edited -->
+                    {#if !(currentEditingPosition && currentEditingPosition.row === cellComponent.position.row
+                        && currentEditingPosition.col === cellComponent.position.col)}
+                        <Cell
+                            position={cellComponent.position}
+                            value={cellComponent.value}
+                            styling={cellComponent.styles.styling}
+                            tailwindStyling={cellComponent.styles.tailwindStyling}
+                        />
+                    {/if}
                 {/each}
 
                 <!-- Overlaid pointer -->
@@ -482,3 +541,4 @@
     />
 
 </div>
+{/if}

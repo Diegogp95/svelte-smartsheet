@@ -7,6 +7,11 @@ import type {
     HeaderValue,
 } from './types';
 import { CellChange, ChangeSet, HistoryManager } from './HistoryManager';
+import { tick } from 'svelte';
+
+// Callback type for editing state changes
+export type EditingStateCallback<TExtraProps, TRowHeaderProps, TColHeaderProps> =
+    (handler: DataHandler<TExtraProps, TRowHeaderProps, TColHeaderProps>) => void;
 
 // Types for validation results
 interface ValidationResult {
@@ -37,13 +42,13 @@ class ValueValidator {
         }
 
         // Auto-detection: try in order of specificity
-        // 1. Try boolean first (most specific)
-        const boolResult = this.tryParseBoolean(inputValue);
-        if (boolResult.isValid) return boolResult;
-
-        // 2. Try number (integers and floats)
+        // 1. Try number first (0 and 1 should be numbers, not booleans)
         const numberResult = this.tryParseNumber(inputValue);
         if (numberResult.isValid) return numberResult;
+
+        // 2. Try boolean second (but exclude pure numeric strings)
+        const boolResult = this.tryParseBoolean(inputValue);
+        if (boolResult.isValid) return boolResult;
 
         // 3. Default to string (always valid)
         return { isValid: true, value: inputValue, detectedType: 'string' };
@@ -74,13 +79,18 @@ class ValueValidator {
     private tryParseBoolean(inputValue: string): ValidationResult {
         const lower = inputValue.toLowerCase().trim();
 
-        // True values
-        if (['true', '1', 'yes', 'y', 'on', 'sí', 'si'].includes(lower)) {
+        // Exclude pure numeric strings - these should be parsed as numbers
+        if (/^\d+$/.test(lower)) {
+            return { isValid: false, error: 'Pure numeric value, should be parsed as number' };
+        }
+
+        // True values (excluding '1' which should be a number)
+        if (['true', 'yes', 'y', 'on', 'sí', 'si'].includes(lower)) {
             return { isValid: true, value: true, detectedType: 'boolean' };
         }
 
-        // False values
-        if (['false', '0', 'no', 'n', 'off'].includes(lower)) {
+        // False values (excluding '0' which should be a number)
+        if (['false', 'no', 'n', 'off'].includes(lower)) {
             return { isValid: true, value: false, detectedType: 'boolean' };
         }
 
@@ -140,7 +150,6 @@ class ValueValidator {
 
 export default class DataHandler<TExtraProps = undefined, TRowHeaderProps = undefined, TColHeaderProps = undefined> {
     private cellComponents: Map<string, CellComponent<TExtraProps>>;
-    private editingCell: CellComponent<TExtraProps> | null = null;
     private validator: ValueValidator;
     private historyManager: HistoryManager;
     // Separate header components by type
@@ -148,11 +157,18 @@ export default class DataHandler<TExtraProps = undefined, TRowHeaderProps = unde
     private colHeaderComponents: Map<string, HeaderComponent<TColHeaderProps>>;
     private cornerHeaderComponent: HeaderComponent | null;
 
+    // Centralized editing state
+    private editingPosition: GridPosition | null = null;
+    private editingCell: CellComponent<TExtraProps> | null = null;
+    private inputHTMLElement: HTMLInputElement | null = null;
+    private editingStateCallback?: EditingStateCallback<TExtraProps, TRowHeaderProps, TColHeaderProps>;
+
     constructor(
         cellComponents: Map<string, CellComponent<TExtraProps>>,
         rowHeaderComponents: Map<string, HeaderComponent<TRowHeaderProps>>,
         colHeaderComponents: Map<string, HeaderComponent<TColHeaderProps>>,
-        cornerHeaderComponent: HeaderComponent | null
+        cornerHeaderComponent: HeaderComponent | null,
+        editingStateCallback?: EditingStateCallback<TExtraProps, TRowHeaderProps, TColHeaderProps>,
     ) {
         this.cellComponents = cellComponents;
         this.rowHeaderComponents = rowHeaderComponents;
@@ -160,6 +176,7 @@ export default class DataHandler<TExtraProps = undefined, TRowHeaderProps = unde
         this.cornerHeaderComponent = cornerHeaderComponent;
         this.validator = new ValueValidator();
         this.historyManager = new HistoryManager();
+        this.editingStateCallback = editingStateCallback;
     }
 
     // Helper method to get header component from any of the header maps
@@ -181,22 +198,29 @@ export default class DataHandler<TExtraProps = undefined, TRowHeaderProps = unde
         return null;
     }
 
-    private setCellEditing(cellComponent: CellComponent<TExtraProps>): void {
-        if (!cellComponent.editing) {
-            cellComponent.setEditing(true);
-        }
-        this.editingCell = cellComponent;
+
+    // Helper methods for centralized editing state
+    getCurrentEditingPosition(): GridPosition | null {
+        return this.editingPosition;
     }
 
-    private setCellNotEditing(cellComponent: CellComponent<TExtraProps>): void {
-        if (cellComponent.editing) {
-            cellComponent.setEditing(false);
-            // Clear editingCell reference if it matches
-            if (this.editingCell &&
-                this.editingCell.position.row === cellComponent.position.row &&
-                this.editingCell.position.col === cellComponent.position.col) {
-                this.editingCell = null;
-            }
+    getCurrentEditingCell(): CellComponent<TExtraProps> | null {
+        return this.editingCell;
+    }
+
+    getCurrentInputHTMLElement(): HTMLInputElement | null {
+        return this.inputHTMLElement;
+    }
+
+    isEditingPosition(position: GridPosition): boolean {
+        return this.editingPosition !== null &&
+               this.editingPosition.row === position.row &&
+               this.editingPosition.col === position.col;
+    }
+
+    private notifyEditingStateChange(): void {
+        if (this.editingStateCallback) {
+            this.editingStateCallback(this);
         }
     }
 
@@ -204,59 +228,54 @@ export default class DataHandler<TExtraProps = undefined, TRowHeaderProps = unde
         const key = `${position.row}-${position.col}`;
         const cellComponent = this.cellComponents.get(key);
         if (cellComponent) {
-            if (this.editingCell) {
-                this.endEditingCell(this.editingCell.position);
+            // End any current editing
+            if (this.editingPosition) {
+                this.endEditingCell();
             }
-            this.setCellEditing(cellComponent);
-            cellComponent.setInputFocus();
-            if (startKey) {
-                // Set initial input value based on startKey or erase existing value if key is backspace
-                cellComponent.setInputValue(startKey === 'Backspace' ? '' : startKey);
-            }
+
+            // Set new editing state
+            this.editingPosition = position;
+            this.editingCell = cellComponent;
+            // Wait for the DOM to update
+            tick().then(() => {
+                const inputElement = document.querySelector('#cell-input');
+                console.log('Found input element:', inputElement);
+                if (inputElement instanceof HTMLInputElement) {
+                    this.inputHTMLElement = inputElement;
+                    this.inputHTMLElement.value = startKey ?
+                        (startKey === 'Backspace' ? '' : startKey) :
+                        String(cellComponent.value ?? '');
+                    this.inputHTMLElement.focus();
+                    this.inputHTMLElement.select();
+                }
+            });
+            // Notify state change
+            this.notifyEditingStateChange();
         }
     }
 
-    endEditingCell(position: GridPosition) {
-        const key = `${position.row}-${position.col}`;
-        const cellComponent = this.cellComponents.get(key);
-        if (cellComponent && cellComponent.editing) {
-            cellComponent.setEditing(false);
-            // Clear editingCell reference if it matches
-            if (this.editingCell && 
-                this.editingCell.position.row === position.row && 
-                this.editingCell.position.col === position.col) {
-                this.editingCell = null;
-            }
-        }
-    }
+    endEditingCell(position?: GridPosition) {
+        // Clear centralized editing state regardless of position validation
+        this.editingPosition = null;
+        this.editingCell = null;
+        this.inputHTMLElement = null;
 
-    /**
-     * Generate changes for a cell by setting its inputValue to newValue.
-     * For artificially generating changes (like deletion), this method can be used
-     * and take advantage of existing commit/validation logic.
-     */
-    generateChangesCell(position: GridPosition, newValue: CellValue): CellComponent<TExtraProps> | null {
-        const key = `${position.row}-${position.col}`;
-        const cellComponent = this.cellComponents.get(key);
-        if (!cellComponent) {
-            return null;
-        }
-        const oldValue = cellComponent.value;
-        // Set inputValue to null to use existing methods
-        cellComponent.setInputValue(newValue);
-
-        return cellComponent;
+        // Notify state change
+        this.notifyEditingStateChange();
     }
 
     deleteCellsValues(positions: GridPosition[]) {
-        const changedCells: CellComponent<TExtraProps>[] = [];
+        const changes: Array<{ cell: CellComponent<TExtraProps>, inputValue: string }> = [];
         for (const position of positions) {
-            const cellComponent = this.generateChangesCell(position, null);
+            const key = `${position.row}-${position.col}`;
+            const cellComponent = this.cellComponents.get(key);
             if (cellComponent) {
-                changedCells.push(cellComponent);
+                // Use empty string as inputValue which will be validated as null/empty
+                changes.push({ cell: cellComponent, inputValue: '' });
             }
         }
-        const commitSuccess = this.attemptCommitCells(changedCells, undefined, 'delete');
+
+        const commitSuccess = this.attemptCommitCells(changes, undefined, 'delete');
     }
 
     /**
@@ -271,7 +290,7 @@ export default class DataHandler<TExtraProps = undefined, TRowHeaderProps = unde
             return false;
         }
 
-        const changedCells: CellComponent<TExtraProps>[] = [];
+        const changes: Array<{ cell: CellComponent<TExtraProps>, inputValue: string }> = [];
         const maxRows = pasteData.length;
 
         // Process each row of paste data
@@ -288,23 +307,24 @@ export default class DataHandler<TExtraProps = undefined, TRowHeaderProps = unde
                     col: startPosition.col + colOffset
                 };
 
-                const pasteValue = rowData[colOffset];
-                const cellComponent = this.generateChangesCell(targetPosition, pasteValue);
+                const key = `${targetPosition.row}-${targetPosition.col}`;
+                const cellComponent = this.cellComponents.get(key);
 
                 if (cellComponent) {
-                    changedCells.push(cellComponent);
+                    const pasteValue = rowData[colOffset];
+                    // Convert CellValue to string for inputValue
+                    const inputValue = pasteValue === null ? '' : String(pasteValue);
+                    changes.push({ cell: cellComponent, inputValue });
                 }
             }
         }
 
-        if (changedCells.length === 0) {
+        if (changes.length === 0) {
             return false;
         }
 
         // Attempt to commit all changes
-        const commitSuccess = this.attemptCommitCells(changedCells, expectedType, 'paste');
-        if (commitSuccess) {
-        }
+        const commitSuccess = this.attemptCommitCells(changes, expectedType, 'paste');
 
         return commitSuccess;
     }
@@ -389,7 +409,7 @@ export default class DataHandler<TExtraProps = undefined, TRowHeaderProps = unde
             for (const pos of rowPositions) {
                 const key = `${pos.row}-${pos.col}`;
                 const cellComponent = this.cellComponents.get(key);
-                const value = cellComponent?.value || '';
+                const value = cellComponent?.value ?? '';
                 rowData.push(String(value));
             }
 
@@ -409,41 +429,57 @@ export default class DataHandler<TExtraProps = undefined, TRowHeaderProps = unde
      * @param expectedType - Optional expected type for validation
      */
     finishCellEdit(position: GridPosition, action: 'commit' | 'cancel' | 'blur', expectedType?: ExpectedType): boolean {
+        // Validate that we're currently editing this position
+        if (!this.editingPosition ||
+            this.editingPosition.row !== position.row ||
+            this.editingPosition.col !== position.col) {
+            return false;
+        }
+
         const key = `${position.row}-${position.col}`;
         const cellComponent = this.cellComponents.get(key);
+        let inputValue: string | undefined;
+        let commitSuccess: boolean = false;
 
-        if (!cellComponent || !cellComponent.editing) {
+        if (!cellComponent) {
             return false;
         }
 
         switch (action) {
             case 'cancel':
-                // Discard changes - revert inputValue to original value
-                cellComponent.setInputValue(cellComponent.value);
-                this.setCellNotEditing(cellComponent);
+                // Discard changes - use centralized reset method
+                this.endEditingCell();
                 return true;
 
             case 'commit':
                 // Force commit - only if there are changes, keep in editing if validation fails
-                if (cellComponent.inputValue === cellComponent.value) {
-                    this.setCellNotEditing(cellComponent);
+                if (this.inputHTMLElement && this.inputHTMLElement.value === cellComponent.value) {
+                    this.endEditingCell();
                     return true;
                 }
-                const commitSuccess = this.attemptCommitCells([cellComponent], expectedType);
-                if (commitSuccess) {
-                    this.setCellNotEditing(cellComponent);
-                }
+                inputValue = this.inputHTMLElement?.value;
+                const changesToCommit = [{
+                    cell: cellComponent,
+                    inputValue: inputValue ?? ''
+                }];
+                commitSuccess = this.attemptCommitCells(changesToCommit, expectedType);
+                this.endEditingCell();
                 return commitSuccess;
 
             case 'blur':
                 // Exit editing regardless, but only commit if validation passes and there are changes
-                if (cellComponent.inputValue === cellComponent.value) {
-                    this.setCellNotEditing(cellComponent);
+                if (this.inputHTMLElement && this.inputHTMLElement.value === cellComponent.value) {
+                    this.endEditingCell();
                     return true;
                 }
-                this.attemptCommitCells([cellComponent], expectedType);
-                this.setCellNotEditing(cellComponent);
-                return true; // Always return true for blur, even if commit failed
+                inputValue = this.inputHTMLElement?.value;
+                const blurChangesToCommit = [{
+                    cell: cellComponent,
+                    inputValue: inputValue ?? ''
+                }];
+                commitSuccess = this.attemptCommitCells(blurChangesToCommit, expectedType);
+                this.endEditingCell();
+                return commitSuccess;
 
             default:
                 return false;
@@ -453,23 +489,32 @@ export default class DataHandler<TExtraProps = undefined, TRowHeaderProps = unde
     /**
      * Attempt to commit multiple cell edits - if any fails, entire commit fails
      */
-    private attemptCommitCells(cells: CellComponent<TExtraProps>[], expectedType?: ExpectedType,
-        changeType: 'single-edit' | 'paste' | 'delete' | 'format' | 'other' = 'single-edit'): boolean {
+    private attemptCommitCells(
+        changes: Array<{ cell: CellComponent<TExtraProps>, inputValue: string }>,
+        expectedType?: ExpectedType,
+        changeType: 'single-edit' | 'paste' | 'delete' | 'format' | 'other' = 'single-edit'
+    ): boolean {
 
-        // First pass: validate all cells
-        for (const cell of cells) {
-            const inputValue = cell.inputValue;
-            const inputString = inputValue === null ? '' : String(inputValue);
-            const validationResult = this.validator.validate(inputString, expectedType);
+        // First pass: validate all changes and prepare commit data
+        const validatedChanges: Array<{ cell: CellComponent<TExtraProps>, newValue: CellValue }> = [];
+
+        for (const change of changes) {
+            const validationResult = this.validator.validate(change.inputValue, expectedType);
 
             if (!validationResult.isValid) {
-                // If any cell fails validation, fail entire commit
+                // If any change fails validation, fail entire commit
                 return false;
             }
+
+            // Add validated change with parsed value
+            validatedChanges.push({
+                cell: change.cell,
+                newValue: validationResult.value!
+            });
         }
 
         // All validations passed, commit the changes
-        return this.commitCellChanges(cells, changeType);
+        return this.commitCellChanges(validatedChanges, changeType);
     }
 
     // ==================== HISTORY METHODS ====================
@@ -477,27 +522,45 @@ export default class DataHandler<TExtraProps = undefined, TRowHeaderProps = unde
     /**
      * Undo the last change
      */
-    undo(): GridPosition[] {
+    undo(): [GridPosition[] | HeaderPosition[], 'cell' | 'header'] {
         const changeSet = this.historyManager.undo();
-        if (changeSet) {
-            this.revertChangeSet(changeSet);
-            // Return affected positions
-            return changeSet.changes.map(change => change.position);
+        // Detect type of changes (cell or header) based on first change
+        let componentType: 'cell' | 'header';
+        if (changeSet && changeSet.changes.length > 0) {
+            const firstChange = changeSet.changes[0];
+            if (firstChange.position.hasOwnProperty('row') && firstChange.position.hasOwnProperty('col')) {
+                componentType = 'cell';
+            } else { // Assume header if not cell
+                componentType = 'header';
+            }
+            this.revertChangeSet(changeSet, componentType);
+            // Return affected positions (we are sure it's one of the two types)
+            return [changeSet.changes.map(change => change.position
+                ) as (GridPosition[] | HeaderPosition[]), componentType]
         }
-        return [];
+        return [[], 'cell']; // Return empty array and default type if no undo available
     }
 
     /**
      * Redo the next change
      */
-    redo(): GridPosition[] {
+    redo(): [GridPosition[] | HeaderPosition[], 'cell' | 'header'] {
         const changeSet = this.historyManager.redo();
-        if (changeSet) {
-            this.applyChangeSet(changeSet);
-            // Return affected positions
-            return changeSet.changes.map(change => change.position);
+        //  Detect type of changes (cell or header) based on first change
+        let componentType: 'cell' | 'header';
+        if (changeSet && changeSet.changes.length > 0) {
+            const firstChange = changeSet.changes[0];
+            if (firstChange.position.hasOwnProperty('row') && firstChange.position.hasOwnProperty('col')) {
+                componentType = 'cell';
+            } else {
+                componentType = 'header';
+            }
+            this.applyChangeSet(changeSet, componentType);
+            // Return affected positions (we are sure it's one of the two types)
+            return [changeSet.changes.map(change => change.position
+                ) as (GridPosition[] | HeaderPosition[]), componentType];
         }
-        return [];
+        return [[], 'cell']; // Return empty array and default type if no redo available
     }
 
     /**
@@ -524,20 +587,28 @@ export default class DataHandler<TExtraProps = undefined, TRowHeaderProps = unde
     /**
      * Apply a change set (used for redo)
      */
-    private applyChangeSet(changeSet: ChangeSet): void {
+    private applyChangeSet(changeSet: ChangeSet, type?: 'cell' | 'header'): void {
         for (const change of changeSet.changes) {
-            this.applyCellValueDirectly(change.position, change.newValue);
+            if (type === 'cell') {
+                this.applyCellValueDirectly(change.position as GridPosition, change.newValue);
+            } else if (type === 'header') {
+                this.applyHeaderValueDirectly(change.position as HeaderPosition, change.newValue as HeaderValue);
+            }
         }
     }
 
     /**
      * Revert a change set (used for undo)
      */
-    private revertChangeSet(changeSet: ChangeSet): void {
+    private revertChangeSet(changeSet: ChangeSet, type?: 'cell' | 'header'): void {
         // Apply changes in reverse order for complex operations
         for (let i = changeSet.changes.length - 1; i >= 0; i--) {
             const change = changeSet.changes[i];
-            this.applyCellValueDirectly(change.position, change.oldValue);
+            if (type === 'cell') {
+                this.applyCellValueDirectly(change.position as GridPosition, change.oldValue);
+            } else if (type === 'header') {
+                this.applyHeaderValueDirectly(change.position as HeaderPosition, change.oldValue as HeaderValue);
+            }
         }
     }
 
@@ -547,326 +618,62 @@ export default class DataHandler<TExtraProps = undefined, TRowHeaderProps = unde
     private applyCellValueDirectly(position: GridPosition, value: CellValue): void {
         const key = `${position.row}-${position.col}`;
         const cellComponent = this.cellComponents.get(key);
+        console.log(`Applying value directly to cell ${key}:`, value);
         if (cellComponent) {
-            // Update both value and inputValue to keep them in sync
-            cellComponent.setValue(value);
-            cellComponent.setInputValue(value);
+            // Update the cell's value directly
+            cellComponent.value = value;
+        }
+    }
+
+    /**
+     * Apply a value to a header without adding to history
+     */
+    private applyHeaderValueDirectly(position: HeaderPosition, value: HeaderValue): void {
+        const key = `${position.headerType}-${position.index}`;
+        const headerComponent = this.getHeaderComponent(key);
+        if (headerComponent) {
+            // Update the header's value directly
+            headerComponent.value = value;
         }
     }
 
     // ==================== COMMIT METHODS ====================
 
     /**
-     * Process cell changes: create ChangeSet from cells and apply changes
+     * Process cell changes: create ChangeSet from changes and apply changes
      */
-    commitCellChanges(cells: CellComponent<TExtraProps>[], type: 'single-edit' | 'paste' | 'delete' | 'format' | 'other'): boolean {
-        // Create CellChange array from cells using their interface
-        const changes: CellChange[] = [];
+    commitCellChanges(
+        changes: Array<{ cell: CellComponent<TExtraProps>, newValue: CellValue }>,
+        type: 'single-edit' | 'paste' | 'delete' | 'format' | 'other'): boolean {
+        // Create CellChange array from the provided changes
+        const cellChanges: CellChange[] = [];
 
-        for (const cell of cells) {
-            const oldValue = cell.value;
-            const newValue = cell.inputValue;
+        for (const change of changes) {
+            const oldValue = change.cell.value;
+            const newValue = change.newValue;
 
             // Only create change if value actually changed
             if (oldValue !== newValue) {
-                changes.push(new CellChange(cell.position, oldValue, newValue));
+                cellChanges.push(new CellChange(change.cell.position, oldValue, newValue));
             }
         }
 
         // If no actual changes, return early
-        if (changes.length === 0) {
+        if (cellChanges.length === 0) {
             return true;
         }
 
         // Create ChangeSet
-        const changeSet = new ChangeSet(changes, type);
+        const changeSet = new ChangeSet(cellChanges, type);
+        console.log('Committing ChangeSet:', changeSet);
 
         // Add to history
         this.historyManager.add(changeSet);
 
         // Apply changes
-        this.applyChangeSet(changeSet);
+        this.applyChangeSet(changeSet, 'cell');
 
         return true;
-    }
-
-    // ==================== HEADER MANAGEMENT ====================
-
-    private editingHeader: HeaderComponent | null = null;
-
-    private setHeaderEditing(headerComponent: HeaderComponent): void {
-        if (!headerComponent.editing && !headerComponent.readOnly) {
-            headerComponent.setEditing(true);
-        }
-        this.editingHeader = headerComponent;
-    }
-
-    private setHeaderNotEditing(headerComponent: HeaderComponent): void {
-        if (headerComponent.editing) {
-            headerComponent.setEditing(false);
-
-            // Clear editingHeader reference if it matches
-            if (this.editingHeader &&
-                this.editingHeader.position.index === headerComponent.position.index &&
-                this.editingHeader.position.headerType === headerComponent.position.headerType) {
-                this.editingHeader = null;
-            }
-        }
-    }
-
-    /**
-     * Generate header key from HeaderPosition
-     */
-    private getHeaderKey(position: HeaderPosition): string {
-        return `${position.headerType}-${position.index}`;
-    }
-
-    /**
-     * Start editing a header cell
-     * @param position - HeaderPosition of the header to edit
-     * @param startKey - Optional initial key to set as input value
-     */
-    startEditingHeader(position: HeaderPosition, startKey?: string) {
-        const key = this.getHeaderKey(position);
-        const headerComponent = this.getHeaderComponent(key);
-
-        if (!headerComponent) {
-            console.warn(`[DataHandler] Header component not found for key: ${key}`);
-            return;
-        }
-
-        if (headerComponent.readOnly) {
-            console.warn(`[DataHandler] Cannot edit readonly header: ${key}`);
-            return;
-        }
-
-        if (headerComponent && !headerComponent.readOnly) {
-            if (this.editingHeader) {
-                this.endEditingHeader(this.editingHeader.position);
-            }
-
-            this.setHeaderEditing(headerComponent);
-            headerComponent.setInputFocus();
-
-            if (startKey) {
-                const newInputValue = startKey === 'Backspace' ? '' : startKey;
-                headerComponent.setInputValue(newInputValue);
-            }
-        }
-    }
-
-    /**
-     * End editing a header cell without committing changes
-     * @param position - HeaderPosition of the header to stop editing
-     */
-    endEditingHeader(position: HeaderPosition) {
-        const key = this.getHeaderKey(position);
-        const headerComponent = this.getHeaderComponent(key);
-
-        if (!headerComponent) {
-            console.warn(`[DataHandler] Header component not found for endEditingHeader: ${key}`);
-            return;
-        }
-
-        if (!headerComponent.editing) {
-            return;
-        }
-
-        if (headerComponent && headerComponent.editing) {
-            headerComponent.setEditing(false);
-
-            // Clear editingHeader reference if it matches
-            if (this.editingHeader &&
-                this.editingHeader.position.index === position.index &&
-                this.editingHeader.position.headerType === position.headerType) {
-                this.editingHeader = null;
-            }
-        }
-    }
-
-    /**
-     * Generate changes for a header by setting its inputValue to newValue
-     * @param position - HeaderPosition of the header to change
-     * @param newValue - New value for the header
-     * @returns HeaderComponent if found, null otherwise
-     */
-    generateChangesHeader(position: HeaderPosition, newValue: HeaderValue): HeaderComponent | null {
-        const key = this.getHeaderKey(position);
-        const headerComponent = this.getHeaderComponent(key);
-
-        if (!headerComponent) {
-            console.warn(`[DataHandler] Header component not found for generateChangesHeader: ${key}`);
-            return null;
-        }
-
-        if (headerComponent.readOnly) {
-            console.warn(`[DataHandler] Cannot generate changes for readonly header: ${key}`);
-            return null;
-        }
-
-        // Set inputValue to use existing validation/commit logic
-        headerComponent.setInputValue(newValue);
-
-        return headerComponent;
-    }
-
-    /**
-     * Check if a header is currently in editing mode
-     * @param position - Position of the header to check
-     * @returns true if the header is in editing mode, false otherwise
-     */
-    isHeaderInEditingMode(position: HeaderPosition): boolean {
-        const key = this.getHeaderKey(position);
-        const headerComponent = this.getHeaderComponent(key);
-
-        return headerComponent ? headerComponent.editing : false;
-    }
-
-    /**
-     * Handle end of header editing - decides whether to commit or discard based on action
-     * @param position - Position of the header being edited
-     * @param action - What triggered the end of editing ('commit', 'cancel', 'blur')
-     */
-    finishHeaderEdit(position: HeaderPosition, action: 'commit' | 'cancel' | 'blur'): boolean {
-        const key = this.getHeaderKey(position);
-        const headerComponent = this.getHeaderComponent(key);
-
-        if (!headerComponent) {
-            console.warn(`[DataHandler] Header component not found for finishHeaderEdit: ${key}`);
-            return false;
-        }
-
-        if (!headerComponent.editing) {
-            console.warn(`[DataHandler] Header not in editing mode: ${key}`, {
-                headerEditing: headerComponent.editing,
-                editingHeaderExists: !!this.editingHeader,
-                editingHeaderMatches: this.editingHeader ?
-                    (this.editingHeader.position.index === position.index &&
-                     this.editingHeader.position.headerType === position.headerType) : false
-            });
-            return false;
-        }
-
-        if (headerComponent.readOnly) {
-            console.warn(`[DataHandler] Cannot finish edit on readonly header: ${key}`);
-            return false;
-        }
-
-        switch (action) {
-            case 'cancel':
-                // Discard changes - revert inputValue to original value
-                headerComponent.setInputValue(headerComponent.value);
-                this.setHeaderNotEditing(headerComponent);
-                return true;
-
-            case 'commit':
-                // Force commit - only if there are changes, keep in editing if validation fails
-                if (headerComponent.inputValue === headerComponent.value) {
-                    this.setHeaderNotEditing(headerComponent);
-                    return true;
-                }
-
-                const commitSuccess = this.attemptCommitHeader(headerComponent);
-
-                if (commitSuccess) {
-                    this.setHeaderNotEditing(headerComponent);
-                } else {
-                    console.warn(`[DataHandler] Header commit failed - staying in edit mode`);
-                }
-                return commitSuccess;
-
-            case 'blur':
-                // Exit editing regardless, but only commit if validation passes and there are changes
-                if (headerComponent.inputValue === headerComponent.value) {
-                    this.setHeaderNotEditing(headerComponent);
-                    return true;
-                }
-
-                const blurCommitSuccess = this.attemptCommitHeader(headerComponent);
-
-                this.setHeaderNotEditing(headerComponent);
-                return true; // Always return true for blur, even if commit failed
-
-            default:
-                console.warn(`[DataHandler] Unknown action for finishHeaderEdit: ${action}`);
-                return false;
-        }
-    }
-
-    /**
-     * Attempt to commit a header edit - validates and applies the change
-     * @param headerComponent - HeaderComponent to commit
-     * @returns boolean indicating success
-     */
-    private attemptCommitHeader(headerComponent: HeaderComponent): boolean {
-        const key = this.getHeaderKey(headerComponent.position);
-
-        if (headerComponent.readOnly) {
-            console.warn(`[DataHandler] Cannot commit readonly header: ${key}`);
-            return false;
-        }
-
-        // Validate header value using the specialized validator
-        const inputValueStr = String(headerComponent.inputValue);
-
-        const validationResult = this.validator.validateHeader(inputValueStr);
-
-        if (!validationResult.isValid) {
-            console.warn(`[DataHandler] Header validation failed: ${validationResult.error}`);
-            return false;
-        }
-
-        // Use the validated value
-        const finalValue = validationResult.value as HeaderValue;
-        const oldValue = headerComponent.value;
-
-        // Commit the change
-        headerComponent.setValue(finalValue);
-        headerComponent.setInputValue(finalValue);
-
-        // Trigger visual feedback
-        headerComponent.triggerFlash();
-
-        return true;
-    }
-
-    /**
-     * Set a header value directly (programmatic API)
-     * @param position - HeaderPosition of the header to update
-     * @param newValue - New value for the header
-     * @returns boolean indicating success
-     */
-    setHeaderValue(position: HeaderPosition, newValue: HeaderValue): boolean {
-        const key = this.getHeaderKey(position);
-        const headerComponent = this.getHeaderComponent(key);
-
-        if (!headerComponent) {
-            console.warn(`[DataHandler] Header component not found for setHeaderValue: ${key}`);
-            return false;
-        }
-
-        if (headerComponent.readOnly) {
-            console.warn(`[DataHandler] Cannot set value on readonly header: ${key}`);
-            return false;
-        }
-
-        const oldValue = headerComponent.value;
-
-        headerComponent.setValue(newValue);
-        headerComponent.setInputValue(newValue);
-
-        // Trigger visual feedback
-        headerComponent.triggerFlash();
-
-        return true;
-    }
-
-    /**
-     * Get current editing header (if any)
-     * @returns HeaderComponent currently being edited or null
-     */
-    getCurrentEditingHeader(): HeaderComponent | null {
-        return this.editingHeader;
     }
 
     // ==================== IMPUTATION APIS ====================
@@ -881,19 +688,22 @@ export default class DataHandler<TExtraProps = undefined, TRowHeaderProps = unde
             return [];
         }
 
-        const changedCells: CellComponent<TExtraProps>[] = [];
+        const changes: Array<{ cell: CellComponent<TExtraProps>, inputValue: string }> = [];
 
         for (const [position, newValue] of imputations) {
-            const cellComponent = this.generateChangesCell(position, newValue);
+            const key = `${position.row}-${position.col}`;
+            const cellComponent = this.cellComponents.get(key);
             if (cellComponent) {
-                changedCells.push(cellComponent);
+                // Convert CellValue to string for inputValue
+                const inputValue = newValue === null ? '' : String(newValue);
+                changes.push({ cell: cellComponent, inputValue });
             }
         }
 
-        const success = this.attemptCommitCells(changedCells, undefined, 'other');
+        const success = this.attemptCommitCells(changes, undefined, 'other');
         if (success) {
             // Return positions of successfully changed cells
-            return changedCells.map(cell => cell.position);
+            return changes.map(change => change.cell.position);
         }
         return [];
     }

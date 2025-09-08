@@ -2,7 +2,6 @@ import type {
     GridPosition,
     GridDimensions,
     CellComponent,
-    CellBackgroundComponent,
     RawKeyboardAnalysis,
     CellMouseEvent,
     CellValue,
@@ -12,49 +11,80 @@ import type {
     HeaderComponent,
     HeaderMouseEvent,
     HeaderValue,
-    HeaderBackgroundComponent,
     FlashOptions,
+    GridMouseInteractionType,
 } from './types';
 import InputAnalyzer from './InputAnalyzer';
+import MouseEventTranslator from './MouseEventTranslator';
 import NavigationHandler from './NavigationHandler';
 import SelectionHandler from './SelectionHandler';
 import DataHandler from './DataHandler';
 import type { SelectionChangedCallback } from './SelectionHandler';
 import type { PointerPositionCallback, AutoScrollSelectionCallback } from './NavigationHandler';
+import type { EditingStateCallback } from './DataHandler';
 import ColorHandler from './ColorHandler';
+import VirtualizeHandler from './VirtualizeHandler';
+import type { VisibleComponentsCallback, RenderAreaCallback } from './VirtualizeHandler';
 
 // Main Controller - Mediates between navigation and selection
 export default class SmartSheetController<TExtraProps = undefined,
     TRowHeaderProps = undefined, TColHeaderProps = undefined> {
-    private gridDimensions: GridDimensions;
-    private cellComponents: Map<string, CellComponent<TExtraProps>>;
-    private backgroundComponents: Map<string, CellBackgroundComponent>;
+    // Handlers
     private navigationHandler: NavigationHandler<TExtraProps, TRowHeaderProps, TColHeaderProps>;
     private selectionHandler: SelectionHandler<TExtraProps, TRowHeaderProps, TColHeaderProps>;
-    private inputAnalyzer: InputAnalyzer;
     private dataHandler: DataHandler<TExtraProps, TRowHeaderProps, TColHeaderProps>;
     private colorHandler: ColorHandler<TExtraProps, TRowHeaderProps, TColHeaderProps>;
-    // Separate header components by type for different extraProps handling
-    private rowHeaderComponents: Map<string, HeaderComponent<TRowHeaderProps>>;
+    private virtualizeHandler: VirtualizeHandler<TExtraProps, TRowHeaderProps, TColHeaderProps>;
+    private inputAnalyzer: InputAnalyzer;
+    private mouseEventTranslator: MouseEventTranslator;
+    // Data
+    private cellComponents: Map<string, CellComponent<TExtraProps>>;
     private colHeaderComponents: Map<string, HeaderComponent<TColHeaderProps>>;
-    private cornerHeaderComponent: HeaderComponent | null;
-    private headerBackgroundComponents: Map<string, HeaderBackgroundComponent>;
+    private rowHeaderComponents: Map<string, HeaderComponent<TRowHeaderProps>>;
+    private cornerHeaderComponent: HeaderComponent;
+    // Props
+    private gridDimensions: GridDimensions;
+    // Separate header components by type for different extraProps handling
+    // Style
+    private styleMode: 'style' | 'tailwind'; // Default to inline styles
 
     constructor(initialDimensions: GridDimensions,
+        gridData: CellValue[][],
+        rowHeaders: HeaderValue[] | undefined,
+        colHeaders: HeaderValue[] | undefined,
+        rowsTitle: string | undefined,
+        cellsExtraProps: TExtraProps[][] | undefined,
+        rowHeaderProps: TRowHeaderProps[] | undefined,
+        colHeaderProps: TColHeaderProps[] | undefined,
+        styleMode: 'style' | 'tailwind',
         onSelectionsChanged?: SelectionChangedCallback,
         pointerPositionCallback?: PointerPositionCallback,
         onDeselectionsChanged?: SelectionChangedCallback,
+        onVisibleComponentsChanged?: VisibleComponentsCallback<TExtraProps, TRowHeaderProps, TColHeaderProps>,
+        onRenderAreaChanged?: RenderAreaCallback<TExtraProps, TRowHeaderProps, TColHeaderProps>,
+        onEditingStateChanged?: EditingStateCallback<TExtraProps, TRowHeaderProps, TColHeaderProps>,
     ) {
-        this.cellComponents = new Map();
-        this.backgroundComponents = new Map();
         this.gridDimensions = initialDimensions;
-        // Initialize separate header component maps
-        this.rowHeaderComponents = new Map();
-        this.colHeaderComponents = new Map();
-        this.cornerHeaderComponent = null;
-        this.headerBackgroundComponents = new Map();
+        this.styleMode = styleMode;
 
-        // Initialize handlers with separate header types
+        // Initialize data maps - BUILD FROM INPUT DATA
+        this.cellComponents = this.buildCellComponentsMap(gridData, cellsExtraProps);
+        this.rowHeaderComponents = this.buildRowHeaderComponentsMap(rowHeaders, rowHeaderProps);
+        this.colHeaderComponents = this.buildColHeaderComponentsMap(colHeaders, colHeaderProps);
+
+        this.cornerHeaderComponent = {
+            value: rowsTitle || '',
+            position: { index: 0, headerType: 'corner' },
+            selected: false,
+            editing: false,
+            extraProps: undefined,
+            styles: {
+                styling: '',
+                tailwindStyling: '',
+            },
+        };
+
+        // Initialize handlers with populated data maps
         this.selectionHandler = new SelectionHandler<TExtraProps, TRowHeaderProps, TColHeaderProps>(
             this.cellComponents,
             this.rowHeaderComponents,
@@ -74,23 +104,139 @@ export default class SmartSheetController<TExtraProps = undefined,
             this.handleAutoScrollSelection
         );
         this.inputAnalyzer = new InputAnalyzer();
+        this.mouseEventTranslator = new MouseEventTranslator(this.gridDimensions);
         this.dataHandler = new DataHandler<TExtraProps, TRowHeaderProps, TColHeaderProps>(
             this.cellComponents,
             this.rowHeaderComponents,
             this.colHeaderComponents,
-            this.cornerHeaderComponent
+            this.cornerHeaderComponent,
+            onEditingStateChanged
         );
         this.colorHandler = new ColorHandler<TExtraProps, TRowHeaderProps, TColHeaderProps>(
+            this.gridDimensions,
+            this.styleMode,
             this.cellComponents,
-            this.backgroundComponents,
             this.rowHeaderComponents,
             this.colHeaderComponents,
             this.cornerHeaderComponent,
-            this.headerBackgroundComponents
+        );
+        this.virtualizeHandler = new VirtualizeHandler<TExtraProps, TRowHeaderProps, TColHeaderProps>(
+            this.gridDimensions,
+            this.cellComponents,
+            this.rowHeaderComponents,
+            this.colHeaderComponents,
+            this.cornerHeaderComponent,
+            onVisibleComponentsChanged,
+            onRenderAreaChanged,
         );
 
         // Setup clipboard event handlers
         this.setupClipboardHandlers();
+    };
+
+        /**
+     * Build cell components map from grid data
+     * Creates CellComponent objects with data and state, no DOM elements
+     */
+    private buildCellComponentsMap(
+        gridData: CellValue[][],
+        cellsExtraProps: TExtraProps[][] | undefined
+    ): Map<string, CellComponent<TExtraProps>> {
+        const cellMap = new Map<string, CellComponent<TExtraProps>>();
+        for (let row = 0; row < gridData.length; row++) {
+            for (let col = 0; col < gridData[row].length; col++) {
+                const position: GridPosition = { row, col };
+                const key = this.positionToKey(position);
+                const cellComponent: CellComponent<TExtraProps> = {
+                    position,
+                    value: gridData[row][col] ?? '',
+                    selected: false,
+                    extraProps: cellsExtraProps?.[row]?.[col] as TExtraProps,
+                    styles: {
+                        styling: '',
+                        tailwindStyling: '',
+                    }
+                };
+                cellMap.set(key, cellComponent);
+            }
+        }
+        return cellMap;
+    }
+
+    /**
+     * Build row header components map from header data
+     */
+    private buildRowHeaderComponentsMap(
+        rowHeaders: HeaderValue[] | undefined,
+        rowHeaderProps: TRowHeaderProps[] | undefined
+    ): Map<string, HeaderComponent<TRowHeaderProps>> {
+        const headerMap = new Map<string, HeaderComponent<TRowHeaderProps>>();
+        if (!rowHeaders) return headerMap;
+        for (let index = 0; index < rowHeaders.length; index++) {
+            const position: HeaderPosition = { headerType: 'row', index };
+            const key = `row-${index}`;
+            const headerComponent: HeaderComponent<TRowHeaderProps> = {
+                position,
+                value: rowHeaders[index] ?? (index + 1).toString(),
+                selected: false,
+                editing: false,
+                extraProps: rowHeaderProps?.[index] as TRowHeaderProps,
+                styles: {
+                    styling: '',
+                    tailwindStyling: ''
+                }
+            };
+            headerMap.set(key, headerComponent);
+        }
+        return headerMap;
+    }
+
+    /**
+     * Build column header components map from header data
+     */
+    private buildColHeaderComponentsMap(
+        colHeaders: HeaderValue[] | undefined,
+        colHeaderProps: TColHeaderProps[] | undefined
+    ): Map<string, HeaderComponent<TColHeaderProps>> {
+        const headerMap = new Map<string, HeaderComponent<TColHeaderProps>>();
+        if (!colHeaders) return headerMap;
+        for (let index = 0; index < colHeaders.length; index++) {
+            const position: HeaderPosition = { headerType: 'col', index };
+            const key = `col-${index}`;
+            const headerComponent: HeaderComponent<TColHeaderProps> = {
+                position,
+                value: colHeaders[index] ?? this.generateColumnLabel(index),
+                selected: false,
+                editing: false,
+                extraProps: colHeaderProps?.[index] as TColHeaderProps,
+                styles: {
+                    styling: '',
+                    tailwindStyling: ''
+                }
+            };
+            headerMap.set(key, headerComponent);
+        }
+        return headerMap;
+    }
+
+    /**
+     * Helper method to convert position to key
+     */
+    private positionToKey(position: GridPosition): string {
+        return `${position.row}-${position.col}`;
+    }
+
+    /**
+     * Helper method to generate column labels (A, B, C, ... AA, AB, etc.)
+     */
+    private generateColumnLabel(index: number): string {
+        let result = '';
+        let num = index;
+        do {
+            result = String.fromCharCode(65 + (num % 26)) + result;
+            num = Math.floor(num / 26) - 1;
+        } while (num >= 0);
+        return result;
     }
 
     /**
@@ -180,6 +326,11 @@ export default class SmartSheetController<TExtraProps = undefined,
         const currentPosition = this.navigationHandler.getCurrentPosition();
         const pasteData = this.dataHandler.parseClipboardText(clipboardText);
         const success = this.dataHandler.paste(currentPosition, pasteData);
+        // Need to update the rendered area if paste was successful
+        if (success) {
+            // execute the virtualization callback to refresh visible components
+            this.virtualizeHandler.onVisibleComponentsChanged?.(this.virtualizeHandler);
+        }
     }
 
     // Handle copy to clipboard
@@ -215,92 +366,157 @@ export default class SmartSheetController<TExtraProps = undefined,
             event.clipboardData.setData('text/plain', clipboardData);
             // Delete the cell values after copying (that's what makes it "cut")
             this.dataHandler.deleteCellsValues(selectedPositions);
+            // Update the visible components
+            this.virtualizeHandler.onVisibleComponentsChanged?.(this.virtualizeHandler);
         }
     }
 
-    // Register cell component (called from SmartSheet.svelte)
-    registerCell(cellComponent: CellComponent<TExtraProps>) {
-        const key = `${cellComponent.position.row}-${cellComponent.position.col}`;
-        this.cellComponents.set(key, cellComponent);
-    }
-
-    // Unregister cell component (for cleanup)
-    unregisterCell(cellComponent: CellComponent<TExtraProps>) {
-        const key = `${cellComponent.position.row}-${cellComponent.position.col}`;
-        this.cellComponents.delete(key);
-    }
-
-    // Register background component (called from SmartSheet.svelte)
-    registerBackground(backgroundComponent: CellBackgroundComponent) {
-        const key = `${backgroundComponent.position.row}-${backgroundComponent.position.col}`;
-        this.backgroundComponents.set(key, backgroundComponent);
-    }
-
-    // Unregister background component (for cleanup)
-    unregisterBackground(backgroundComponent: CellBackgroundComponent) {
-        const key = `${backgroundComponent.position.row}-${backgroundComponent.position.col}`;
-        this.backgroundComponents.delete(key);
-    }
-
-    // Register header components separately by type (called from SmartSheet.svelte)
-    registerRowHeader(headerComponent: HeaderComponent<TRowHeaderProps>) {
-        const key = `row-${headerComponent.position.index}`;
-        this.rowHeaderComponents.set(key, headerComponent);
-    }
-
-    registerColHeader(headerComponent: HeaderComponent<TColHeaderProps>) {
-        const key = `col-${headerComponent.position.index}`;
-        this.colHeaderComponents.set(key, headerComponent);
-    }
-
-    registerCornerHeader(headerComponent: HeaderComponent) {
-        this.cornerHeaderComponent = headerComponent;
-    }
-
-    // Unregister header components separately by type (for cleanup)
-    unregisterRowHeader(headerComponent: HeaderComponent<TRowHeaderProps>) {
-        const key = `row-${headerComponent.position.index}`;
-        this.rowHeaderComponents.delete(key);
-    }
-
-    unregisterColHeader(headerComponent: HeaderComponent<TColHeaderProps>) {
-        const key = `col-${headerComponent.position.index}`;
-        this.colHeaderComponents.delete(key);
-    }
-
-    unregisterCornerHeader(headerComponent: HeaderComponent) {
-        this.cornerHeaderComponent = null;
-    }
-
     // Update container reference
-    setTableContainer(container: HTMLDivElement) {
-        this.navigationHandler.setTableContainer(container);
+
+    setUpNavigator(tableContainer: HTMLDivElement, rowHeights: number[], colWidths: number[]) {
+        this.navigationHandler.setTableContainer(tableContainer);
+        this.navigationHandler.setRowHeights(rowHeights);
+        this.navigationHandler.setColWidths(colWidths);
+
+        // Setup mouseEventTranslator with same data
+        this.mouseEventTranslator.setTableContainer(tableContainer);
+        this.mouseEventTranslator.setRowHeights(rowHeights);
+        this.mouseEventTranslator.setColWidths(colWidths);
+    }
+
+    setRowHeights(heights: number[]) {
+        this.navigationHandler.setRowHeights(heights);
+        this.mouseEventTranslator.setRowHeights(heights);
+    }
+
+    setColWidths(widths: number[]) {
+        this.navigationHandler.setColWidths(widths);
+        this.mouseEventTranslator.setColWidths(widths);
     }
 
     // Update header containers references
     setColumnsHeaderContainer(container: HTMLDivElement) {
         this.navigationHandler.setColumnsHeaderContainer(container);
+        this.mouseEventTranslator.setColHeadersContainer(container);
     }
 
     setRowsHeaderContainer(container: HTMLDivElement) {
         this.navigationHandler.setRowsHeaderContainer(container);
+        this.mouseEventTranslator.setRowHeadersContainer(container);
     }
 
-    registerHeaderBackground(headerBackgroundComponent: HeaderBackgroundComponent) {
-        const key = `${headerBackgroundComponent.position.headerType}-${headerBackgroundComponent.position.index}`;
-        this.headerBackgroundComponents.set(key, headerBackgroundComponent);
-    }
-
-    unregisterHeaderBackground(headerBackgroundComponent: HeaderBackgroundComponent) {
-        const key = `${headerBackgroundComponent.position.headerType}-${headerBackgroundComponent.position.index}`;
-        this.headerBackgroundComponents.delete(key);
+    // Set main grid container reference
+    setMainGridContainer(container: HTMLDivElement) {
+        this.mouseEventTranslator.setMainGridContainer(container);
     }
 
     // Update grid dimensions (when data structure changes)
     updateGridDimensions(dimensions: GridDimensions) {
         this.gridDimensions = dimensions;
         this.navigationHandler.updateGridDimensions(dimensions);
+        this.mouseEventTranslator.updateGridDimensions(dimensions);
     }
+
+    // ==================== MOUSE EVENT HANDLERS WITH TRANSLATION ====================
+
+    /**
+     * Unified mouse event handler for all container types
+     * Handles validation, translation, and event generation
+     */
+    private handleUnifiedMouseEvent(
+        event: MouseEvent,
+        eventType: GridMouseInteractionType,
+        containerType: 'main' | 'rowHeaders' | 'colHeaders' | 'corner'
+    ) {
+        // Prevent mousedown/mouseup when click count > 1 (double click handling)
+        if ((eventType === 'mousedown' || eventType === 'mouseup') && event.detail > 1) {
+            return;
+        }
+
+        // Only allow left click (button === 0) for mousedown/mouseup events
+        if ((eventType === 'mousedown' || eventType === 'mouseup') && event.button !== 0) {
+            return;
+        }
+
+        const position = this.mouseEventTranslator.translateMouseToGridPosition(event, containerType);
+
+        if (!position) {
+            return;
+        }
+
+        // Generate appropriate event based on position type
+        if ('row' in position && 'col' in position) {
+            // Cell event for main grid
+            const cellMouseEvent = this.mouseEventTranslator.generateCellMouseEvent(event, position, eventType);
+
+            // Connect to existing system
+            this.handleMouseEvent(new CustomEvent('cell-mouse', { detail: cellMouseEvent }));
+
+        } else if ('headerType' in position) {
+            // Header event for all header types
+            const headerMouseEvent = this.mouseEventTranslator.generateHeaderMouseEvent(event, position, eventType);
+
+            // Connect to existing system
+            this.handleMouseEvent(new CustomEvent('header-mouse', { detail: headerMouseEvent }));
+        }
+    }
+
+    /**
+     * Handle mouse events from the main grid container
+     */
+    handleMainGridMouseEvent(event: MouseEvent, eventType: GridMouseInteractionType) {
+        this.handleUnifiedMouseEvent(event, eventType, 'main');
+    }
+
+    /**
+     * Handle mouse events from row headers container
+     */
+    handleRowHeaderMouseEvent(event: MouseEvent, eventType: GridMouseInteractionType) {
+        this.handleUnifiedMouseEvent(event, eventType, 'rowHeaders');
+    }
+
+    /**
+     * Handle mouse events from column headers container
+     */
+    handleColHeaderMouseEvent(event: MouseEvent, eventType: GridMouseInteractionType) {
+        this.handleUnifiedMouseEvent(event, eventType, 'colHeaders');
+    }
+
+    /**
+     * Handle mouse events from corner header
+     */
+    handleCornerHeaderMouseEvent(event: MouseEvent, eventType: GridMouseInteractionType) {
+        this.handleUnifiedMouseEvent(event, eventType, 'corner');
+    }
+
+    // ==================== INTELLIGENT MOUSEMOVE HANDLERS ====================
+
+    /**
+     * Unified intelligent mousemove handler for all container types
+     */
+    handleUnifiedMouseMove(event: MouseEvent, containerType: 'main' | 'rowHeaders' | 'colHeaders') {
+        const pseudoEvent = this.mouseEventTranslator.handleIntelligentMouseMove(event, containerType);
+
+        if (pseudoEvent) {
+            // Connect to existing system
+            if ('row' in pseudoEvent.position && 'col' in pseudoEvent.position) {
+                this.handleMouseEvent(new CustomEvent('cell-mouse', { detail: pseudoEvent }));
+            } else if ('headerType' in pseudoEvent.position) {
+                this.handleMouseEvent(new CustomEvent('header-mouse', { detail: pseudoEvent }));
+            }
+        }
+    }
+
+    /**
+     * Handle mouseleave from containers to reset position tracking
+     */
+    handleContainerMouseLeave(containerType: 'main' | 'rowHeaders' | 'colHeaders') {
+        this.mouseEventTranslator.resetPositionTracking(containerType);
+    }
+
+    // ==================== END INTELLIGENT MOUSEMOVE HANDLERS ====================
+
+    // ==================== END MOUSE EVENT HANDLERS ====================
 
     // Unified mouse event handler: process both cell and header events
     handleMouseEvent(event: CustomEvent<CellMouseEvent | HeaderMouseEvent>) {
@@ -313,8 +529,6 @@ export default class SmartSheetController<TExtraProps = undefined,
             this.selectionHandler.clearSelections();
             if (analysis.componentType === 'cell') {
                 this.dataHandler.startEditingCell(analysis.position as GridPosition);
-            } else if (analysis.componentType === 'header') {
-                this.dataHandler.startEditingHeader(analysis.position as HeaderPosition);
             }
             return;
         } else if (analysis.type === 'middleclick') {
@@ -360,19 +574,47 @@ export default class SmartSheetController<TExtraProps = undefined,
         } else if (basicAnalysis.keyCategory === 'command') {
             const commandAnalysis = this.inputAnalyzer.analyzeCommand(basicAnalysis);
             if (commandAnalysis.command === 'undo') {
-                const affectedPositions = this.dataHandler.undo();
+                const [affectedPositions, componentType] = this.dataHandler.undo();
                 if (affectedPositions.length > 0) {
-                    this.colorHandler.flashCells(affectedPositions,
-                        { color: 'red' }
-                    );
+                    // Update the visible components
+                    this.virtualizeHandler.onVisibleComponentsChanged?.(this.virtualizeHandler);
+                    const visibleComponents = this.virtualizeHandler.getVisibleComponents();
+                    // Visually flash the affected cells (only rendered ones)
+                    if (componentType === 'cell') {
+                        this.colorHandler.flashCells(
+                            affectedPositions as GridPosition[],
+                            visibleComponents,
+                            { color: 'red' }
+                        );
+                    } else {
+                        this.colorHandler.flashHeaders(
+                            affectedPositions as HeaderPosition[],
+                            visibleComponents,
+                            { color: 'red' }
+                        );
+                    }
                 }
                 return;
             } else if (commandAnalysis.command === 'redo') {
-                const affectedPositions = this.dataHandler.redo();
+                const [affectedPositions, componentType] = this.dataHandler.redo();
                 if (affectedPositions.length > 0) {
-                    this.colorHandler.flashCells(affectedPositions,
-                        { color: 'blue' }
-                    );
+                    // Update the visible components
+                    this.virtualizeHandler.onVisibleComponentsChanged?.(this.virtualizeHandler);
+                    // Visually flash the affected cells (only rendered ones)
+                    const visibleComponents = this.virtualizeHandler.getVisibleComponents();
+                    if (componentType === 'cell') {
+                        this.colorHandler.flashCells(
+                            affectedPositions as GridPosition[],
+                            visibleComponents,
+                            { color: 'blue' }
+                        );
+                    } else {
+                        this.colorHandler.flashHeaders(
+                            affectedPositions as HeaderPosition[],
+                            visibleComponents,
+                            { color: 'blue' }
+                        );
+                    }
                 }
                 return;
             } else {
@@ -388,6 +630,8 @@ export default class SmartSheetController<TExtraProps = undefined,
         } else if (basicAnalysis.keyCategory === 'delete') {
             const selections = this.selectionHandler.getSelectedPositions();
             this.dataHandler.deleteCellsValues(selections);
+            // Update the visible components
+            this.virtualizeHandler.onVisibleComponentsChanged?.(this.virtualizeHandler);
             return;
         } else if (basicAnalysis.keyCategory === 'edit') {
             // Handle edit input (e.g. pressing Enter in a cell)
@@ -411,6 +655,8 @@ export default class SmartSheetController<TExtraProps = undefined,
         } // Shouuldn't be triggered by other keys
         // Re-select the current position after commit
         this.selectionHandler.selectSingle(this.navigationHandler.getCurrentPosition());
+        // Update the visible components
+        this.virtualizeHandler.onVisibleComponentsChanged?.(this.virtualizeHandler);
         this.reflectSelectionsOnHeaders();
     }
 
@@ -418,9 +664,12 @@ export default class SmartSheetController<TExtraProps = undefined,
         this.dataHandler.finishCellEdit(position, 'cancel');
         // Re-select the current position after cancel
         this.selectionHandler.selectSingle(this.navigationHandler.getCurrentPosition());
+        // Update the visible components
+        this.virtualizeHandler.onVisibleComponentsChanged?.(this.virtualizeHandler);
         this.reflectSelectionsOnHeaders();
     }
 
+    /*  OLD METHOD
     handleHeaderInputCommit(position: HeaderPosition, event: KeyboardEvent) {
         // Commit the header edit
         const success = this.dataHandler.finishHeaderEdit(position, 'commit');
@@ -445,19 +694,7 @@ export default class SmartSheetController<TExtraProps = undefined,
             this.reflectSelectionsOnHeaders();
         }
     }
-
-    handleHeaderInputCancel(position: HeaderPosition, event: KeyboardEvent) {
-        // Cancel the header edit (revert to original value)
-        this.dataHandler.finishHeaderEdit(position, 'cancel');
-    }
-
-    handleHeaderInputBlur(position: HeaderPosition) {
-        // Check if header is still in editing mode before processing blur
-        if (this.dataHandler.isHeaderInEditingMode(position)) {
-            // Delegate to DataHandler to handle blur (commit if valid, exit editing either way)
-            this.dataHandler.finishHeaderEdit(position, 'blur');
-        }
-    }
+    */
 
     // Handle navigation keys with specialized analysis
     private handleNavigationKey(basicAnalysis: RawKeyboardAnalysis) {
@@ -470,13 +707,15 @@ export default class SmartSheetController<TExtraProps = undefined,
 
         // Delegate selection logic to SelectionHandler with complete context
         this.selectionHandler.processNavigationSelection(navAnalysis, currentPosition, anchorPosition);
-        this.reflectSelectionsOnHeaders();
+        //this.reflectSelectionsOnHeaders();
 
     }
 
     handleInputBlur(position: GridPosition) {
         // Delegate to DataHandler to set cell not editing
         this.dataHandler.finishCellEdit(position, 'blur');
+        // Update the visible components
+        this.virtualizeHandler.onVisibleComponentsChanged?.(this.virtualizeHandler);
     }
 
     // Activate navigation: select current cell only if no selection exists
@@ -486,7 +725,7 @@ export default class SmartSheetController<TExtraProps = undefined,
         const currentSelection = this.selectionHandler.getSelectedCells();
         if (currentSelection.size === 0) {
             const currentPosition = this.navigationHandler.getCurrentPosition();
-            this.selectionHandler.selectSingle(currentPosition);
+            //this.selectionHandler.selectSingle(currentPosition);
             this.reflectSelectionsOnHeaders();
         }
         return true;
@@ -522,6 +761,8 @@ export default class SmartSheetController<TExtraProps = undefined,
         const cellComponent = this.cellComponents.get(key);
         return cellComponent?.value;
     }
+
+    // ==================== END PUBLIC API FOR MOUSE EVENT TRANSLATION ====================
 
     // PUBLIC API for external selection control
     selectPositions(positions: GridPosition[]): void {
@@ -567,59 +808,61 @@ export default class SmartSheetController<TExtraProps = undefined,
     }
 
     // PUBLIC API for background control (supports single or batch via tuple arrays)
-    // setCellBackgroundColor
-    setCellBackgroundColor(position: GridPosition, color: string): void;
-    setCellBackgroundColor(updates: [GridPosition, string][]): void;
-    setCellBackgroundColor(arg1: GridPosition | [GridPosition, string][], arg2?: string): void {
+
+    private _applyCellStyleArgs<T>(
+        arg1: GridPosition | GridPosition[] | [GridPosition, T][],
+        arg2: T | undefined,
+        handlerMethod: (pos: GridPosition, value: T) => void,
+        methodName: string
+    ): void {
         if (Array.isArray(arg1)) {
-            for (const [pos, col] of arg1) {
-                this.colorHandler.changeCellBackgroundColor(pos, col);
+            if (arg1.length > 0 && Array.isArray(arg1[0])) {
+                for (const [pos, value] of arg1 as [GridPosition, T][]) {
+                    handlerMethod(pos, value);
+                }
+            } else if (arg2 !== undefined) {
+                for (const pos of arg1 as GridPosition[]) {
+                    handlerMethod(pos, arg2);
+                }
+            } else {
+                console.warn(`[SmartSheetController] ${methodName} requires either an array of [position, value] tuples or a position and a value.`);
             }
+        } else if (arg2 !== undefined) {
+            handlerMethod(arg1 as GridPosition, arg2);
         } else {
-            this.colorHandler.changeCellBackgroundColor(arg1, arg2 as string);
+            console.warn(`[SmartSheetController] ${methodName} requires either an array of [position, value] tuples or a position and a value.`);
         }
+    }
+
+    setCellBackgroundColor(
+        arg1: GridPosition | GridPosition[] | [GridPosition, string][],
+        arg2?: string
+    ): void {
+        this._applyCellStyleArgs(arg1, arg2, this.colorHandler.changeCellBackgroundColor.bind(this.colorHandler), 'setCellBackgroundColor');
     }
 
     // setCellTailwindBackgroundColor
-    setCellTailwindBackgroundColor(position: GridPosition, classes: string[]): void;
-    setCellTailwindBackgroundColor(updates: [GridPosition, string[]][]): void;
-    setCellTailwindBackgroundColor(arg1: GridPosition | [GridPosition, string[]][], arg2?: string[]): void {
-        if (Array.isArray(arg1) && Array.isArray(arg1[0])) {
-            // arg1 is tuple array
-            for (const [pos, cls] of arg1 as [GridPosition, string[]][]) {
-                this.colorHandler.changeTailwindBackgroundColor(pos, cls);
-            }
-        } else if (!Array.isArray(arg1)) {
-            this.colorHandler.changeTailwindBackgroundColor(arg1, arg2 as string[]);
-        } else {
-            // Fallback (shouldn't happen) - ignore
-        }
+    setCellTailwindBackgroundColor(
+        arg1: GridPosition | GridPosition[] | [GridPosition, string][],
+        arg2?: string
+    ): void {
+        this._applyCellStyleArgs(arg1, arg2, this.colorHandler.changeCellTailwindBackgroundColor.bind(this.colorHandler), 'setCellTailwindBackgroundColor');
     }
 
-    // setCellStyle for background properties
-    setCellStyle(position: GridPosition, props: BackgroundProperties): void;
-    setCellStyle(updates: [GridPosition, BackgroundProperties][]): void;
-    setCellStyle(arg1: GridPosition | [GridPosition, BackgroundProperties][], arg2?: BackgroundProperties): void {
-        if (Array.isArray(arg1) && Array.isArray(arg1[0])) {
-            for (const [pos, props] of arg1 as [GridPosition, BackgroundProperties][]) {
-                this.colorHandler.setBackgroundProperties(pos, props);
-            }
-        } else if (!Array.isArray(arg1)) {
-            this.colorHandler.setBackgroundProperties(arg1, arg2 as BackgroundProperties);
-        }
+    // setCellStyle for styling
+    setCellStyle(
+        arg1: GridPosition | GridPosition[] | [GridPosition, BackgroundProperties][],
+        arg2?: BackgroundProperties
+    ): void {
+        this._applyCellStyleArgs(arg1, arg2, this.colorHandler.setCellStyling.bind(this.colorHandler), 'setCellStyle');
     }
 
     // setTailwindProperties
-    setTailwindProperties(position: GridPosition, props: TailwindProperties): void;
-    setTailwindProperties(updates: [GridPosition, TailwindProperties][]): void;
-    setTailwindProperties(arg1: GridPosition | [GridPosition, TailwindProperties][], arg2?: TailwindProperties): void {
-        if (Array.isArray(arg1) && Array.isArray(arg1[0])) {
-            for (const [pos, props] of arg1 as [GridPosition, TailwindProperties][]) {
-                this.colorHandler.setTailwindProperties(pos, props);
-            }
-        } else if (!Array.isArray(arg1)) {
-            this.colorHandler.setTailwindProperties(arg1, arg2 as TailwindProperties);
-        }
+    setTailwindProperties(
+        arg1: GridPosition | GridPosition[] | [GridPosition, TailwindProperties][],
+        arg2?: TailwindProperties
+    ): void {
+        this._applyCellStyleArgs(arg1, arg2, this.colorHandler.setCellTailwindStyling.bind(this.colorHandler), 'setTailwindProperties');
     }
 
     // Batch background styles via generator
@@ -632,8 +875,9 @@ export default class SmartSheetController<TExtraProps = undefined,
         this.colorHandler.applyTailwindStyles(styleGenerator as any);
     }
 
+    // Reset all cell backgrounds to default
     resetAllBackgrounds(): void {
-        this.colorHandler.resetSheetStyles();
+        this.colorHandler.applyDefaultStyles('cell');
     }
 
     // Selection API that takes a function aware of cell structure
@@ -676,8 +920,11 @@ export default class SmartSheetController<TExtraProps = undefined,
     // Data imputation APIs
     imputeValues(imputations: [GridPosition, CellValue][]): GridPosition[] {
         const affectedPositions = this.dataHandler.imputeValues(imputations);
+        const visibleComponents = this.virtualizeHandler.getVisibleComponents();
         if (affectedPositions.length > 0) {
-            this.colorHandler.flashCells(affectedPositions,
+            this.colorHandler.flashCells(
+                affectedPositions,
+                visibleComponents,
                 { color: 'green' }
             );
         }
@@ -688,8 +935,11 @@ export default class SmartSheetController<TExtraProps = undefined,
         imputationGenerator: (cells: Map<string, CellComponent<TExtraProps>>) => [GridPosition, CellValue][]
     ): GridPosition[] {
         const affectedPositions = this.dataHandler.applyImputations(imputationGenerator);
+        const visibleComponents = this.virtualizeHandler.getVisibleComponents();
         if (affectedPositions.length > 0) {
-            this.colorHandler.flashCells(affectedPositions,
+            this.colorHandler.flashCells(
+                affectedPositions,
+                visibleComponents,
                 { color: 'green' }
             );
         }
@@ -699,17 +949,16 @@ export default class SmartSheetController<TExtraProps = undefined,
     // ==================== VISUAL EFFECTS APIs ====================
 
     /**
-     * Trigger flash effect on a single cell
-     */
-    flashCell(position: GridPosition, options?: FlashOptions): void {
-        this.colorHandler.flashCell(position, options);
-    }
-
-    /**
      * Trigger flash effect on multiple cells
      */
     flashCells(positions: GridPosition[], options?: FlashOptions): void {
-        this.colorHandler.flashCells(positions, options);
+        const visibleComponents = this.virtualizeHandler.getVisibleComponents();
+        this.colorHandler.flashCells(positions, visibleComponents, options);
+    }
+
+    flashHeaders(positions: HeaderPosition[], options?: FlashOptions): void {
+        const visibleComponents = this.virtualizeHandler.getVisibleComponents();
+        this.colorHandler.flashHeaders(positions, visibleComponents, options);
     }
 
     /**
@@ -719,60 +968,27 @@ export default class SmartSheetController<TExtraProps = undefined,
         flashGenerator: (cells: Map<string, CellComponent<TExtraProps>>) => GridPosition[],
         options?: FlashOptions
     ): void {
-        this.colorHandler.applyFlashEffect(flashGenerator, options);
+        const visibleComponents = this.virtualizeHandler.getVisibleComponents();
+        this.colorHandler.applyFlashEffect(flashGenerator, visibleComponents, options);
     }
 
     // ==================== HEADER STYLING API ====================
 
-    // Row header styling methods
-    setRowHeaderBackgroundColor(row: number, color: string): void {
-        this.colorHandler.changeRowHeaderBackgroundColor(row, color);
+    // Header styling methods
+    setHeaderBackgroundColor(type: 'row' | 'col' | 'corner', index: number, color: string): void {
+        this.colorHandler.changeHeaderBackgroundColor(type, index, color);
     }
 
-    setRowHeaderTextColor(row: number, color: string): void {
-        this.colorHandler.changeRowHeaderTextColor(row, color);
+    setHeaderTextColor(type: 'row' | 'col' | 'corner', index: number, color: string): void {
+        this.colorHandler.changeHeaderTextColor(type, index, color);
     }
 
-    setRowHeaderStyle(row: number, props: BackgroundProperties): void {
-        this.colorHandler.setRowHeaderBackgroundProperties(row, props);
+    setHeaderStyle(type: 'row' | 'col' | 'corner', index: number, props: BackgroundProperties): void {
+        this.colorHandler.setHeaderStyling(type, index, props);
     }
 
-    setRowHeaderTailwindStyle(row: number, props: TailwindProperties): void {
-        this.colorHandler.setRowHeaderTailwindProperties(row, props);
-    }
-
-    // Column header styling methods
-    setColHeaderBackgroundColor(col: number, color: string): void {
-        this.colorHandler.changeColHeaderBackgroundColor(col, color);
-    }
-
-    setColHeaderTextColor(col: number, color: string): void {
-        this.colorHandler.changeColHeaderTextColor(col, color);
-    }
-
-    setColHeaderStyle(col: number, props: BackgroundProperties): void {
-        this.colorHandler.setColHeaderBackgroundProperties(col, props);
-    }
-
-    setColHeaderTailwindStyle(col: number, props: TailwindProperties): void {
-        this.colorHandler.setColHeaderTailwindProperties(col, props);
-    }
-
-    // Corner header styling methods
-    setCornerHeaderBackgroundColor(color: string): void {
-        this.colorHandler.changeCornerHeaderBackgroundColor(color);
-    }
-
-    setCornerHeaderTextColor(color: string): void {
-        this.colorHandler.changeCornerHeaderTextColor(color);
-    }
-
-    setCornerHeaderStyle(props: BackgroundProperties): void {
-        this.colorHandler.setCornerHeaderBackgroundProperties(props);
-    }
-
-    setCornerHeaderTailwindStyle(props: TailwindProperties): void {
-        this.colorHandler.setCornerHeaderTailwindProperties(props);
+    setHeaderTailwindStyle(type: 'row' | 'col' | 'corner', index: number, props: TailwindProperties): void {
+        this.colorHandler.setHeaderTailwindStyling(type, index, props);
     }
 
     // Batch header styles via generators
@@ -802,7 +1018,9 @@ export default class SmartSheetController<TExtraProps = undefined,
 
     // Reset header styles
     resetHeaderStyles(): void {
-        this.colorHandler.resetHeaderStyles();
+        this.colorHandler.applyDefaultStyles('row');
+        this.colorHandler.applyDefaultStyles('col');
+        this.colorHandler.applyDefaultStyles('corner');
     }
 
     // Reset all styles (cells and headers)
@@ -855,6 +1073,33 @@ export default class SmartSheetController<TExtraProps = undefined,
         styleGenerator: (headers: Map<string, HeaderComponent<TColHeaderProps>>) => [number, TailwindProperties, TailwindProperties][]
     ): void {
         this.colorHandler.applyColHeaderAndCellsTailwindStyles(styleGenerator);
+    }
+
+    // === VIRTUALIZATION METHODS ===
+
+    // Initialize virtualization with container dimensions (called on mount)
+    initializeVirtualization(tableContainer: HTMLDivElement,
+        rowHeights: number[],
+        colWidths: number[]
+    ): void {
+        this.virtualizeHandler.initialize(
+            tableContainer, rowHeights, colWidths
+        );
+    }
+
+    // Handle scroll events for virtualization
+    handleVirtualizationScroll(): void {
+        this.virtualizeHandler.handleScroll();
+    }
+
+    // Get current render area
+    getRenderArea() {
+        return this.virtualizeHandler.getRenderArea();
+    }
+
+    // Get visible components for current render area
+    getVisibleComponents() {
+        return this.virtualizeHandler.getVisibleComponents();
     }
 
 }

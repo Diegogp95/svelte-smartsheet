@@ -1,6 +1,8 @@
 import type {
     GridPosition,
     CellValue,
+    HeaderPosition,
+    HeaderValue,
 } from './types';
 
 // ==================== CELL CHANGE CLASS ====================
@@ -12,8 +14,12 @@ export class CellChange {
         public newValue: CellValue
     ) {}
 
+    getType(): 'cell' {
+        return 'cell';
+    }
+
     getPositionKey(): string {
-        return `${this.position.row}-${this.position.col}`;
+        return `cell-${this.position.row}-${this.position.col}`;
     }
 
     hasValueChanged(): boolean {
@@ -25,17 +31,57 @@ export class CellChange {
     }
 }
 
+// ==================== HEADER CHANGE CLASS ====================
+
+export class HeaderChange {
+    constructor(
+        public position: HeaderPosition,
+        public oldValue: HeaderValue,
+        public newValue: HeaderValue
+    ) {}
+
+    getType(): 'header' {
+        return 'header';
+    }
+
+    getPositionKey(): string {
+        return `header-${this.position.headerType}-${this.position.index}`;
+    }
+
+    hasValueChanged(): boolean {
+        return this.oldValue !== this.newValue;
+    }
+
+    toString(): string {
+        return `Header(${this.position.headerType}[${this.position.index}]): ${this.oldValue} → ${this.newValue}`;
+    }
+}
+
 // ==================== CHANGE SET CLASS ====================
 
 export class ChangeSet {
     constructor(
-        public changes: CellChange[],
+        public changes: CellChange[] | HeaderChange[],
         public type: 'single-edit' | 'paste' | 'delete' | 'format' | 'other',
         public timestamp: number = Date.now()
     ) {}
 
-    getAffectedPositions(): GridPosition[] {
+    getAffectedPositions(): (GridPosition | HeaderPosition)[] {
         return this.changes.map(c => c.position);
+    }
+
+    getCellPositions(): GridPosition[] {
+        if (this.isCellOnlyEdit()) {
+            return (this.changes as CellChange[]).map(c => c.position);
+        }
+        return [];
+    }
+
+    getHeaderPositions(): HeaderPosition[] {
+        if (this.isHeaderOnlyEdit()) {
+            return (this.changes as HeaderChange[]).map(c => c.position);
+        }
+        return [];
     }
 
     getChangeCount(): number {
@@ -43,11 +89,34 @@ export class ChangeSet {
     }
 
     isSingleCellEdit(): boolean {
-        return this.type === 'single-edit' && this.changes.length === 1;
+        return this.type === 'single-edit' &&
+               this.changes.length === 1 &&
+               this.isCellOnlyEdit();
+    }
+
+    isSingleHeaderEdit(): boolean {
+        return this.type === 'single-edit' &&
+               this.changes.length === 1 &&
+               this.isHeaderOnlyEdit();
+    }
+
+    isCellOnlyEdit(): boolean {
+        return this.changes.length > 0 && this.changes[0] instanceof CellChange;
+    }
+
+    isHeaderOnlyEdit(): boolean {
+        return this.changes.length > 0 && this.changes[0] instanceof HeaderChange;
     }
 
     toString(): string {
-        return `ChangeSet(${this.type}): ${this.changes.length} changes at ${new Date(this.timestamp)}`;
+        if (this.isCellOnlyEdit()) {
+            return `ChangeSet(${this.type}): ${this.changes.length} cells at ${new Date(this.timestamp)}`;
+        } else if (this.isHeaderOnlyEdit()) {
+            return `ChangeSet(${this.type}): ${this.changes.length} headers at ${new Date(this.timestamp)}`;
+        } else {
+            // Empty changeset
+            return `ChangeSet(${this.type}): 0 changes at ${new Date(this.timestamp)}`;
+        }
     }
 }
 

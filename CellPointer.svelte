@@ -4,6 +4,7 @@
 
 <!-- Pointer that overlays the corresponding cell -->
 <div
+    id="cell-pointer"
     class="pointer-events-none border-4 border-sheetPointerBorder bg-slate-700/50
         shadow-lg transition-all duration-150 relative z-[4]"
     style="

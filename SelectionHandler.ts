@@ -100,7 +100,7 @@ export default class SelectionHandler<TExtraProps = undefined, TRowHeaderProps =
         toDeselect.forEach(key => {
             const cellComponent = this.cellComponents.get(key);
             if (cellComponent) {
-                cellComponent.setSelected(false);
+                cellComponent.selected = false;
             }
         });
 
@@ -108,7 +108,7 @@ export default class SelectionHandler<TExtraProps = undefined, TRowHeaderProps =
         toSelect.forEach(key => {
             const cellComponent = this.cellComponents.get(key);
             if (cellComponent) {
-                cellComponent.setSelected(true);
+                cellComponent.selected = true;
             }
         });
     }
@@ -349,7 +349,7 @@ export default class SelectionHandler<TExtraProps = undefined, TRowHeaderProps =
 		toDeselect.forEach(key => {
 			const headerComponent = this.getHeaderComponent(key);
 			if (headerComponent) {
-				headerComponent.setSelected(false);
+				headerComponent.selected = false;
 			}
 		});
 
@@ -357,7 +357,7 @@ export default class SelectionHandler<TExtraProps = undefined, TRowHeaderProps =
 		toSelect.forEach(key => {
 			const headerComponent = this.getHeaderComponent(key);
 			if (headerComponent) {
-				headerComponent.setSelected(true);
+				headerComponent.selected = true;
 			}
 		});
 	}

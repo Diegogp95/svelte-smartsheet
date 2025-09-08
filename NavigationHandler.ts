@@ -28,6 +28,10 @@ export default class NavigationHandler<TExtraProps = undefined, TRowHeaderProps 
     private colHeaderComponents: Map<string, HeaderComponent<TColHeaderProps>>;
     private cornerHeaderComponent: HeaderComponent | null;
 
+    // Grid spacing data
+    private rowHeights: number[] = [];
+    private colWidths: number[] = [];
+
     // Outside dragging listeners
     private tableMouseEnterListener?: (event: MouseEvent) => void;
     private tableMouseLeaveListener?: (event: MouseEvent) => void;
@@ -73,6 +77,15 @@ export default class NavigationHandler<TExtraProps = undefined, TRowHeaderProps 
 
     getTableContainer(): HTMLDivElement | undefined {
         return this.tableContainer;
+    }
+
+    // set grid spacing data
+    setRowHeights(heights: number[]) {
+        this.rowHeights = heights;
+    }
+
+    setColWidths(widths: number[]) {
+        this.colWidths = widths;
     }
 
     // Update header containers references
@@ -483,54 +496,42 @@ export default class NavigationHandler<TExtraProps = undefined, TRowHeaderProps 
     private scrollToPosition(position: GridPosition): void {
         if (!this.tableContainer) return;
 
-        // Get cell element from components map (more efficient than DOM query)
-        const key = `${position.row}-${position.col}`;
-        const cellComponent = this.cellComponents.get(key);
-
-        if (!cellComponent) return;
-
-        const cellElement = cellComponent.element;
+        // Container dimensions and scroll positions
         const container = this.tableContainer;
-
-        // Get header dimensions from actual header containers
-        const headerHeight = this.columnsHeaderContainer?.clientHeight || 0;
-        const headerWidth = this.rowsHeaderContainer?.clientWidth || 0;
-
-        const containerRect = container.getBoundingClientRect();
-        const cellRect = cellElement.getBoundingClientRect();
-
-        // Calculate positions relative to container scroll
         const scrollTop = container.scrollTop;
         const scrollLeft = container.scrollLeft;
+        const containerHeight = container.clientHeight;
+        const containerWidth = container.clientWidth;
+
+        // Calculate the cumulative offsets to the target cell
+        // Since rowHeights' and colWidths' first element corresponds to the header row/col dimension,
+        // we need to offset by one index when calculating positions
+        // following variables only represent the values of the main grid, not including headers
+        // but we need to adjust the container dimensions and scroll positions to account for headers offset
+        const cellTop = this.rowHeights.slice(1, position.row+1).reduce((sum, h) => sum + h, 0);
+        const cellLeft = this.colWidths.slice(1, position.col+1).reduce((sum, w) => sum + w, 0);
+        const cellBottom = cellTop + (this.rowHeights[position.row+1] || 0); // Default height if undefined
+        const cellRight = cellLeft + (this.colWidths[position.col+1] || 0); // Default width if undefined
 
         // Adjust container dimensions to account for headers
-        const effectiveContainerHeight = container.clientHeight - headerHeight;
-        const effectiveContainerWidth = container.clientWidth - headerWidth;
+        const effectiveContainerHeight = containerHeight - (this.rowHeights[0] || 0);
+        const effectiveContainerWidth = containerWidth - (this.colWidths[0] || 0);
 
-        // Cell position relative to container
-        const cellTop = cellRect.top - containerRect.top + scrollTop;
-        const cellBottom = cellTop + cellRect.height;
-        const cellLeft = cellRect.left - containerRect.left + scrollLeft;
-        const cellRight = cellLeft + cellRect.width;
-
-        // Calculate new vertical scroll (accounting for header height)
         let newScrollTop = scrollTop;
-        if (cellTop < scrollTop + headerHeight) {
-            // Cell is above visible area (behind column headers)
-            newScrollTop = cellTop - headerHeight;
-        } else if (cellBottom > scrollTop + headerHeight + effectiveContainerHeight) {
-            // Cell is below visible area
-            newScrollTop = cellBottom - headerHeight - effectiveContainerHeight;
-        }
-
-        // Calculate new horizontal scroll (accounting for header width)
         let newScrollLeft = scrollLeft;
-        if (cellLeft < scrollLeft + headerWidth) {
-            // Cell is to the left of visible area (behind row headers)
-            newScrollLeft = cellLeft - headerWidth;
-        } else if (cellRight > scrollLeft + headerWidth + effectiveContainerWidth) {
-            // Cell is to the right of visible area
-            newScrollLeft = cellRight - headerWidth - effectiveContainerWidth;
+        if (cellTop < scrollTop) {
+            // Cell is above the visible area, scroll up
+            newScrollTop = cellTop;
+        } else if (cellBottom > scrollTop + effectiveContainerHeight) {
+            // Cell is below the visible area, scroll down
+            newScrollTop = cellBottom - effectiveContainerHeight;
+        }
+        if (cellLeft < scrollLeft) {
+            // Cell is left of the visible area, scroll left
+            newScrollLeft = cellLeft;
+        } else if (cellRight > scrollLeft + effectiveContainerWidth) {
+            // Cell is right of the visible area, scroll right
+            newScrollLeft = cellRight - effectiveContainerWidth;
         }
 
         // Apply smooth scroll if there are changes

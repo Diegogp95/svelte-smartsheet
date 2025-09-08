@@ -1,4 +1,8 @@
-import type { FlashColor } from './types';
+import type {
+    FlashColor,
+    GridPosition,
+    HeaderPosition,
+} from './types';
 
 /**
  * Helper function to get flash colors for animations

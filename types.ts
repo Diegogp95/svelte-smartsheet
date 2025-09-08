@@ -84,48 +84,26 @@ export interface FlashOptions {
 // T defaults to undefined, but when specified, should extend Record<string, any>
 export interface CellComponent<T = undefined> {
     position: GridPosition;
-    element: HTMLElement;
     selected: boolean;
-    value: CellValue; // Updated to use CellValue type
-    editing: boolean;
-    inputElement: HTMLInputElement;
-    inputValue: CellValue; // Intermediate value for input handling
-    extraProps: T; // Simplified: just T directly
-    setSelected(selected: boolean): void;
-    setEditing(editing: boolean): void;
-    setInputFocus(): void;
-    setInputValue(value: CellValue): void;
-    setValue(value: CellValue): void; // Method to update the cell's value
-    setExtraProps(props: T): void; // Simplified: just T directly
-    triggerFlash(options?: FlashOptions): void; // Method to trigger visual flash effect when value changes
+    value: CellValue;
+    extraProps: T;
+    styles: {
+        styling: string;
+        tailwindStyling: string;
+    };
 }
 
 export interface HeaderComponent<T = undefined> {
     position: HeaderPosition;
-    element: HTMLElement;
     selected: boolean;
     value: HeaderValue;
     editing: boolean;
-    inputElement: HTMLInputElement;
-    inputValue: HeaderValue;
     extraProps: T;
-    readOnly: boolean;
-    setSelected(selected: boolean): void;
-    setEditing(editing: boolean): void;
-    setInputFocus(): void;
-    setInputValue(value: HeaderValue): void;
-    setValue(value: HeaderValue): void;
-    setExtraProps(props: T): void;
-    triggerFlash(options?: FlashOptions): void;
+    styles: {
+        styling: string;
+        tailwindStyling: string;
+    };
 }
-
-// Function type for cell registration
-export type OnCellCreation<T = undefined> = (cellComponent: CellComponent<T>) => void;
-export type OnCellDestruction<T = undefined> = (cellComponent: CellComponent<T>) => void;
-
-// Function type for header registration
-export type OnHeaderCreation<T = undefined> = (headerComponent: HeaderComponent<T>) => void;
-export type OnHeaderDestruction<T = undefined> = (headerComponent: HeaderComponent<T>) => void;
 
 // Background properties for cell styling
 export interface BackgroundProperties {
@@ -138,45 +116,15 @@ export interface BackgroundProperties {
     'opacity'?: number;
 }
 export interface TailwindProperties {
-    'bg'?: string[];
-    'border'?: string[];
-    'rounded'?: string[];
-    'text'?: string[];
+    'bg-color'?: string;
+    'bg-opacity'?: number;
+    'border-color'?: string;
+    'border-width'?: string;
+    'border-style'?: string;
+    'border-radius'?: string;
+    'text-color'?: string;
     'opacity'?: number;
 }
-
-// Interface for CellBackground component interaction
-export interface CellBackgroundComponent {
-    position: GridPosition;
-    element: HTMLElement;
-    backgroundProperties: BackgroundProperties;
-    tailwindProperties: TailwindProperties;
-    setBackgroundProperties: (props: BackgroundProperties) => void;
-    applyBackgroundProperties: () => void;
-    clearBackgroundProperties: () => void;
-    setTailwindProperties: (props: TailwindProperties) => void;
-    applyTailwindProperties: () => void;
-    clearTailwindProperties: () => void;
-}
-
-export interface HeaderBackgroundComponent {
-    position: HeaderPosition;
-    element: HTMLElement;
-    backgroundProperties: BackgroundProperties;
-    tailwindProperties: TailwindProperties;
-    setBackgroundProperties: (props: BackgroundProperties) => void;
-    applyBackgroundProperties: () => void;
-    clearBackgroundProperties: () => void;
-    setTailwindProperties: (props: TailwindProperties) => void;
-    applyTailwindProperties: () => void;
-    clearTailwindProperties: () => void;
-}
-
-// Function type for background registration
-export type OnBackgroundCreation = (backgroundComponent: CellBackgroundComponent) => void;
-export type OnBackgroundDestruction = (backgroundComponent: CellBackgroundComponent) => void;
-export type OnHeaderBackgroundCreation = (backgroundComponent: HeaderBackgroundComponent) => void;
-export type OnHeaderBackgroundDestruction = (backgroundComponent: HeaderBackgroundComponent) => void;
 
 // Keyboard event analysis types
 export type KeyCategory = 'arrow' | 'edit' | 'confirm' | 'backspace' | 'cancel' | 'delete' | 'space' | 'command' | 'write' | 'other';
@@ -213,16 +161,12 @@ export type GridMouseInteractionType = 'mousedown' | 'mouseenter' | 'mouseup' | 
 export interface CellMouseEvent {
     type: GridMouseInteractionType;
     position: GridPosition;
-    selected: boolean;
-    value: CellValue;
     mouseEvent: MouseEvent;
 };
 
 export interface HeaderMouseEvent {
     type: GridMouseInteractionType;
     position: HeaderPosition;
-    selected: boolean;
-    value: HeaderValue;
     mouseEvent: MouseEvent;
 }
 
@@ -234,4 +178,18 @@ export interface MouseEventAnalysis {
     selectionAction: SelectionAction;
     draggingContext: DraggingActionContext;
     outsideScrollAnalysis?: OutsideScrollAnalysis; // Optional analysis for outside scrolling
+}
+// Virtualization types
+export interface RenderArea {
+    startRow: number;
+    endRow: number;
+    startCol: number;
+    endCol: number;
+}
+
+export interface VisibleComponents<TExtraProps, TRowHeaderProps, TColHeaderProps> {
+    cells: CellComponent<TExtraProps>[];
+    rowHeaders: HeaderComponent<TRowHeaderProps>[];
+    colHeaders: HeaderComponent<TColHeaderProps>[];
+    cornerHeader: HeaderComponent | undefined;
 }
