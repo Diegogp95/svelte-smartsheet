@@ -127,7 +127,18 @@ export interface TailwindProperties {
 }
 
 // Keyboard event analysis types
-export type KeyCategory = 'arrow' | 'edit' | 'confirm' | 'backspace' | 'cancel' | 'delete' | 'space' | 'command' | 'write' | 'other';
+export type KeyCategory =
+    'arrow' |
+    'edit' |
+    'confirm' |
+    'backspace' |
+    'cancel' |
+    'delete' |
+    'space' |
+    'command' |
+    'write' |
+    'tab' |
+    'other';
 
 export interface ModifierState {
     shift: boolean;

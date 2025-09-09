@@ -664,6 +664,43 @@ export default class NavigationHandler<TExtraProps = undefined, TRowHeaderProps 
         return currentPosition; // Already at top boundary
     }
 
+    /**
+     * Navigate to next cell, if no cell to the right, go to first cell of next row
+     * @returns New position or current position if at bottom-right boundary
+     */
+    navigateToNextCell(): GridPosition {
+        const currentPosition = this.getCurrentPosition();
+        const { maxRow, maxCol } = this.gridDimensions;
+        if (currentPosition.col < maxCol) {
+            return this.navigateToNextRightCell();
+        } else if (currentPosition.row < maxRow) {
+            const newPosition = { row: currentPosition.row + 1, col: 0 };
+            this.movePointer(newPosition);
+            this.setAnchor(newPosition);
+            return newPosition;
+        }
+        return currentPosition;
+    }
+
+    /**
+     * Navigate to previous cell, if no cell to the left, go to last cell of previous row
+     * @returns New position or current position if at top-left boundary
+     */
+    navigateToPreviousCell(): GridPosition {
+        const currentPosition = this.getCurrentPosition();
+        if (currentPosition.col > 0) {
+            return this.navigateToNextLeftCell();
+        }
+        else if (currentPosition.row > 0) {
+            const { maxCol } = this.gridDimensions;
+            const newPosition = { row: currentPosition.row - 1, col: maxCol };
+            this.movePointer(newPosition);
+            this.setAnchor(newPosition);
+            return newPosition;
+        }
+        return currentPosition;
+    }
+
     isNavigationMode(): boolean {
         return this.navigationState.navigationMode;
     }

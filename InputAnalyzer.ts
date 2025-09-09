@@ -211,6 +211,7 @@ export default class InputAnalyzer {
         if (['Delete'].includes(key)) return 'delete';
         if (['Backspace'].includes(key)) return 'backspace';
         if (['Enter'].includes(key)) return 'edit';
+        if (['Tab'].includes(key)) return 'tab';
         if (key === ' ') return 'space';
 
         // Command category: Any letter with Ctrl modifier
@@ -274,6 +275,8 @@ export default class InputAnalyzer {
                 return true;
             } else return false;
         }
+
+        if (category === 'tab') return true;
 
         // Prevent default for Space (to avoid page scrolling)
         if (category === 'space') return true;

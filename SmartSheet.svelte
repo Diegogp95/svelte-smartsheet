@@ -12,6 +12,7 @@
     import type { VisibleComponentsCallback } from './VirtualizeHandler';
     import type { EditingStateCallback } from './DataHandler';
     import type {
+        GridDimensions,
         GridPosition,
         CellMouseEvent,
         CellValue,
@@ -48,6 +49,7 @@
     export let styleMode: 'style' | 'tailwind' = 'style'; // Choose between inline styles or Tailwind CSS classes
 
     // Scan phase
+    let gridDimensions: GridDimensions = { maxRow: gridData.length - 1, maxCol: (gridData[0]?.length || 1) - 1 };
     let scanning: boolean = true;
     let rowHeights: number[] = [];
     let colWidths: number[] = [];
@@ -96,7 +98,7 @@
         maxRow: gridData.length - 1,
         maxCol: (gridData[0]?.length || 1) - 1
     }, gridData as CellValue[][], rowHeaders, columnHeaders, rowsTitle,
-    extraPropsMatrix, rowHeaderExtraProps, colHeaderExtraProps, styleMode,
+    extraPropsMatrix, rowHeaderExtraProps, colHeaderExtraProps, styleMode, headersReadOnly,
     subscribeToSelections, subscribeToPointerPosition, subscribeToDeselection,
     subscribeToVisibleComponents, undefined, subscribeToEditingState);
 
@@ -119,9 +121,8 @@
 
     // Cell input blur handler
     function handleCellInputBlur(event: CustomEvent<{ event: FocusEvent, position: GridPosition }>) {
-        const { position } = event.detail;
         // Notify controller about input blur
-        controller.handleInputBlur(position);
+        controller.handleInputBlur();
         // Blur in a cell must trigger blur in the table container
         if (tableContainer) {
             handleFocusOut(event.detail.event);
@@ -208,6 +209,12 @@
         return controller.navigateToFirst(cellMatcher as any);
     }
 
+    // Headers styling APIs
+
+    export function colorizeHeader(type: 'row' | 'col', index: number, color: string) {
+        controller.setHeaderBackgroundColor(type, index, color);
+    }
+
     export function navigateToNext(cellMatcher: (cell: CellComponent<TExtraProps>) => boolean) {
         return controller.navigateToNext(cellMatcher as any);
     }
@@ -272,6 +279,13 @@
         controller.flashHeaders(positions, options);
     }
 
+    // ======================= SETUP PHASE =======================
+    // processed cells and headers
+    let cellComponents: Map<string, CellComponent<TExtraProps>> = controller.getCellComponents();
+    let colHeaderComponents: Map<string, HeaderComponent<TColHeaderProps>> = controller.getColHeaderComponents();
+    let rowHeaderComponents: Map<string, HeaderComponent<TRowHeaderProps>> = controller.getRowHeaderComponents();
+    let cornerHeaderComponent: HeaderComponent = controller.getCornerHeaderComponent();
+
     function initializeVirtualizerOnTableMount(event: CustomEvent<{ rowHeights: number[], colWidths: number[] }>) {
         rowHeights = event.detail.rowHeights;
         colWidths = event.detail.colWidths;
@@ -308,9 +322,11 @@
 {#if scanning}
     <!-- Phase to scan dimensions -->
     <DimensionScanner
-        {gridData}
-        {columnHeaders}
-        {rowHeaders}
+        {gridDimensions}
+        {cellComponents}
+        {colHeaderComponents}
+        {rowHeaderComponents}
+        {cornerHeaderComponent}
         {rowsTitle}
         {fontSize}
         on:done={initializeVirtualizerOnTableMount}

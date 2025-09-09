@@ -1,19 +1,53 @@
 <script lang="ts">
   	import { onMount, createEventDispatcher } from 'svelte';
   	import type {
+        GridDimensions,
 		CellValue,
 		HeaderValue,
+        CellComponent,
+        HeaderComponent,
   	} from './types';
   	import Cell from './Cell.svelte';
   	import Header from './Header.svelte';
     import { tick } from 'svelte';
 
 
-  	export let gridData: CellValue[][];
-  	export let columnHeaders: HeaderValue[];
-  	export let rowHeaders: HeaderValue[];
+    // Here we don't care about types, we just want to measure the dimensions of the rendered components.
+    // We get the grid components as maps since they are processed and stored that way in the controller.
+    // We care for for styling and rows/columns labels assigned by the controller.
+  	// We convert them to 2D arrays for easier rendering in the grid, may be optimized later.
+    export let gridDimensions: GridDimensions;
+  	export let cellComponents: Map<string, CellComponent<any>>;
+  	export let colHeaderComponents: Map<string, HeaderComponent<any>>;
+  	export let rowHeaderComponents: Map<string, HeaderComponent<any>>;
+    export let cornerHeaderComponent: HeaderComponent<any>;
   	export let rowsTitle: string = '';
     export let fontSize: string;
+
+    function convertMapTo2DArray(cellMap: Map<string, CellComponent<any>>): CellComponent<any>[][] {
+        const cells2D: CellComponent<any>[][] = [];
+
+        for (const [key, cellComponent] of cellMap) {
+            const [rowStr, colStr] = key.split('-');
+            const row = parseInt(rowStr);
+            const col = parseInt(colStr);
+
+            // Initialize row if it doesn't exist
+            if (!cells2D[row]) {
+                cells2D[row] = [];
+            }
+
+            // Assign cell to its position
+            cells2D[row][col] = cellComponent;
+        }
+
+        return cells2D;
+    }
+
+    let cells2D = convertMapTo2DArray(cellComponents);
+
+    let columnHeaders: HeaderComponent<any>[] = Array.from(colHeaderComponents.values());
+    let rowHeaders: HeaderComponent<any>[] = Array.from(rowHeaderComponents.values());
 
     let rowIndex: number = 0;
 
@@ -60,10 +94,10 @@
         });
 
         async function scanRowsSequentially() {
-            for (let i = 0; i < gridData.length; i++) {
+            for (let i = 0; i < gridDimensions.maxRow + 1; i++) {
                 compareAndUpdateDimensions(rowIndex);
                 await tick(); // Wait for DOM to update
-                if (rowIndex >= gridData.length - 1) {
+                if (rowIndex >= gridDimensions.maxRow) {
                     break;
                 }
                 rowIndex++;
@@ -85,7 +119,7 @@
             class="parent-grid"
             style="
                 display: grid;
-                grid-template-columns: auto repeat({(gridData[0]?.length) || 1}, auto);
+                grid-template-columns: auto repeat({gridDimensions.maxCol + 1}, auto);
                 grid-template-rows: auto repeat(2, auto);
                 gap: 0;
             "
@@ -103,6 +137,8 @@
                 <Header
                     position={{ headerType: 'corner', index: 0 }}
                     value={rowsTitle}
+                    styling={cornerHeaderComponent.styles.styling}
+                    tailwindStyling={cornerHeaderComponent.styles.tailwindStyling}
                 />
             </div>
 
@@ -118,8 +154,10 @@
             >
                 {#each columnHeaders as header, colIndex}
                     <Header
-                        position={{ headerType: 'col', index: colIndex }}
-                        value={header}
+                        position={header.position}
+                        value={header.value}
+                        styling={header.styles.styling}
+                        tailwindStyling={header.styles.tailwindStyling}
                     />
                 {/each}
             </div>
@@ -136,7 +174,9 @@
             >
                 <Header
                     position={{ headerType: 'row', index: 0 }}
-                    value={rowHeaders?.[rowIndex]}
+                    value={rowHeaders[rowIndex].value}
+                    styling={rowHeaders[rowIndex].styles.styling}
+                    tailwindStyling={rowHeaders[rowIndex].styles.tailwindStyling}
                 />
             </div>
 
@@ -152,10 +192,12 @@
                     gap: 0;
                 "
             >
-                {#each gridData[rowIndex] as cellValue, colIndex}
+                {#each cells2D[rowIndex] as cell, colIndex}
                     <Cell
                         position={{ row: 0, col: colIndex }}
-                        value={cellValue}
+                        value={cell.value}
+                        styling={cell.styles.styling}
+                        tailwindStyling={cell.styles.tailwindStyling}
                     />
                 {/each}
             </div>

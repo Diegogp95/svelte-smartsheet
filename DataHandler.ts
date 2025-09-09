@@ -243,7 +243,6 @@ export default class DataHandler<TExtraProps = undefined, TRowHeaderProps = unde
 
     startEditingComponent(position: GridPosition | HeaderPosition, componentType: 'cell' | 'header', startKey?: string) {
         let component: CellComponent<TExtraProps> | HeaderComponent<TRowHeaderProps> | HeaderComponent<TColHeaderProps> | null = null;
-        console.log('Attempting to start editing:', position, componentType, startKey);
 
         if (componentType === 'cell') {
             const key = `${(position as GridPosition).row}-${(position as GridPosition).col}`;
@@ -268,7 +267,6 @@ export default class DataHandler<TExtraProps = undefined, TRowHeaderProps = unde
             // Wait for the DOM to update
             tick().then(() => {
                 const inputElement = document.querySelector('#cell-input');
-                console.log('Found input element:', inputElement);
                 if (inputElement instanceof HTMLInputElement) {
                     this.editingState!.inputElement = inputElement;
                     this.editingState!.inputElement.value = startKey ?
@@ -522,7 +520,6 @@ export default class DataHandler<TExtraProps = undefined, TRowHeaderProps = unde
 
             // Create ChangeSet for cells
             const changeSet = new ChangeSet(cellChanges, changeType);
-            console.log('Committing Cell ChangeSet:', changeSet);
 
             // Add to history and apply
             this.historyManager.add(changeSet);
@@ -552,7 +549,6 @@ export default class DataHandler<TExtraProps = undefined, TRowHeaderProps = unde
 
             // Create ChangeSet for headers
             const changeSet = new ChangeSet(headerChanges, changeType);
-            console.log('Committing Header ChangeSet:', changeSet);
 
             // Add to history and apply
             this.historyManager.add(changeSet);
@@ -733,7 +729,6 @@ export default class DataHandler<TExtraProps = undefined, TRowHeaderProps = unde
     private applyCellValueDirectly(position: GridPosition, value: CellValue): void {
         const key = `${position.row}-${position.col}`;
         const cellComponent = this.cellComponents.get(key);
-        console.log(`Applying value directly to cell ${key}:`, value);
         if (cellComponent) {
             // Update the cell's value directly
             cellComponent.value = value;

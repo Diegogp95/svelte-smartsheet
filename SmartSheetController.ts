@@ -44,9 +44,10 @@ export default class SmartSheetController<TExtraProps = undefined,
     private cornerHeaderComponent: HeaderComponent;
     // Props
     private gridDimensions: GridDimensions;
+    private headersReadOnly: boolean;
     // Separate header components by type for different extraProps handling
     // Style
-    private styleMode: 'style' | 'tailwind'; // Default to inline styles
+    private styleMode: 'style' | 'tailwind'; // Default to inline styles0
 
     constructor(initialDimensions: GridDimensions,
         gridData: CellValue[][],
@@ -57,6 +58,7 @@ export default class SmartSheetController<TExtraProps = undefined,
         rowHeaderProps: TRowHeaderProps[] | undefined,
         colHeaderProps: TColHeaderProps[] | undefined,
         styleMode: 'style' | 'tailwind',
+        headersReadOnly: boolean,
         onSelectionsChanged?: SelectionChangedCallback,
         pointerPositionCallback?: PointerPositionCallback,
         onDeselectionsChanged?: SelectionChangedCallback,
@@ -66,6 +68,7 @@ export default class SmartSheetController<TExtraProps = undefined,
     ) {
         this.gridDimensions = initialDimensions;
         this.styleMode = styleMode;
+        this.headersReadOnly = headersReadOnly;
 
         // Initialize data maps - BUILD FROM INPUT DATA
         this.cellComponents = this.buildCellComponentsMap(gridData, cellsExtraProps);
@@ -371,6 +374,23 @@ export default class SmartSheetController<TExtraProps = undefined,
         }
     }
 
+    // Maps getters
+    getCellComponents(): Map<string, CellComponent<TExtraProps>> {
+        return this.cellComponents;
+    }
+
+    getColHeaderComponents(): Map<string, HeaderComponent<TColHeaderProps>> {
+        return this.colHeaderComponents;
+    }
+
+    getRowHeaderComponents(): Map<string, HeaderComponent<TRowHeaderProps>> {
+        return this.rowHeaderComponents;
+    }
+
+    getCornerHeaderComponent(): HeaderComponent {
+        return this.cornerHeaderComponent;
+    }
+
     // Update container reference
 
     setUpNavigator(tableContainer: HTMLDivElement, rowHeights: number[], colWidths: number[]) {
@@ -529,7 +549,7 @@ export default class SmartSheetController<TExtraProps = undefined,
             this.selectionHandler.clearSelections();
             if (analysis.componentType === 'cell') {
                 this.dataHandler.startEditingComponent(analysis.position as GridPosition, 'cell');
-            } else if (analysis.componentType === 'header') {
+            } else if (analysis.componentType === 'header' && !this.headersReadOnly) {
                 this.dataHandler.startEditingComponent(analysis.position as HeaderPosition, 'header');
             }
             return;
@@ -573,6 +593,17 @@ export default class SmartSheetController<TExtraProps = undefined,
         // PHASE 2: Process by category
         if (basicAnalysis.keyCategory === 'arrow') {
             return this.handleNavigationKey(basicAnalysis);
+        } else if (basicAnalysis.keyCategory === 'tab') {
+            let newPos: GridPosition;
+            if (basicAnalysis.modifiers.shift) {
+                newPos = this.navigationHandler.navigateToPreviousCell();
+            } else {
+                this.navigationHandler.navigateToNextCell();
+                newPos = this.navigationHandler.getCurrentPosition();
+            }
+                this.selectionHandler.selectSingle(newPos);
+                this.reflectSelectionsOnHeaders();
+                return;
         } else if (basicAnalysis.keyCategory === 'command') {
             const commandAnalysis = this.inputAnalyzer.analyzeCommand(basicAnalysis);
             if (commandAnalysis.command === 'undo') {
@@ -580,18 +611,15 @@ export default class SmartSheetController<TExtraProps = undefined,
                 if (affectedPositions.length > 0) {
                     // Update the visible components
                     this.virtualizeHandler.onVisibleComponentsChanged?.(this.virtualizeHandler);
-                    const visibleComponents = this.virtualizeHandler.getVisibleComponents();
                     // Visually flash the affected cells (only rendered ones)
                     if (componentType === 'cell') {
-                        this.colorHandler.flashCells(
+                        this.flashCells(
                             affectedPositions as GridPosition[],
-                            visibleComponents,
                             { color: 'red' }
                         );
                     } else {
-                        this.colorHandler.flashHeaders(
+                        this.flashHeaders(
                             affectedPositions as HeaderPosition[],
-                            visibleComponents,
                             { color: 'red' }
                         );
                     }
@@ -602,18 +630,14 @@ export default class SmartSheetController<TExtraProps = undefined,
                 if (affectedPositions.length > 0) {
                     // Update the visible components
                     this.virtualizeHandler.onVisibleComponentsChanged?.(this.virtualizeHandler);
-                    // Visually flash the affected cells (only rendered ones)
-                    const visibleComponents = this.virtualizeHandler.getVisibleComponents();
                     if (componentType === 'cell') {
-                        this.colorHandler.flashCells(
+                        this.flashCells(
                             affectedPositions as GridPosition[],
-                            visibleComponents,
                             { color: 'blue' }
                         );
                     } else {
-                        this.colorHandler.flashHeaders(
+                        this.flashHeaders(
                             affectedPositions as HeaderPosition[],
-                            visibleComponents,
                             { color: 'blue' }
                         );
                     }
@@ -686,7 +710,7 @@ export default class SmartSheetController<TExtraProps = undefined,
 
     }
 
-    handleInputBlur(position: GridPosition) {
+    handleInputBlur() {
         // Delegate to DataHandler to set cell not editing
         this.dataHandler.finishComponentEdit('blur');
         // Update the visible components
@@ -737,9 +761,37 @@ export default class SmartSheetController<TExtraProps = undefined,
         return cellComponent?.value;
     }
 
-    // ==================== END PUBLIC API FOR MOUSE EVENT TRANSLATION ====================
+    // === VIRTUALIZATION METHODS ===
 
-    // PUBLIC API for external selection control
+    // Initialize virtualization with container dimensions (called on mount)
+    initializeVirtualization(tableContainer: HTMLDivElement,
+        rowHeights: number[],
+        colWidths: number[]
+    ): void {
+        this.virtualizeHandler.initialize(
+            tableContainer, rowHeights, colWidths
+        );
+    }
+
+    // Handle scroll events for virtualization
+    handleVirtualizationScroll(): void {
+        this.virtualizeHandler.handleScroll();
+    }
+
+    // Get current render area
+    getRenderArea() {
+        return this.virtualizeHandler.getRenderArea();
+    }
+
+    // Get visible components for current render area
+    getVisibleComponents() {
+        return this.virtualizeHandler.getVisibleComponents();
+    }
+
+    // =============================================================================================
+    // ===================== PUBLIC API - Methods exposed for external control =====================
+    // =============================================================================================
+
     selectPositions(positions: GridPosition[]): void {
         // Clear existing selections first
         this.selectionHandler.clearSelections();
@@ -807,6 +859,8 @@ export default class SmartSheetController<TExtraProps = undefined,
         } else {
             console.warn(`[SmartSheetController] ${methodName} requires either an array of [position, value] tuples or a position and a value.`);
         }
+        // Update the visible components
+        this.virtualizeHandler.onVisibleComponentsChanged?.(this.virtualizeHandler);
     }
 
     setCellBackgroundColor(
@@ -843,16 +897,22 @@ export default class SmartSheetController<TExtraProps = undefined,
     // Batch background styles via generator
     applyBackgroundStyles(styleGenerator: (cells: Map<string, CellComponent>) => [GridPosition, BackgroundProperties][]): void {
         this.colorHandler.applyBackgroundStyles(styleGenerator as any);
+        // Update the visible components
+        this.virtualizeHandler.onVisibleComponentsChanged?.(this.virtualizeHandler);
     }
 
     // Batch tailwind styles via generator
     applyTailwindStyles(styleGenerator: (cells: Map<string, CellComponent>) => [GridPosition, TailwindProperties][]): void {
         this.colorHandler.applyTailwindStyles(styleGenerator as any);
+        // Update the visible components
+        this.virtualizeHandler.onVisibleComponentsChanged?.(this.virtualizeHandler);
     }
 
     // Reset all cell backgrounds to default
     resetAllBackgrounds(): void {
         this.colorHandler.applyDefaultStyles('cell');
+        // Update the visible components
+        this.virtualizeHandler.onVisibleComponentsChanged?.(this.virtualizeHandler);
     }
 
     // Selection API that takes a function aware of cell structure
@@ -895,11 +955,11 @@ export default class SmartSheetController<TExtraProps = undefined,
     // Data imputation APIs
     imputeValues(imputations: [GridPosition, CellValue][]): GridPosition[] {
         const affectedPositions = this.dataHandler.imputeValues(imputations);
-        const visibleComponents = this.virtualizeHandler.getVisibleComponents();
+        // Update the visible components
+        this.virtualizeHandler.onVisibleComponentsChanged?.(this.virtualizeHandler);
         if (affectedPositions.length > 0) {
-            this.colorHandler.flashCells(
+            this.flashCells(
                 affectedPositions,
-                visibleComponents,
                 { color: 'green' }
             );
         }
@@ -910,11 +970,11 @@ export default class SmartSheetController<TExtraProps = undefined,
         imputationGenerator: (cells: Map<string, CellComponent<TExtraProps>>) => [GridPosition, CellValue][]
     ): GridPosition[] {
         const affectedPositions = this.dataHandler.applyImputations(imputationGenerator);
-        const visibleComponents = this.virtualizeHandler.getVisibleComponents();
+        // Update the visible components
+        this.virtualizeHandler.onVisibleComponentsChanged?.(this.virtualizeHandler);
         if (affectedPositions.length > 0) {
-            this.colorHandler.flashCells(
+            this.flashCells(
                 affectedPositions,
-                visibleComponents,
                 { color: 'green' }
             );
         }
@@ -949,21 +1009,65 @@ export default class SmartSheetController<TExtraProps = undefined,
 
     // ==================== HEADER STYLING API ====================
 
-    // Header styling methods
-    setHeaderBackgroundColor(type: 'row' | 'col' | 'corner', index: number, color: string): void {
-        this.colorHandler.changeHeaderBackgroundColor(type, index, color);
+    private _applyHeaderStyleArgs<T>(
+        headerType: 'row' | 'col' | 'corner',
+        arg1: number | number[] | [number, T][],
+        arg2: T | undefined,
+        handlerMethod: (type: 'row' | 'col' | 'corner', index: number, value: T) => void,
+        methodName: string
+    ): void {
+        if (Array.isArray(arg1)) {
+            if (arg1.length > 0 && Array.isArray(arg1[0])) {
+                for (const [index, value] of arg1 as [number, T][]) {
+                    handlerMethod(headerType, index, value);
+                }
+            } else if (arg2 !== undefined) {
+                for (const index of arg1 as number[]) {
+                    handlerMethod(headerType, index, arg2);
+                }
+            } else {
+                console.warn(`[SmartSheetController] ${methodName} requires either an array of [index, value] tuples or an index and a value.`);
+            }
+        } else if (arg2 !== undefined) {
+            handlerMethod(headerType, arg1 as number, arg2);
+        } else {
+            console.warn(`[SmartSheetController] ${methodName} requires either an array of [index, value] tuples or an index and a value.`);
+        }
+        // Update the visible components
+        this.virtualizeHandler.onVisibleComponentsChanged?.(this.virtualizeHandler);
     }
 
-    setHeaderTextColor(type: 'row' | 'col' | 'corner', index: number, color: string): void {
-        this.colorHandler.changeHeaderTextColor(type, index, color);
+    // Header styling methods (supports single or batch via tuple arrays)
+    setHeaderBackgroundColor(
+        type: 'row' | 'col' | 'corner',
+        arg1: number | number[] | [number, string][],
+        arg2?: string
+    ): void {
+        this._applyHeaderStyleArgs(type, arg1, arg2, this.colorHandler.changeHeaderBackgroundColor.bind(this.colorHandler), 'setHeaderBackgroundColor');
     }
 
-    setHeaderStyle(type: 'row' | 'col' | 'corner', index: number, props: BackgroundProperties): void {
-        this.colorHandler.setHeaderStyling(type, index, props);
+    setHeaderTextColor(
+        type: 'row' | 'col' | 'corner',
+        arg1: number | number[] | [number, string][],
+        arg2?: string
+    ): void {
+        this._applyHeaderStyleArgs(type, arg1, arg2, this.colorHandler.changeHeaderTextColor.bind(this.colorHandler), 'setHeaderTextColor');
     }
 
-    setHeaderTailwindStyle(type: 'row' | 'col' | 'corner', index: number, props: TailwindProperties): void {
-        this.colorHandler.setHeaderTailwindStyling(type, index, props);
+    setHeaderStyle(
+        type: 'row' | 'col' | 'corner',
+        arg1: number | number[] | [number, BackgroundProperties][],
+        arg2?: BackgroundProperties
+    ): void {
+        this._applyHeaderStyleArgs(type, arg1, arg2, this.colorHandler.setHeaderStyling.bind(this.colorHandler), 'setHeaderStyle');
+    }
+
+    setHeaderTailwindStyle(
+        type: 'row' | 'col' | 'corner',
+        arg1: number | number[] | [number, TailwindProperties][],
+        arg2?: TailwindProperties
+    ): void {
+        this._applyHeaderStyleArgs(type, arg1, arg2, this.colorHandler.setHeaderTailwindStyling.bind(this.colorHandler), 'setHeaderTailwindStyle');
     }
 
     // Batch header styles via generators
@@ -971,24 +1075,32 @@ export default class SmartSheetController<TExtraProps = undefined,
         styleGenerator: (headers: Map<string, HeaderComponent<TRowHeaderProps>>) => [number, BackgroundProperties][]
     ): void {
         this.colorHandler.applyRowHeaderBackgroundStyles(styleGenerator);
+        // Update the visible components
+        this.virtualizeHandler.onVisibleComponentsChanged?.(this.virtualizeHandler);
     }
 
     applyColHeaderBackgroundStyles(
         styleGenerator: (headers: Map<string, HeaderComponent<TColHeaderProps>>) => [number, BackgroundProperties][]
     ): void {
         this.colorHandler.applyColHeaderBackgroundStyles(styleGenerator);
+        // Update the visible components
+        this.virtualizeHandler.onVisibleComponentsChanged?.(this.virtualizeHandler);
     }
 
     applyRowHeaderTailwindStyles(
         styleGenerator: (headers: Map<string, HeaderComponent<TRowHeaderProps>>) => [number, TailwindProperties][]
     ): void {
         this.colorHandler.applyRowHeaderTailwindStyles(styleGenerator);
+        // Update the visible components
+        this.virtualizeHandler.onVisibleComponentsChanged?.(this.virtualizeHandler);
     }
 
     applyColHeaderTailwindStyles(
         styleGenerator: (headers: Map<string, HeaderComponent<TColHeaderProps>>) => [number, TailwindProperties][]
     ): void {
         this.colorHandler.applyColHeaderTailwindStyles(styleGenerator);
+        // Update the visible components
+        this.virtualizeHandler.onVisibleComponentsChanged?.(this.virtualizeHandler);
     }
 
     // Reset header styles
@@ -996,33 +1108,82 @@ export default class SmartSheetController<TExtraProps = undefined,
         this.colorHandler.applyDefaultStyles('row');
         this.colorHandler.applyDefaultStyles('col');
         this.colorHandler.applyDefaultStyles('corner');
+        // Update the visible components
+        this.virtualizeHandler.onVisibleComponentsChanged?.(this.virtualizeHandler);
     }
 
     // Reset all styles (cells and headers)
     resetAllStyles(): void {
         this.colorHandler.resetAllStyles();
+        // Update the visible components
+        this.virtualizeHandler.onVisibleComponentsChanged?.(this.virtualizeHandler);
     }
 
     // ==================== HEADER + ROW/COLUMN STYLING API ====================
 
-    // Style row header and all cells in that row
-    styleRowHeaderAndCells(row: number, headerProps: BackgroundProperties, cellProps: BackgroundProperties): void {
-        this.colorHandler.styleRowHeaderAndCells(row, headerProps, cellProps);
+    private _applyHeaderAndCellsStyleArgs<T1, T2>(
+        isRow: boolean,
+        arg1: number | number[] | [number, T1, T2][],
+        arg2: T1 | undefined,
+        arg3: T2 | undefined,
+        handlerMethod: (index: number, headerProps: T1, cellProps: T2) => void,
+        methodName: string
+    ): void {
+        if (Array.isArray(arg1)) {
+            if (arg1.length > 0 && Array.isArray(arg1[0])) {
+                for (const [index, headerProps, cellProps] of arg1 as [number, T1, T2][]) {
+                    handlerMethod(index, headerProps, cellProps);
+                }
+            } else if (arg2 !== undefined && arg3 !== undefined) {
+                for (const index of arg1 as number[]) {
+                    handlerMethod(index, arg2, arg3);
+                }
+            } else {
+                console.warn(`[SmartSheetController] ${methodName} requires either an array of [index, headerProps, cellProps] tuples or an index, headerProps, and cellProps.`);
+            }
+        } else if (arg2 !== undefined && arg3 !== undefined) {
+            handlerMethod(arg1 as number, arg2, arg3);
+        } else {
+            console.warn(`[SmartSheetController] ${methodName} requires either an array of [index, headerProps, cellProps] tuples or an index, headerProps, and cellProps.`);
+        }
+        // Update the visible components
+        this.virtualizeHandler.onVisibleComponentsChanged?.(this.virtualizeHandler);
     }
 
-    // Style column header and all cells in that column
-    styleColHeaderAndCells(col: number, headerProps: BackgroundProperties, cellProps: BackgroundProperties): void {
-        this.colorHandler.styleColHeaderAndCells(col, headerProps, cellProps);
+    // Style row header and all cells in that row (supports single or batch via tuple arrays)
+    styleRowHeaderAndCells(
+        arg1: number | number[] | [number, BackgroundProperties, BackgroundProperties][],
+        arg2?: BackgroundProperties,
+        arg3?: BackgroundProperties
+    ): void {
+        this._applyHeaderAndCellsStyleArgs(true, arg1, arg2, arg3, this.colorHandler.styleRowHeaderAndCells.bind(this.colorHandler), 'styleRowHeaderAndCells');
     }
 
-    // Style row header and all cells in that row with Tailwind classes
-    styleRowHeaderAndCellsTailwind(row: number, headerProps: TailwindProperties, cellProps: TailwindProperties): void {
-        this.colorHandler.styleRowHeaderAndCellsTailwind(row, headerProps, cellProps);
+    // Style column header and all cells in that column (supports single or batch via tuple arrays)
+    styleColHeaderAndCells(
+        arg1: number | number[] | [number, BackgroundProperties, BackgroundProperties][],
+        arg2?: BackgroundProperties,
+        arg3?: BackgroundProperties
+    ): void {
+        this._applyHeaderAndCellsStyleArgs(false, arg1, arg2, arg3, this.colorHandler.styleColHeaderAndCells.bind(this.colorHandler), 'styleColHeaderAndCells');
     }
 
-    // Style column header and all cells in that column with Tailwind classes
-    styleColHeaderAndCellsTailwind(col: number, headerProps: TailwindProperties, cellProps: TailwindProperties): void {
-        this.colorHandler.styleColHeaderAndCellsTailwind(col, headerProps, cellProps);
+    // Style row header and all cells in that row with Tailwind classes (supports single or batch via tuple arrays)
+    styleRowHeaderAndCellsTailwind(
+        arg1: number | number[] | [number, TailwindProperties, TailwindProperties][],
+        arg2?: TailwindProperties,
+        arg3?: TailwindProperties
+    ): void {
+        this._applyHeaderAndCellsStyleArgs(true, arg1, arg2, arg3, this.colorHandler.styleRowHeaderAndCellsTailwind.bind(this.colorHandler), 'styleRowHeaderAndCellsTailwind');
+    }
+
+    // Style column header and all cells in that column with Tailwind classes (supports single or batch via tuple arrays)
+    styleColHeaderAndCellsTailwind(
+        arg1: number | number[] | [number, TailwindProperties, TailwindProperties][],
+        arg2?: TailwindProperties,
+        arg3?: TailwindProperties
+    ): void {
+        this._applyHeaderAndCellsStyleArgs(false, arg1, arg2, arg3, this.colorHandler.styleColHeaderAndCellsTailwind.bind(this.colorHandler), 'styleColHeaderAndCellsTailwind');
     }
 
     // Batch header + cells styles via generators
@@ -1030,51 +1191,32 @@ export default class SmartSheetController<TExtraProps = undefined,
         styleGenerator: (headers: Map<string, HeaderComponent<TRowHeaderProps>>) => [number, BackgroundProperties, BackgroundProperties][]
     ): void {
         this.colorHandler.applyRowHeaderAndCellsBackgroundStyles(styleGenerator);
+        // Update the visible components
+        this.virtualizeHandler.onVisibleComponentsChanged?.(this.virtualizeHandler);
     }
 
     applyColHeaderAndCellsBackgroundStyles(
         styleGenerator: (headers: Map<string, HeaderComponent<TColHeaderProps>>) => [number, BackgroundProperties, BackgroundProperties][]
     ): void {
         this.colorHandler.applyColHeaderAndCellsBackgroundStyles(styleGenerator);
+        // Update the visible components
+        this.virtualizeHandler.onVisibleComponentsChanged?.(this.virtualizeHandler);
     }
 
     applyRowHeaderAndCellsTailwindStyles(
         styleGenerator: (headers: Map<string, HeaderComponent<TRowHeaderProps>>) => [number, TailwindProperties, TailwindProperties][]
     ): void {
         this.colorHandler.applyRowHeaderAndCellsTailwindStyles(styleGenerator);
+        // Update the visible components
+        this.virtualizeHandler.onVisibleComponentsChanged?.(this.virtualizeHandler);
     }
 
     applyColHeaderAndCellsTailwindStyles(
         styleGenerator: (headers: Map<string, HeaderComponent<TColHeaderProps>>) => [number, TailwindProperties, TailwindProperties][]
     ): void {
         this.colorHandler.applyColHeaderAndCellsTailwindStyles(styleGenerator);
-    }
-
-    // === VIRTUALIZATION METHODS ===
-
-    // Initialize virtualization with container dimensions (called on mount)
-    initializeVirtualization(tableContainer: HTMLDivElement,
-        rowHeights: number[],
-        colWidths: number[]
-    ): void {
-        this.virtualizeHandler.initialize(
-            tableContainer, rowHeights, colWidths
-        );
-    }
-
-    // Handle scroll events for virtualization
-    handleVirtualizationScroll(): void {
-        this.virtualizeHandler.handleScroll();
-    }
-
-    // Get current render area
-    getRenderArea() {
-        return this.virtualizeHandler.getRenderArea();
-    }
-
-    // Get visible components for current render area
-    getVisibleComponents() {
-        return this.virtualizeHandler.getVisibleComponents();
+        // Update the visible components
+        this.virtualizeHandler.onVisibleComponentsChanged?.(this.virtualizeHandler);
     }
 
 }
