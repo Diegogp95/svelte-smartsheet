@@ -1,6 +1,7 @@
 <script lang="ts" generics="TExtraProps = undefined, TRowHeaderProps = undefined, TColHeaderProps = undefined">
     import Cell from './Cell.svelte';
     import InputCell from './InputCell.svelte';
+    import InputHeader from './InputHeader.svelte';
     import CellPointer from './CellPointer.svelte';
     import Header from './Header.svelte';
     import NavigationOverlay from './NavigationOverlay.svelte';
@@ -23,6 +24,7 @@
         FlashOptions,
         BackgroundProperties,
         TailwindProperties,
+        EditingState,
     } from './types';
     import SelectionRect from './SelectionRect.svelte';
     import DeselectionRect from './DeselectionRect.svelte';
@@ -70,15 +72,10 @@
     };
 
     // EDITING STATE: Centralized editing state managed by DataHandler
-    let currentEditingPosition: GridPosition | null = null;
-    let currentEditingCell: CellComponent<TExtraProps> | null = null;
+    let currentEditingState: EditingState<TExtraProps, TRowHeaderProps, TColHeaderProps> | null = null;
     // Callback to get editing state from DataHandler
-    const subscribeToEditingState: EditingStateCallback = (handler) => {
-        currentEditingPosition = handler.getCurrentEditingPosition();
-        currentEditingCell = handler.getCurrentEditingCell();
-//        console.log('currentEditingCell', currentEditingCell);
-//        console.log('currentEditingPosition', currentEditingPosition);
-//        console.log('currentEditingInputValue', currentEditingInputValue);
+    const subscribeToEditingState: EditingStateCallback<TExtraProps, TRowHeaderProps, TColHeaderProps> = (handler) => {
+        currentEditingState = handler.getCurrentEditingState() || null;
     };
 
     // VIRTUALIZATION: Visible components and render area state managed by VirtualizeHandler
@@ -146,41 +143,15 @@
     }
 
     // Handle cell input keydown events
-    function handleCellInputKeyCommand(e: CustomEvent<{ event: KeyboardEvent, position: GridPosition }>) {
+    function handleInputKeyCommand(e: CustomEvent<{ event: KeyboardEvent, position: GridPosition | HeaderPosition }> ) {
         const { event: keyboardEvent, position } = e.detail;
         // Notify controller about input key command
         if (keyboardEvent.key === 'Enter' || keyboardEvent.key === 'Tab') {
-            controller.handleCellInputCommit(position, keyboardEvent);
+            controller.handleInputCommit(keyboardEvent);
         } else if (keyboardEvent.key === 'Escape') {
-            controller.handleCellInputCancel(position, keyboardEvent);
+            controller.handleInputCancel(keyboardEvent);
         }
         // Ensure focus is on the table container after input key command
-        if (tableContainer) {
-            tableContainer.focus();
-        }
-    }
-
-    // Header input blur handler
-    function handleHeaderInputBlur(event: CustomEvent<{ event: FocusEvent, position: HeaderPosition }>) {
-        const { position } = event.detail;
-        // Notify controller about header input blur
-        controller.handleHeaderInputBlur(position);
-        // Blur in a header must trigger blur in the table container
-        if (tableContainer) {
-            handleFocusOut(event.detail.event);
-        }
-    }
-
-    // Handle header input keydown events
-    function handleHeaderInputKeyCommand(e: CustomEvent<{ event: KeyboardEvent, position: HeaderPosition }>) {
-        const { event: keyboardEvent, position } = e.detail;
-        // Notify controller about header input key command
-        if (keyboardEvent.key === 'Enter' || keyboardEvent.key === 'Tab') {
-            controller.handleHeaderInputCommit(position, keyboardEvent);
-        } else if (keyboardEvent.key === 'Escape') {
-            controller.handleHeaderInputCancel(position, keyboardEvent);
-        }
-        // Ensure focus is on the table container after header input key command
         if (tableContainer) {
             tableContainer.focus();
         }
@@ -408,18 +379,37 @@
                 on:mousedown={(e) => controller.handleColHeaderMouseEvent(e, 'mousedown')}
                 on:mouseenter={(e) => controller.handleColHeaderMouseEvent(e, 'mouseenter')}
                 on:mouseup={(e) => controller.handleColHeaderMouseEvent(e, 'mouseup')}
+                on:dblclick={(e) => controller.handleColHeaderMouseEvent(e, 'dblclick')}
                 on:contextmenu={(e) => controller.handleColHeaderMouseEvent(e, 'contextmenu')}
                 on:auxclick={(e) => e.button === 1 && controller.handleColHeaderMouseEvent(e, 'middleclick')}
                 on:mousemove={(e) => controller.handleUnifiedMouseMove(e, 'colHeaders')}
                 on:mouseleave={() => controller.handleContainerMouseLeave('colHeaders')}
             >
-                {#each visibleComponents.colHeaders as headerComponent}
-                    <Header
-                        position={headerComponent.position}
-                        value={headerComponent.value}
-                        styling={headerComponent.styles.styling}
-                        tailwindStyling={headerComponent.styles.tailwindStyling}
+                <!-- Render InputHeader if editing a column header -->
+                {#if currentEditingState && currentEditingState.type === 'header' && currentEditingState.position && 'headerType' in currentEditingState.position && currentEditingState.position.headerType === 'col'}
+                    <InputHeader
+                        position={currentEditingState.position}
+                        styling={currentEditingState.component.styles.styling}
+                        tailwindStyling={currentEditingState.component.styles.tailwindStyling}
+                        on:inputBlur={handleInputKeyCommand}
+                        on:inputKeyCommit={handleInputKeyCommand}
+                        on:inputKeyCancel={handleInputKeyCommand}
                     />
+                {/if}
+                <!-- Render visible column headers from VirtualizeHandler -->
+                {#each visibleComponents.colHeaders as headerComponent}
+                    <!-- Only render if the header is not being edited -->
+                    {#if !(currentEditingState && currentEditingState.type === 'header' &&
+                           currentEditingState.position && 'headerType' in currentEditingState.position &&
+                           currentEditingState.position.headerType === 'col' &&
+                           headerComponent.position.index === currentEditingState.position.index)}
+                        <Header
+                            position={headerComponent.position}
+                            value={headerComponent.value}
+                            styling={headerComponent.styles.styling}
+                            tailwindStyling={headerComponent.styles.tailwindStyling}
+                        />
+                    {/if}
                 {/each}
             </div>
 
@@ -436,18 +426,37 @@
                 on:mousedown={(e) => controller.handleRowHeaderMouseEvent(e, 'mousedown')}
                 on:mouseenter={(e) => controller.handleRowHeaderMouseEvent(e, 'mouseenter')}
                 on:mouseup={(e) => controller.handleRowHeaderMouseEvent(e, 'mouseup')}
+                on:dblclick={(e) => controller.handleRowHeaderMouseEvent(e, 'dblclick')}
                 on:contextmenu={(e) => controller.handleRowHeaderMouseEvent(e, 'contextmenu')}
                 on:auxclick={(e) => e.button === 1 && controller.handleRowHeaderMouseEvent(e, 'middleclick')}
                 on:mousemove={(e) => controller.handleUnifiedMouseMove(e, 'rowHeaders')}
                 on:mouseleave={() => controller.handleContainerMouseLeave('rowHeaders')}
             >
-                {#each visibleComponents.rowHeaders as headerComponent}
-                    <Header
-                        position={headerComponent.position}
-                        value={headerComponent.value}
-                        styling={headerComponent.styles.styling}
-                        tailwindStyling={headerComponent.styles.tailwindStyling}
+                <!-- Render InputHeader if editing a row header -->
+                {#if currentEditingState && currentEditingState.type === 'header' && currentEditingState.position && 'headerType' in currentEditingState.position && currentEditingState.position.headerType === 'row'}
+                    <InputHeader
+                        position={currentEditingState.position}
+                        styling={currentEditingState.component.styles.styling}
+                        tailwindStyling={currentEditingState.component.styles.tailwindStyling}
+                        on:inputBlur={handleInputKeyCommand}
+                        on:inputKeyCommit={handleInputKeyCommand}
+                        on:inputKeyCancel={handleInputKeyCommand}
                     />
+                {/if}
+                <!-- Render visible row headers from VirtualizeHandler -->
+                {#each visibleComponents.rowHeaders as headerComponent}
+                    <!-- Only render if the header is not being edited -->
+                    {#if !(currentEditingState && currentEditingState.type === 'header' &&
+                           currentEditingState.position && 'headerType' in currentEditingState.position &&
+                           currentEditingState.position.headerType === 'row' &&
+                           headerComponent.position.index === currentEditingState.position.index)}
+                        <Header
+                            position={headerComponent.position}
+                            value={headerComponent.value}
+                            styling={headerComponent.styles.styling}
+                            tailwindStyling={headerComponent.styles.tailwindStyling}
+                        />
+                    {/if}
                 {/each}
             </div>
 
@@ -487,21 +496,23 @@
                 on:mouseleave={() => controller.handleContainerMouseLeave('main')}
             >
                 <!-- Render InputCell if existing -->
-                {#if currentEditingPosition && currentEditingCell}
+                {#if currentEditingState && currentEditingState.type === 'cell' && currentEditingState.position && 'row' in currentEditingState.position}
                     <InputCell
-                        position={currentEditingPosition}
-                        styling={currentEditingCell.styles.styling}
-                        tailwindStyling={currentEditingCell.styles.tailwindStyling}
+                        position={currentEditingState.position}
+                        styling={currentEditingState.component.styles.styling}
+                        tailwindStyling={currentEditingState.component.styles.tailwindStyling}
                         on:inputBlur={handleCellInputBlur}
-                        on:inputKeyCommit={handleCellInputKeyCommand}
-                        on:inputKeyCancel={handleCellInputKeyCommand}
+                        on:inputKeyCommit={handleInputKeyCommand}
+                        on:inputKeyCancel={handleInputKeyCommand}
                     />
                 {/if}
                 <!-- Render visible cells from VirtualizeHandler -->
                 {#each visibleComponents.cells as cellComponent}
                     <!-- Only render if the cell is not being edited -->
-                    {#if !(currentEditingPosition && currentEditingPosition.row === cellComponent.position.row
-                        && currentEditingPosition.col === cellComponent.position.col)}
+                    {#if !(currentEditingState && currentEditingState.type === 'cell' &&
+                           currentEditingState.position && 'row' in currentEditingState.position &&
+                           cellComponent.position.row === currentEditingState.position.row &&
+                           cellComponent.position.col === currentEditingState.position.col)}
                         <Cell
                             position={cellComponent.position}
                             value={cellComponent.value}

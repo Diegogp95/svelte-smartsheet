@@ -5,8 +5,9 @@ import type {
     HeaderPosition,
     HeaderComponent,
     HeaderValue,
+    EditingState,
 } from './types';
-import { CellChange, ChangeSet, HistoryManager } from './HistoryManager';
+import { CellChange, HeaderChange, ChangeSet, HistoryManager } from './HistoryManager';
 import { tick } from 'svelte';
 
 // Callback type for editing state changes
@@ -23,6 +24,28 @@ interface ValidationResult {
 
 // Expected types for columns (can be extended later)
 type ExpectedType = 'string' | 'number' | 'boolean' | 'auto';
+
+// ==================== GENERIC TYPES FOR UNIFIED METHODS ====================
+
+// Union types for components and values
+type AnyComponent<TExtraProps, TRowHeaderProps, TColHeaderProps> =
+    | CellComponent<TExtraProps>
+    | HeaderComponent<TRowHeaderProps>
+    | HeaderComponent<TColHeaderProps>;
+
+type AnyValue = CellValue | HeaderValue;
+type AnyPosition = GridPosition | HeaderPosition;
+
+// Generic interface for component changes
+interface ComponentChange<T extends AnyComponent<any, any, any>> {
+    component: T;
+    inputValue: string;  // Always string - represents user input
+}
+
+interface ValidatedComponentChange<T extends AnyComponent<any, any, any>, V extends AnyValue>
+    extends ComponentChange<T> {
+    newValue: V;  // Parsed and validated value
+}
 
 // ==================== VALUE VALIDATOR CLASS ====================
 
@@ -158,10 +181,10 @@ export default class DataHandler<TExtraProps = undefined, TRowHeaderProps = unde
     private cornerHeaderComponent: HeaderComponent | null;
 
     // Centralized editing state
-    private editingPosition: GridPosition | null = null;
-    private editingCell: CellComponent<TExtraProps> | null = null;
-    private inputHTMLElement: HTMLInputElement | null = null;
     private editingStateCallback?: EditingStateCallback<TExtraProps, TRowHeaderProps, TColHeaderProps>;
+
+    // Editing state
+    private editingState: EditingState<TExtraProps, TRowHeaderProps, TColHeaderProps> | null = null;
 
     constructor(
         cellComponents: Map<string, CellComponent<TExtraProps>>,
@@ -200,22 +223,16 @@ export default class DataHandler<TExtraProps = undefined, TRowHeaderProps = unde
 
 
     // Helper methods for centralized editing state
-    getCurrentEditingPosition(): GridPosition | null {
-        return this.editingPosition;
+    getCurrentEditingState(): EditingState<TExtraProps, TRowHeaderProps, TColHeaderProps> | null {
+        return this.editingState;
     }
 
     getCurrentEditingCell(): CellComponent<TExtraProps> | null {
-        return this.editingCell;
+        return this.editingState?.component as CellComponent<TExtraProps> | null;
     }
 
     getCurrentInputHTMLElement(): HTMLInputElement | null {
-        return this.inputHTMLElement;
-    }
-
-    isEditingPosition(position: GridPosition): boolean {
-        return this.editingPosition !== null &&
-               this.editingPosition.row === position.row &&
-               this.editingPosition.col === position.col;
+        return this.editingState?.inputElement ?? null;
     }
 
     private notifyEditingStateChange(): void {
@@ -224,29 +241,41 @@ export default class DataHandler<TExtraProps = undefined, TRowHeaderProps = unde
         }
     }
 
-    startEditingCell(position: GridPosition, startKey?: string) {
-        const key = `${position.row}-${position.col}`;
-        const cellComponent = this.cellComponents.get(key);
-        if (cellComponent) {
+    startEditingComponent(position: GridPosition | HeaderPosition, componentType: 'cell' | 'header', startKey?: string) {
+        let component: CellComponent<TExtraProps> | HeaderComponent<TRowHeaderProps> | HeaderComponent<TColHeaderProps> | null = null;
+        console.log('Attempting to start editing:', position, componentType, startKey);
+
+        if (componentType === 'cell') {
+            const key = `${(position as GridPosition).row}-${(position as GridPosition).col}`;
+            component = this.cellComponents.get(key) || null;
+        } else {
+            component = this.getHeaderComponent(`${(position as HeaderPosition).headerType}-${(position as HeaderPosition).index}`);
+        }
+
+        if (component) {
             // End any current editing
-            if (this.editingPosition) {
-                this.endEditingCell();
+            if (this.editingState) {
+                this.endEditingComponent();
             }
 
             // Set new editing state
-            this.editingPosition = position;
-            this.editingCell = cellComponent;
+            this.editingState = {
+                type: componentType,
+                position: position,
+                component: component,
+                inputElement: null
+            };
             // Wait for the DOM to update
             tick().then(() => {
                 const inputElement = document.querySelector('#cell-input');
                 console.log('Found input element:', inputElement);
                 if (inputElement instanceof HTMLInputElement) {
-                    this.inputHTMLElement = inputElement;
-                    this.inputHTMLElement.value = startKey ?
+                    this.editingState!.inputElement = inputElement;
+                    this.editingState!.inputElement.value = startKey ?
                         (startKey === 'Backspace' ? '' : startKey) :
-                        String(cellComponent.value ?? '');
-                    this.inputHTMLElement.focus();
-                    this.inputHTMLElement.select();
+                        String(component.value ?? '');
+                    this.editingState!.inputElement.focus();
+                    this.editingState!.inputElement.select();
                 }
             });
             // Notify state change
@@ -254,28 +283,26 @@ export default class DataHandler<TExtraProps = undefined, TRowHeaderProps = unde
         }
     }
 
-    endEditingCell(position?: GridPosition) {
+    endEditingComponent() {
         // Clear centralized editing state regardless of position validation
-        this.editingPosition = null;
-        this.editingCell = null;
-        this.inputHTMLElement = null;
+        this.editingState = null;
 
         // Notify state change
         this.notifyEditingStateChange();
     }
 
     deleteCellsValues(positions: GridPosition[]) {
-        const changes: Array<{ cell: CellComponent<TExtraProps>, inputValue: string }> = [];
+        const changes: Array<{ component: CellComponent<TExtraProps>, inputValue: string }> = [];
         for (const position of positions) {
             const key = `${position.row}-${position.col}`;
             const cellComponent = this.cellComponents.get(key);
             if (cellComponent) {
                 // Use empty string as inputValue which will be validated as null/empty
-                changes.push({ cell: cellComponent, inputValue: '' });
+                changes.push({ component: cellComponent, inputValue: '' });
             }
         }
 
-        const commitSuccess = this.attemptCommitCells(changes, undefined, 'delete');
+        const commitSuccess = this.attemptCommit(changes, 'cell', undefined, 'delete');
     }
 
     /**
@@ -290,7 +317,7 @@ export default class DataHandler<TExtraProps = undefined, TRowHeaderProps = unde
             return false;
         }
 
-        const changes: Array<{ cell: CellComponent<TExtraProps>, inputValue: string }> = [];
+        const changes: Array<{ component: CellComponent<TExtraProps>, inputValue: string }> = [];
         const maxRows = pasteData.length;
 
         // Process each row of paste data
@@ -314,7 +341,7 @@ export default class DataHandler<TExtraProps = undefined, TRowHeaderProps = unde
                     const pasteValue = rowData[colOffset];
                     // Convert CellValue to string for inputValue
                     const inputValue = pasteValue === null ? '' : String(pasteValue);
-                    changes.push({ cell: cellComponent, inputValue });
+                    changes.push({ component: cellComponent, inputValue });
                 }
             }
         }
@@ -323,8 +350,8 @@ export default class DataHandler<TExtraProps = undefined, TRowHeaderProps = unde
             return false;
         }
 
-        // Attempt to commit all changes
-        const commitSuccess = this.attemptCommitCells(changes, expectedType, 'paste');
+        // Attempt to commit all changes using unified method
+        const commitSuccess = this.attemptCommit(changes, 'cell', expectedType, 'paste');
 
         return commitSuccess;
     }
@@ -420,86 +447,28 @@ export default class DataHandler<TExtraProps = undefined, TRowHeaderProps = unde
         return result;
     }
 
-    // ==================== EDIT COMPLETION METHODS ====================
+    // ==================== UNIFIED GENERIC METHODS ====================
 
     /**
-     * Handle end of cell editing - decides whether to commit or discard based on action
-     * @param position - Position of the cell being edited
-     * @param action - What triggered the end of editing ('commit', 'cancel', 'blur')
-     * @param expectedType - Optional expected type for validation
+     * Unified attempt to commit changes for both cells and headers
      */
-    finishCellEdit(position: GridPosition, action: 'commit' | 'cancel' | 'blur', expectedType?: ExpectedType): boolean {
-        // Validate that we're currently editing this position
-        if (!this.editingPosition ||
-            this.editingPosition.row !== position.row ||
-            this.editingPosition.col !== position.col) {
-            return false;
-        }
-
-        const key = `${position.row}-${position.col}`;
-        const cellComponent = this.cellComponents.get(key);
-        let inputValue: string | undefined;
-        let commitSuccess: boolean = false;
-
-        if (!cellComponent) {
-            return false;
-        }
-
-        switch (action) {
-            case 'cancel':
-                // Discard changes - use centralized reset method
-                this.endEditingCell();
-                return true;
-
-            case 'commit':
-                // Force commit - only if there are changes, keep in editing if validation fails
-                if (this.inputHTMLElement && this.inputHTMLElement.value === cellComponent.value) {
-                    this.endEditingCell();
-                    return true;
-                }
-                inputValue = this.inputHTMLElement?.value;
-                const changesToCommit = [{
-                    cell: cellComponent,
-                    inputValue: inputValue ?? ''
-                }];
-                commitSuccess = this.attemptCommitCells(changesToCommit, expectedType);
-                this.endEditingCell();
-                return commitSuccess;
-
-            case 'blur':
-                // Exit editing regardless, but only commit if validation passes and there are changes
-                if (this.inputHTMLElement && this.inputHTMLElement.value === cellComponent.value) {
-                    this.endEditingCell();
-                    return true;
-                }
-                inputValue = this.inputHTMLElement?.value;
-                const blurChangesToCommit = [{
-                    cell: cellComponent,
-                    inputValue: inputValue ?? ''
-                }];
-                commitSuccess = this.attemptCommitCells(blurChangesToCommit, expectedType);
-                this.endEditingCell();
-                return commitSuccess;
-
-            default:
-                return false;
-        }
-    }
-
-    /**
-     * Attempt to commit multiple cell edits - if any fails, entire commit fails
-     */
-    private attemptCommitCells(
-        changes: Array<{ cell: CellComponent<TExtraProps>, inputValue: string }>,
+    private attemptCommit<
+        T extends AnyComponent<TExtraProps, TRowHeaderProps, TColHeaderProps>,
+        V extends AnyValue
+    >(
+        changes: Array<ComponentChange<T>>,
+        componentType: 'cell' | 'header',
         expectedType?: ExpectedType,
         changeType: 'single-edit' | 'paste' | 'delete' | 'format' | 'other' = 'single-edit'
     ): boolean {
-
         // First pass: validate all changes and prepare commit data
-        const validatedChanges: Array<{ cell: CellComponent<TExtraProps>, newValue: CellValue }> = [];
+        const validatedChanges: Array<ValidatedComponentChange<T, V>> = [];
 
         for (const change of changes) {
-            const validationResult = this.validator.validate(change.inputValue, expectedType);
+            // Discriminación solo en validación
+            const validationResult = componentType === 'cell'
+                ? this.validator.validate(change.inputValue, expectedType)
+                : this.validator.validateHeader(change.inputValue);
 
             if (!validationResult.isValid) {
                 // If any change fails validation, fail entire commit
@@ -508,13 +477,159 @@ export default class DataHandler<TExtraProps = undefined, TRowHeaderProps = unde
 
             // Add validated change with parsed value
             validatedChanges.push({
-                cell: change.cell,
-                newValue: validationResult.value!
+                ...change,
+                newValue: validationResult.value! as V
             });
         }
 
         // All validations passed, commit the changes
-        return this.commitCellChanges(validatedChanges, changeType);
+        return this.commitChanges(validatedChanges, componentType, changeType);
+    }
+
+    /**
+     * Unified commit changes for both cells and headers
+     */
+    private commitChanges<
+        T extends AnyComponent<TExtraProps, TRowHeaderProps, TColHeaderProps>,
+        V extends AnyValue
+    >(
+        changes: Array<ValidatedComponentChange<T, V>>,
+        componentType: 'cell' | 'header',
+        changeType: 'single-edit' | 'paste' | 'delete' | 'format' | 'other'
+    ): boolean {
+        // Separate creation based on component type (no mixing allowed)
+        if (componentType === 'cell') {
+            const cellChanges: CellChange[] = [];
+
+            for (const change of changes) {
+                const oldValue = change.component.value;
+                const newValue = change.newValue;
+
+                // Only create change if value actually changed
+                if (oldValue !== newValue) {
+                    cellChanges.push(new CellChange(
+                        change.component.position as GridPosition,
+                        oldValue as CellValue,
+                        newValue as CellValue
+                    ));
+                }
+            }
+
+            // If no actual changes, return early
+            if (cellChanges.length === 0) {
+                return true;
+            }
+
+            // Create ChangeSet for cells
+            const changeSet = new ChangeSet(cellChanges, changeType);
+            console.log('Committing Cell ChangeSet:', changeSet);
+
+            // Add to history and apply
+            this.historyManager.add(changeSet);
+            this.applyChangeSet(changeSet, 'cell');
+
+        } else {
+            const headerChanges: HeaderChange[] = [];
+
+            for (const change of changes) {
+                const oldValue = change.component.value;
+                const newValue = change.newValue;
+
+                // Only create change if value actually changed
+                if (oldValue !== newValue) {
+                    headerChanges.push(new HeaderChange(
+                        change.component.position as HeaderPosition,
+                        oldValue as HeaderValue,
+                        newValue as HeaderValue
+                    ));
+                }
+            }
+
+            // If no actual changes, return early
+            if (headerChanges.length === 0) {
+                return true;
+            }
+
+            // Create ChangeSet for headers
+            const changeSet = new ChangeSet(headerChanges, changeType);
+            console.log('Committing Header ChangeSet:', changeSet);
+
+            // Add to history and apply
+            this.historyManager.add(changeSet);
+            this.applyChangeSet(changeSet, 'header');
+        }
+
+        return true;
+    }
+
+    // ==================== EDIT COMPLETION METHODS ====================
+
+    /**
+     * Handle end of component editing - decides whether to commit or discard based on action
+     * @param position - Position of the component being edited (GridPosition or HeaderPosition)
+     * @param action - What triggered the end of editing ('commit', 'cancel', 'blur')
+     */
+    finishComponentEdit(action: 'commit' | 'cancel' | 'blur'): boolean {
+        // Validate that we're currently editing this position
+        if (!this.editingState) {
+            return false;
+        }
+
+        let inputValue: string | undefined;
+        let commitSuccess: boolean = false;
+
+        switch (action) {
+            case 'cancel':
+                // Discard changes - use centralized reset method
+                this.endEditingComponent();
+                return true;
+
+            case 'commit':
+                // Force commit - only if there are changes, keep in editing if validation fails
+                if (this.editingState && this.editingState.inputElement) {
+                    if (this.editingState.inputElement.value === String(this.editingState.component.value ?? '')) {
+                        this.endEditingComponent();
+                        return true;
+                    }
+                    inputValue = this.editingState.inputElement.value;
+
+                    // Use unified method for both cell and header
+                    const changesToCommit = [{
+                        component: this.editingState.component,
+                        inputValue: inputValue ?? ''
+                    }];
+                    commitSuccess = this.attemptCommit(changesToCommit, this.editingState.type);
+
+                    this.endEditingComponent();
+                    return commitSuccess;
+                }
+                return false;
+
+            case 'blur':
+                // Exit editing regardless, but only commit if validation passes and there are changes
+                if (this.editingState && this.editingState.inputElement) {
+                    if (this.editingState.inputElement.value === String(this.editingState.component.value ?? '')) {
+                        this.endEditingComponent();
+                        return true;
+                    }
+                    inputValue = this.editingState.inputElement.value;
+
+                    // Use unified method for both cell and header
+                    const blurChangesToCommit = [{
+                        component: this.editingState.component,
+                        inputValue: inputValue ?? ''
+                    }];
+                    commitSuccess = this.attemptCommit(blurChangesToCommit, this.editingState.type);
+
+                    this.endEditingComponent();
+                    return commitSuccess;
+                }
+                this.endEditingComponent();
+                return true;
+
+            default:
+                return false;
+        }
     }
 
     // ==================== HISTORY METHODS ====================
@@ -640,40 +755,20 @@ export default class DataHandler<TExtraProps = undefined, TRowHeaderProps = unde
     // ==================== COMMIT METHODS ====================
 
     /**
+     * @deprecated Use commitChanges instead - kept for backward compatibility
      * Process cell changes: create ChangeSet from changes and apply changes
      */
     commitCellChanges(
         changes: Array<{ cell: CellComponent<TExtraProps>, newValue: CellValue }>,
         type: 'single-edit' | 'paste' | 'delete' | 'format' | 'other'): boolean {
-        // Create CellChange array from the provided changes
-        const cellChanges: CellChange[] = [];
+        // Convert to new format and delegate to unified method
+        const unifiedChanges = changes.map(change => ({
+            component: change.cell,
+            inputValue: '', // Not used in commitChanges
+            newValue: change.newValue
+        }));
 
-        for (const change of changes) {
-            const oldValue = change.cell.value;
-            const newValue = change.newValue;
-
-            // Only create change if value actually changed
-            if (oldValue !== newValue) {
-                cellChanges.push(new CellChange(change.cell.position, oldValue, newValue));
-            }
-        }
-
-        // If no actual changes, return early
-        if (cellChanges.length === 0) {
-            return true;
-        }
-
-        // Create ChangeSet
-        const changeSet = new ChangeSet(cellChanges, type);
-        console.log('Committing ChangeSet:', changeSet);
-
-        // Add to history
-        this.historyManager.add(changeSet);
-
-        // Apply changes
-        this.applyChangeSet(changeSet, 'cell');
-
-        return true;
+        return this.commitChanges(unifiedChanges, 'cell', type);
     }
 
     // ==================== IMPUTATION APIS ====================
@@ -688,7 +783,7 @@ export default class DataHandler<TExtraProps = undefined, TRowHeaderProps = unde
             return [];
         }
 
-        const changes: Array<{ cell: CellComponent<TExtraProps>, inputValue: string }> = [];
+        const changes: Array<{ component: CellComponent<TExtraProps>, inputValue: string }> = [];
 
         for (const [position, newValue] of imputations) {
             const key = `${position.row}-${position.col}`;
@@ -696,14 +791,14 @@ export default class DataHandler<TExtraProps = undefined, TRowHeaderProps = unde
             if (cellComponent) {
                 // Convert CellValue to string for inputValue
                 const inputValue = newValue === null ? '' : String(newValue);
-                changes.push({ cell: cellComponent, inputValue });
+                changes.push({ component: cellComponent, inputValue });
             }
         }
 
-        const success = this.attemptCommitCells(changes, undefined, 'other');
+        const success = this.attemptCommit(changes, 'cell', undefined, 'other');
         if (success) {
             // Return positions of successfully changed cells
-            return changes.map(change => change.cell.position);
+            return changes.map(change => change.component.position);
         }
         return [];
     }

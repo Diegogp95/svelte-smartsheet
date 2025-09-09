@@ -193,3 +193,10 @@ export interface VisibleComponents<TExtraProps, TRowHeaderProps, TColHeaderProps
     colHeaders: HeaderComponent<TColHeaderProps>[];
     cornerHeader: HeaderComponent | undefined;
 }
+
+export interface EditingState<TExtraProps, TRowHeaderProps, TColHeaderProps> {
+    type: 'cell' | 'header';
+    position: GridPosition | HeaderPosition;
+    component: CellComponent<TExtraProps> | HeaderComponent<TRowHeaderProps> | HeaderComponent<TColHeaderProps>;
+    inputElement: HTMLInputElement | null;
+}

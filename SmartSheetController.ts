@@ -528,7 +528,9 @@ export default class SmartSheetController<TExtraProps = undefined,
         if (analysis.type === 'dblclick') {
             this.selectionHandler.clearSelections();
             if (analysis.componentType === 'cell') {
-                this.dataHandler.startEditingCell(analysis.position as GridPosition);
+                this.dataHandler.startEditingComponent(analysis.position as GridPosition, 'cell');
+            } else if (analysis.componentType === 'header') {
+                this.dataHandler.startEditingComponent(analysis.position as HeaderPosition, 'header');
             }
             return;
         } else if (analysis.type === 'middleclick') {
@@ -623,7 +625,7 @@ export default class SmartSheetController<TExtraProps = undefined,
             }
         } else if (basicAnalysis.keyCategory === 'write' || basicAnalysis.keyCategory === 'backspace') {
             // Handle writing input (e.g. typing in a cell)
-            this.dataHandler.startEditingCell(currentPosition, basicAnalysis.key);
+            this.dataHandler.startEditingComponent(currentPosition, 'cell', basicAnalysis.key);
             this.selectionHandler.clearSelections();
             this.reflectSelectionsOnHeaders();
             return;
@@ -635,7 +637,7 @@ export default class SmartSheetController<TExtraProps = undefined,
             return;
         } else if (basicAnalysis.keyCategory === 'edit') {
             // Handle edit input (e.g. pressing Enter in a cell)
-            this.dataHandler.startEditingCell(currentPosition);
+            this.dataHandler.startEditingComponent(currentPosition, 'cell');
             this.selectionHandler.clearSelections();
             this.reflectSelectionsOnHeaders();
             return;
@@ -646,8 +648,8 @@ export default class SmartSheetController<TExtraProps = undefined,
         // Other categories not processed yet
     }
 
-    handleCellInputCommit(position: GridPosition, event: KeyboardEvent) {
-        this.dataHandler.finishCellEdit(position, 'commit');
+    handleInputCommit(event: KeyboardEvent) {
+        this.dataHandler.finishComponentEdit('commit');
         if (event.key === 'Enter') {
             this.navigationHandler.navigateToNextDownCell();
         } else if (event.key === 'Tab') {
@@ -660,41 +662,14 @@ export default class SmartSheetController<TExtraProps = undefined,
         this.reflectSelectionsOnHeaders();
     }
 
-    handleCellInputCancel(position: GridPosition, event: KeyboardEvent) {
-        this.dataHandler.finishCellEdit(position, 'cancel');
+    handleInputCancel(event: KeyboardEvent) {
+        this.dataHandler.finishComponentEdit('cancel');
         // Re-select the current position after cancel
         this.selectionHandler.selectSingle(this.navigationHandler.getCurrentPosition());
         // Update the visible components
         this.virtualizeHandler.onVisibleComponentsChanged?.(this.virtualizeHandler);
         this.reflectSelectionsOnHeaders();
     }
-
-    /*  OLD METHOD
-    handleHeaderInputCommit(position: HeaderPosition, event: KeyboardEvent) {
-        // Commit the header edit
-        const success = this.dataHandler.finishHeaderEdit(position, 'commit');
-        if (success) {
-            // Move pointer to first cell of the edited header's row/column
-            if (position.headerType === 'col') {
-                // For column headers, move pointer to first row of that column
-                const targetPosition: GridPosition = { row: 0, col: position.index };
-                this.navigateToPosition(targetPosition);
-            } else if (position.headerType === 'row') {
-                // For row headers, move pointer to first column of that row
-                const targetPosition: GridPosition = { row: position.index, col: 0 };
-                this.navigateToPosition(targetPosition);
-            }
-            // Corner headers don't move the pointer anywhere specific
-
-            // Select the new position
-            const currentPosition = this.navigationHandler.getCurrentPosition();
-            this.selectionHandler.selectSingle(currentPosition);
-
-            // Reflect selections on headers after successful commit and navigation
-            this.reflectSelectionsOnHeaders();
-        }
-    }
-    */
 
     // Handle navigation keys with specialized analysis
     private handleNavigationKey(basicAnalysis: RawKeyboardAnalysis) {
@@ -713,7 +688,7 @@ export default class SmartSheetController<TExtraProps = undefined,
 
     handleInputBlur(position: GridPosition) {
         // Delegate to DataHandler to set cell not editing
-        this.dataHandler.finishCellEdit(position, 'blur');
+        this.dataHandler.finishComponentEdit('blur');
         // Update the visible components
         this.virtualizeHandler.onVisibleComponentsChanged?.(this.virtualizeHandler);
     }
