@@ -25,6 +25,7 @@ export default class ColorHandler<TExtraProps = undefined, TRowHeaderProps = und
     private colHeaderComponents: Map<string, HeaderComponent<TColHeaderProps>>;
     private cornerHeaderComponent: HeaderComponent;
     private styleMode: 'style' | 'tailwind';
+    private instanceId: string;
 
     constructor(
         gridDimensions: GridDimensions,
@@ -33,9 +34,11 @@ export default class ColorHandler<TExtraProps = undefined, TRowHeaderProps = und
         rowHeaderComponents: Map<string, HeaderComponent<TRowHeaderProps>>,
         colHeaderComponents: Map<string, HeaderComponent<TColHeaderProps>>,
         cornerHeaderComponent: HeaderComponent,
+        instanceId: string,
     ) {
         this.gridDimensions = gridDimensions;
         this.styleMode = styleMode;
+        this.instanceId = instanceId;
         this.cellComponents = cellComponents;
         this.rowHeaderComponents = rowHeaderComponents;
         this.colHeaderComponents = colHeaderComponents;
@@ -352,8 +355,8 @@ export default class ColorHandler<TExtraProps = undefined, TRowHeaderProps = und
     public flashCell(cell: CellComponent<TExtraProps>, options?: FlashOptions): void {
         const color = options?.color || 'blue';
         const duration = options?.duration || 600;
-        const renderedCell = document.querySelector(`div[data-row='${cell.position.row}'][data-col='${cell.position.col}']`);
-        const backgroundElement = renderedCell?.querySelector('#cell-background') as HTMLElement | null;
+        const renderedCell = document.querySelector(`div[data-row='${cell.position.row}'][data-col='${cell.position.col}'][data-instance='${this.instanceId}']`);
+        const backgroundElement = renderedCell?.querySelector(`#cell-background-${this.instanceId}`) as HTMLElement | null;
         if (backgroundElement) {
             const colors = getFlashColors(color);
             backgroundElement.style.setProperty('--flash-primary-color', colors.primary);
@@ -373,9 +376,9 @@ export default class ColorHandler<TExtraProps = undefined, TRowHeaderProps = und
         const color = options?.color || 'blue';
         const duration = options?.duration || 600;
         const renderedHeader = document.querySelector(
-            `div[data-header-type='${header.position.headerType}'][data-header-index='${header.position.index}']`
+            `div[data-header-type='${header.position.headerType}'][data-header-index='${header.position.index}'][data-instance='${this.instanceId}']`
         );
-        const backgroundElement = renderedHeader?.querySelector('#header-background') as HTMLElement | null;
+        const backgroundElement = renderedHeader?.querySelector(`#header-background-${this.instanceId}`) as HTMLElement | null;
         if (backgroundElement) {
             const colors = getFlashColors(color);
             backgroundElement.style.setProperty('--flash-primary-color', colors.primary);

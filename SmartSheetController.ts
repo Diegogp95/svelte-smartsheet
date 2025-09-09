@@ -29,6 +29,9 @@ import type { VisibleComponentsCallback, RenderAreaCallback } from './Virtualize
 // Main Controller - Mediates between navigation and selection
 export default class SmartSheetController<TExtraProps = undefined,
     TRowHeaderProps = undefined, TColHeaderProps = undefined> {
+    // Instance identifier for unique DOM element IDs
+    private instanceId: string = Math.random().toString(36).substr(2, 9);
+
     // Handlers
     private navigationHandler: NavigationHandler<TExtraProps, TRowHeaderProps, TColHeaderProps>;
     private selectionHandler: SelectionHandler<TExtraProps, TRowHeaderProps, TColHeaderProps>;
@@ -45,6 +48,10 @@ export default class SmartSheetController<TExtraProps = undefined,
     // Props
     private gridDimensions: GridDimensions;
     private headersReadOnly: boolean;
+    // Clipboard event listeners references for cleanup
+    private pasteListener: ((event: ClipboardEvent) => void) | null = null;
+    private copyListener: ((event: ClipboardEvent) => void) | null = null;
+    private cutListener: ((event: ClipboardEvent) => void) | null = null;
     // Separate header components by type for different extraProps handling
     // Style
     private styleMode: 'style' | 'tailwind'; // Default to inline styles0
@@ -113,6 +120,7 @@ export default class SmartSheetController<TExtraProps = undefined,
             this.rowHeaderComponents,
             this.colHeaderComponents,
             this.cornerHeaderComponent,
+            this.instanceId,
             onEditingStateChanged
         );
         this.colorHandler = new ColorHandler<TExtraProps, TRowHeaderProps, TColHeaderProps>(
@@ -122,6 +130,7 @@ export default class SmartSheetController<TExtraProps = undefined,
             this.rowHeaderComponents,
             this.colHeaderComponents,
             this.cornerHeaderComponent,
+            this.instanceId,
         );
         this.virtualizeHandler = new VirtualizeHandler<TExtraProps, TRowHeaderProps, TColHeaderProps>(
             this.gridDimensions,
@@ -133,8 +142,7 @@ export default class SmartSheetController<TExtraProps = undefined,
             onRenderAreaChanged,
         );
 
-        // Setup clipboard event handlers
-        this.setupClipboardHandlers();
+        // Clipboard listeners will be added/removed based on navigation mode
     };
 
         /**
@@ -174,13 +182,16 @@ export default class SmartSheetController<TExtraProps = undefined,
         rowHeaderProps: TRowHeaderProps[] | undefined
     ): Map<string, HeaderComponent<TRowHeaderProps>> {
         const headerMap = new Map<string, HeaderComponent<TRowHeaderProps>>();
-        if (!rowHeaders) return headerMap;
-        for (let index = 0; index < rowHeaders.length; index++) {
+
+        // If no rowHeaders provided, create default headers based on grid dimensions
+        const headerCount = rowHeaders ? rowHeaders.length : this.gridDimensions.maxRow + 1;
+
+        for (let index = 0; index < headerCount; index++) {
             const position: HeaderPosition = { headerType: 'row', index };
             const key = `row-${index}`;
             const headerComponent: HeaderComponent<TRowHeaderProps> = {
                 position,
-                value: rowHeaders[index] ?? (index + 1).toString(),
+                value: rowHeaders?.[index] ?? (index + 1).toString(),
                 selected: false,
                 editing: false,
                 extraProps: rowHeaderProps?.[index] as TRowHeaderProps,
@@ -202,13 +213,16 @@ export default class SmartSheetController<TExtraProps = undefined,
         colHeaderProps: TColHeaderProps[] | undefined
     ): Map<string, HeaderComponent<TColHeaderProps>> {
         const headerMap = new Map<string, HeaderComponent<TColHeaderProps>>();
-        if (!colHeaders) return headerMap;
-        for (let index = 0; index < colHeaders.length; index++) {
+
+        // If no colHeaders provided, create default headers based on grid dimensions
+        const headerCount = colHeaders ? colHeaders.length : this.gridDimensions.maxCol + 1;
+
+        for (let index = 0; index < headerCount; index++) {
             const position: HeaderPosition = { headerType: 'col', index };
             const key = `col-${index}`;
             const headerComponent: HeaderComponent<TColHeaderProps> = {
                 position,
-                value: colHeaders[index] ?? this.generateColumnLabel(index),
+                value: colHeaders?.[index] ?? this.generateColumnLabel(index),
                 selected: false,
                 editing: false,
                 extraProps: colHeaderProps?.[index] as TColHeaderProps,
@@ -286,38 +300,58 @@ export default class SmartSheetController<TExtraProps = undefined,
         this.selectionHandler.reflectCellSelections(selectedCells);
     }
 
-    // Setup clipboard event handlers for better clipboard detection
-    private setupClipboardHandlers(): void {
-        // Listen for paste events
-        document.addEventListener('paste', (event: ClipboardEvent) => {
-            if (this.isNavigationMode()) {
-                event.preventDefault();
-                event.stopPropagation();
+    // Add clipboard event handlers when entering navigation mode
+    private addClipboardHandlers(): void {
+        // Only add if not already added
+        if (this.pasteListener) {
+            return;
+        }
 
-                const clipboardText = event.clipboardData?.getData('text/plain') || '';
-                this.handlePasteFromClipboard(clipboardText);
-            }
-        }, { capture: true });
+        // Create listener functions that can be referenced for removal
+        this.pasteListener = (event: ClipboardEvent) => {
+            event.preventDefault();
+            event.stopPropagation();
 
-        // Listen for copy events
-        document.addEventListener('copy', (event: ClipboardEvent) => {
-            if (this.isNavigationMode()) {
-                event.preventDefault();
-                event.stopPropagation();
+            const clipboardText = event.clipboardData?.getData('text/plain') || '';
+            this.handlePasteFromClipboard(clipboardText);
+        };
 
-                this.handleCopyToClipboard(event);
-            }
-        }, { capture: true });
+        this.copyListener = (event: ClipboardEvent) => {
+            event.preventDefault();
+            event.stopPropagation();
 
-        // Listen for cut events
-        document.addEventListener('cut', (event: ClipboardEvent) => {
-            if (this.isNavigationMode()) {
-                event.preventDefault();
-                event.stopPropagation();
+            this.handleCopyToClipboard(event);
+        };
 
-                this.handleCutToClipboard(event);
-            }
-        }, { capture: true });
+        this.cutListener = (event: ClipboardEvent) => {
+            event.preventDefault();
+            event.stopPropagation();
+
+            this.handleCutToClipboard(event);
+        };
+
+        // Add listeners to document
+        document.addEventListener('paste', this.pasteListener, { capture: true });
+        document.addEventListener('copy', this.copyListener, { capture: true });
+        document.addEventListener('cut', this.cutListener, { capture: true });
+    }
+
+    // Remove clipboard event handlers when leaving navigation mode
+    private removeClipboardHandlers(): void {
+        if (this.pasteListener) {
+            document.removeEventListener('paste', this.pasteListener, { capture: true });
+            this.pasteListener = null;
+        }
+
+        if (this.copyListener) {
+            document.removeEventListener('copy', this.copyListener, { capture: true });
+            this.copyListener = null;
+        }
+
+        if (this.cutListener) {
+            document.removeEventListener('cut', this.cutListener, { capture: true });
+            this.cutListener = null;
+        }
     }
 
     // Process clipboard text and paste into grid
@@ -720,6 +754,9 @@ export default class SmartSheetController<TExtraProps = undefined,
     // Activate navigation: select current cell only if no selection exists
     activateNavigation() {
         this.navigationHandler.activateNavigation();
+        // Add clipboard listeners when entering navigation mode
+        this.addClipboardHandlers();
+
         // Only auto-select current position if there's no existing selection
         const currentSelection = this.selectionHandler.getSelectedCells();
         if (currentSelection.size === 0) {
@@ -733,6 +770,9 @@ export default class SmartSheetController<TExtraProps = undefined,
     // Deactivate navigation: don't clear selection
     deactivateNavigation() {
         this.navigationHandler.deactivateNavigation();
+        // Remove clipboard listeners when leaving navigation mode
+        this.removeClipboardHandlers();
+
         return false;
     }
 
@@ -751,6 +791,11 @@ export default class SmartSheetController<TExtraProps = undefined,
 
     isCellSelected(position: GridPosition): boolean {
         return this.selectionHandler.isCellSelected(position);
+    }
+
+    // Get instance ID for unique element identification
+    getInstanceId(): string {
+        return this.instanceId;
     }
 
     // Get current cell value (from the cell component itself)
@@ -1217,6 +1262,14 @@ export default class SmartSheetController<TExtraProps = undefined,
         this.colorHandler.applyColHeaderAndCellsTailwindStyles(styleGenerator);
         // Update the visible components
         this.virtualizeHandler.onVisibleComponentsChanged?.(this.virtualizeHandler);
+    }
+
+    // Cleanup method to be called when destroying the controller instance
+    dispose(): void {
+        // Ensure clipboard handlers are removed
+        this.removeClipboardHandlers();
+        // Deactivate navigation
+        this.deactivateNavigation();
     }
 
 }

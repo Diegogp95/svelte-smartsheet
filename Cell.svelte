@@ -9,6 +9,7 @@
     export let value: CellValue;
     export let styling: string = '';
     export let tailwindStyling: string = '';
+    export let instanceId: string;
 
 </script>
 
@@ -18,8 +19,9 @@
         duration-200 w-full h-full flex items-center relative"
     data-row={position.row}
     data-col={position.col}
+    data-instance={instanceId}
 >
-    <div id="cell-background"
+    <div id="cell-background-{instanceId}"
         class="absolute inset-0 w-full h-full z-[1] {tailwindStyling}"
         style={styling}
     />

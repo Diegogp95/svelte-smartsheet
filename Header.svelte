@@ -9,6 +9,7 @@
     export let position: HeaderPosition;
     export let styling: string = '';
     export let tailwindStyling: string = '';
+    export let instanceId: string;
 
 </script>
 
@@ -19,8 +20,9 @@
         px-4 py-2 cursor-pointer select-none relative"
     data-header-type={position.headerType}
     data-header-index={position.index}
+    data-instance={instanceId}
 >
-    <div id="header-background"
+    <div id="header-background-{instanceId}"
         class="absolute inset-0 w-full h-full z-[1] {tailwindStyling}"
         style={styling}
     />

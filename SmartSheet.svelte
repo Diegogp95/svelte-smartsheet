@@ -120,7 +120,7 @@
     }
 
     // Cell input blur handler
-    function handleCellInputBlur(event: CustomEvent<{ event: FocusEvent, position: GridPosition }>) {
+    function handleInputBlur(event: CustomEvent<{ event: FocusEvent, position: GridPosition }>) {
         // Notify controller about input blur
         controller.handleInputBlur();
         // Blur in a cell must trigger blur in the table container
@@ -378,6 +378,7 @@
                     value={visibleComponents.cornerHeader.value}
                     styling={visibleComponents.cornerHeader.styles.styling}
                     tailwindStyling={visibleComponents.cornerHeader.styles.tailwindStyling}
+                    instanceId={controller.getInstanceId()}
                 />
             {/if}
             </div>
@@ -407,7 +408,8 @@
                         position={currentEditingState.position}
                         styling={currentEditingState.component.styles.styling}
                         tailwindStyling={currentEditingState.component.styles.tailwindStyling}
-                        on:inputBlur={handleInputKeyCommand}
+                        instanceId={controller.getInstanceId()}
+                        on:inputBlur={handleInputBlur}
                         on:inputKeyCommit={handleInputKeyCommand}
                         on:inputKeyCancel={handleInputKeyCommand}
                     />
@@ -424,6 +426,7 @@
                             value={headerComponent.value}
                             styling={headerComponent.styles.styling}
                             tailwindStyling={headerComponent.styles.tailwindStyling}
+                            instanceId={controller.getInstanceId()}
                         />
                     {/if}
                 {/each}
@@ -454,7 +457,8 @@
                         position={currentEditingState.position}
                         styling={currentEditingState.component.styles.styling}
                         tailwindStyling={currentEditingState.component.styles.tailwindStyling}
-                        on:inputBlur={handleInputKeyCommand}
+                        instanceId={controller.getInstanceId()}
+                        on:inputBlur={handleInputBlur}
                         on:inputKeyCommit={handleInputKeyCommand}
                         on:inputKeyCancel={handleInputKeyCommand}
                     />
@@ -471,6 +475,7 @@
                             value={headerComponent.value}
                             styling={headerComponent.styles.styling}
                             tailwindStyling={headerComponent.styles.tailwindStyling}
+                            instanceId={controller.getInstanceId()}
                         />
                     {/if}
                 {/each}
@@ -517,7 +522,8 @@
                         position={currentEditingState.position}
                         styling={currentEditingState.component.styles.styling}
                         tailwindStyling={currentEditingState.component.styles.tailwindStyling}
-                        on:inputBlur={handleCellInputBlur}
+                        instanceId={controller.getInstanceId()}
+                        on:inputBlur={handleInputBlur}
                         on:inputKeyCommit={handleInputKeyCommand}
                         on:inputKeyCancel={handleInputKeyCommand}
                     />
@@ -534,6 +540,7 @@
                             value={cellComponent.value}
                             styling={cellComponent.styles.styling}
                             tailwindStyling={cellComponent.styles.tailwindStyling}
+                            instanceId={controller.getInstanceId()}
                         />
                     {/if}
                 {/each}

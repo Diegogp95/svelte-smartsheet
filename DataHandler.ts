@@ -179,6 +179,7 @@ export default class DataHandler<TExtraProps = undefined, TRowHeaderProps = unde
     private rowHeaderComponents: Map<string, HeaderComponent<TRowHeaderProps>>;
     private colHeaderComponents: Map<string, HeaderComponent<TColHeaderProps>>;
     private cornerHeaderComponent: HeaderComponent | null;
+    private instanceId: string;
 
     // Centralized editing state
     private editingStateCallback?: EditingStateCallback<TExtraProps, TRowHeaderProps, TColHeaderProps>;
@@ -191,12 +192,14 @@ export default class DataHandler<TExtraProps = undefined, TRowHeaderProps = unde
         rowHeaderComponents: Map<string, HeaderComponent<TRowHeaderProps>>,
         colHeaderComponents: Map<string, HeaderComponent<TColHeaderProps>>,
         cornerHeaderComponent: HeaderComponent | null,
+        instanceId: string,
         editingStateCallback?: EditingStateCallback<TExtraProps, TRowHeaderProps, TColHeaderProps>,
     ) {
         this.cellComponents = cellComponents;
         this.rowHeaderComponents = rowHeaderComponents;
         this.colHeaderComponents = colHeaderComponents;
         this.cornerHeaderComponent = cornerHeaderComponent;
+        this.instanceId = instanceId;
         this.validator = new ValueValidator();
         this.historyManager = new HistoryManager();
         this.editingStateCallback = editingStateCallback;
@@ -266,7 +269,12 @@ export default class DataHandler<TExtraProps = undefined, TRowHeaderProps = unde
             };
             // Wait for the DOM to update
             tick().then(() => {
-                const inputElement = document.querySelector('#cell-input');
+                // Use the appropriate ID based on component type
+                const inputSelector = componentType === 'cell'
+                    ? `#cell-input-${this.instanceId}`
+                    : `#header-input-${this.instanceId}`;
+
+                const inputElement = document.querySelector(inputSelector);
                 if (inputElement instanceof HTMLInputElement) {
                     this.editingState!.inputElement = inputElement;
                     this.editingState!.inputElement.value = startKey ?
