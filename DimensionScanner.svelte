@@ -21,8 +21,11 @@
   	export let colHeaderComponents: Map<string, HeaderComponent<any>>;
   	export let rowHeaderComponents: Map<string, HeaderComponent<any>>;
     export let cornerHeaderComponent: HeaderComponent<any>;
-  	export let rowsTitle: string = '';
+    export let rowsTitle: string = '';
     export let fontSize: string;
+    export let instanceId: string;
+    export let minCellWidth: string = '5rem'; // Minimum cell width (supports px or rem)
+    export let minCellHeight: string = '2.5rem'; // Minimum cell height (supports px or rem)
 
     function convertMapTo2DArray(cellMap: Map<string, CellComponent<any>>): CellComponent<any>[][] {
         const cells2D: CellComponent<any>[][] = [];
@@ -51,45 +54,80 @@
 
     let rowIndex: number = 0;
 
+    // Parse dimension string and convert to pixels
+    function parseToPixels(dimensionStr: string): number {
+        const value = parseFloat(dimensionStr);
+
+        if (dimensionStr.endsWith('rem')) {
+            // Convert rem to pixels
+            return value * parseFloat(getComputedStyle(document.documentElement).fontSize);
+        } else if (dimensionStr.endsWith('px')) {
+            // Already in pixels
+            return value;
+        } else {
+            // Assume pixels if no unit specified
+            return value;
+        }
+    }
+
   	const dispatch = createEventDispatcher();
 
   	// Scan dimensions on mount
   	onMount(() => {
 
+        // Initialize with minimum dimensions
         let rowHeights: number[] = [];
         let colWidths: number[] = [];
 
+        // Set minimum dimensions for all rows and columns
+        const minWidthPx = parseToPixels(minCellWidth);
+        const minHeightPx = parseToPixels(minCellHeight);
+
+        // Initialize corner and headers with minimums
+        rowHeights[0] = minHeightPx;  // Corner header height
+        colWidths[0] = minWidthPx;    // Corner header width
+
+        // Initialize all column widths with minimum
+        for (let i = 1; i <= gridDimensions.maxCol + 1; i++) {
+            colWidths[i] = minWidthPx;
+        }
+
+        // Initialize all row heights with minimum
+        for (let i = 1; i <= gridDimensions.maxRow + 1; i++) {
+            rowHeights[i] = minHeightPx;
+        }
+
         function compareAndUpdateDimensions(index: number) {
             // Scan and add row heights. Since we are only measuring the first row, we can use a fixed index.
-            const rowHeaderElement = document.querySelector(`[data-header-type="row"][data-header-index="0"]`);
+            const rowHeaderElement = document.querySelector(`[data-header-type="row"][data-header-index="0"][data-instance="${instanceId}"]`);
             if (rowHeaderElement instanceof HTMLElement) {
-                rowHeights[index+1] = Math.max(rowHeights[index+1] || 0, rowHeaderElement.offsetHeight);
+                rowHeights[index+1] = Math.max(rowHeights[index+1] || minHeightPx, rowHeaderElement.offsetHeight);
                 const newWidth = rowHeaderElement.offsetWidth;
-                if (newWidth > (colWidths[0] || 0)) {
+                if (newWidth > (colWidths[0] || minWidthPx)) {
                     colWidths[0] = newWidth;
                 }
             }
             // Scan and compare/update column widths. Scan the headers
             columnHeaders.forEach((header, colIndex) => {
-                const headerElement = document.querySelector(`[data-header-type="col"][data-header-index="${colIndex}"]`);
+                const headerElement = document.querySelector(`[data-header-type="col"][data-header-index="${colIndex}"][data-instance="${instanceId}"]`);
                 if (headerElement instanceof HTMLElement) {
-                    colWidths[colIndex+1] = Math.max(colWidths[colIndex+1] || 0, headerElement.offsetWidth);
+                    colWidths[colIndex+1] = Math.max(colWidths[colIndex+1] || minWidthPx, headerElement.offsetWidth);
                 }
             });
         }
 
-        // First add the rows title dimensions (corner header)
-        const cornerHeaderElement = document.querySelector('[data-header-type="corner"][data-header-index="0"]');
+        // First measure the corner header dimensions (using minimums as base)
+        const cornerHeaderElement = document.querySelector(`[data-header-type="corner"][data-header-index="0"][data-instance="${instanceId}"]`);
         if (cornerHeaderElement instanceof HTMLElement) {
-            rowHeights[0] = cornerHeaderElement.offsetHeight;
-            colWidths[0] = cornerHeaderElement.offsetWidth;
+            rowHeights[0] = Math.max(rowHeights[0], cornerHeaderElement.offsetHeight);
+            colWidths[0] = Math.max(colWidths[0], cornerHeaderElement.offsetWidth);
         }
-        // Measure the column headers dimensions
+        // Measure the column headers dimensions (using minimums as base)
         columnHeaders.forEach((header, colIndex) => {
-            const headerElement = document.querySelector(`[data-header-type="col"][data-header-index="${colIndex}"]`);
+            const headerElement = document.querySelector(`[data-header-type="col"][data-header-index="${colIndex}"][data-instance="${instanceId}"]`);
             if (headerElement instanceof HTMLElement) {
-                colWidths[colIndex+1] = headerElement.offsetWidth;
-                rowHeights[0] = headerElement.offsetHeight;
+                colWidths[colIndex+1] = Math.max(colWidths[colIndex+1], headerElement.offsetWidth);
+                rowHeights[0] = Math.max(rowHeights[0], headerElement.offsetHeight);
             }
         });
 
@@ -139,6 +177,7 @@
                     value={rowsTitle}
                     styling={cornerHeaderComponent.styles.styling}
                     tailwindStyling={cornerHeaderComponent.styles.tailwindStyling}
+                    instanceId={instanceId}
                 />
             </div>
 
@@ -158,6 +197,7 @@
                         value={header.value}
                         styling={header.styles.styling}
                         tailwindStyling={header.styles.tailwindStyling}
+                        instanceId={instanceId}
                     />
                 {/each}
             </div>
@@ -177,6 +217,7 @@
                     value={rowHeaders[rowIndex].value}
                     styling={rowHeaders[rowIndex].styles.styling}
                     tailwindStyling={rowHeaders[rowIndex].styles.tailwindStyling}
+                    instanceId={instanceId}
                 />
             </div>
 
@@ -198,6 +239,7 @@
                         value={cell.value}
                         styling={cell.styles.styling}
                         tailwindStyling={cell.styles.tailwindStyling}
+                        instanceId={instanceId}
                     />
                 {/each}
             </div>

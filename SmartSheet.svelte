@@ -46,6 +46,8 @@
 
     // Configuration
     export let fontSize: string = '1rem'; // Default font size for cells and headers
+    export let minCellWidth: string = '6rem'; // Minimum cell width (px or rem)
+    export let minCellHeight: string = '3rem'; // Minimum cell height (px or rem)
     export let styleMode: 'style' | 'tailwind' = 'style'; // Choose between inline styles or Tailwind CSS classes
 
     // Scan phase
@@ -329,6 +331,9 @@
         {cornerHeaderComponent}
         {rowsTitle}
         {fontSize}
+        {minCellWidth}
+        {minCellHeight}
+        instanceId={controller.getInstanceId()}
         on:done={initializeVirtualizerOnTableMount}
     />
 {:else}
