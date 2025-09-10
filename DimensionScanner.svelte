@@ -102,7 +102,7 @@
             const rowHeaderElement = document.querySelector(`[data-header-type="row"][data-header-index="0"][data-instance="${instanceId}"]`);
             if (rowHeaderElement instanceof HTMLElement) {
                 rowHeights[index+1] = Math.max(rowHeights[index+1] || minHeightPx, rowHeaderElement.offsetHeight);
-                const newWidth = rowHeaderElement.offsetWidth;
+                const newWidth = rowHeaderElement.offsetWidth + 4; // Add 4px extra width
                 if (newWidth > (colWidths[0] || minWidthPx)) {
                     colWidths[0] = newWidth;
                 }
@@ -111,7 +111,7 @@
             columnHeaders.forEach((header, colIndex) => {
                 const headerElement = document.querySelector(`[data-header-type="col"][data-header-index="${colIndex}"][data-instance="${instanceId}"]`);
                 if (headerElement instanceof HTMLElement) {
-                    colWidths[colIndex+1] = Math.max(colWidths[colIndex+1] || minWidthPx, headerElement.offsetWidth);
+                    colWidths[colIndex+1] = Math.max(colWidths[colIndex+1] || minWidthPx, headerElement.offsetWidth + 4); // Add 4px extra width
                 }
             });
         }
@@ -120,13 +120,13 @@
         const cornerHeaderElement = document.querySelector(`[data-header-type="corner"][data-header-index="0"][data-instance="${instanceId}"]`);
         if (cornerHeaderElement instanceof HTMLElement) {
             rowHeights[0] = Math.max(rowHeights[0], cornerHeaderElement.offsetHeight);
-            colWidths[0] = Math.max(colWidths[0], cornerHeaderElement.offsetWidth);
+            colWidths[0] = Math.max(colWidths[0], cornerHeaderElement.offsetWidth + 4); // Add 4px extra width
         }
         // Measure the column headers dimensions (using minimums as base)
         columnHeaders.forEach((header, colIndex) => {
             const headerElement = document.querySelector(`[data-header-type="col"][data-header-index="${colIndex}"][data-instance="${instanceId}"]`);
             if (headerElement instanceof HTMLElement) {
-                colWidths[colIndex+1] = Math.max(colWidths[colIndex+1], headerElement.offsetWidth);
+                colWidths[colIndex+1] = Math.max(colWidths[colIndex+1], headerElement.offsetWidth + 4); // Add 4px extra width
                 rowHeights[0] = Math.max(rowHeights[0], headerElement.offsetHeight);
             }
         });
