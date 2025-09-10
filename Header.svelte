@@ -10,6 +10,7 @@
     export let styling: string = '';
     export let tailwindStyling: string = '';
     export let instanceId: string;
+    export let textOverflowMode: 'full' | 'truncated' = 'truncated';
 
 </script>
 
@@ -26,7 +27,12 @@
         class="absolute inset-0 w-full h-full z-[1] {tailwindStyling}"
         style={styling}
     />
-    <span class="z-[12] font-semibold">
+    <span class="z-[12] font-semibold"
+        class:h-full={textOverflowMode === 'truncated'}
+        class:w-full={textOverflowMode === 'truncated'}
+        class:text-ellipsis={textOverflowMode === 'truncated'}
+        class:overflow-hidden={textOverflowMode === 'truncated'}
+    >
         {value ?? ''}
     </span>
 </div>

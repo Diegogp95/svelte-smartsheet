@@ -133,8 +133,9 @@
 
         async function scanRowsSequentially() {
             for (let i = 0; i < gridDimensions.maxRow + 1; i++) {
-                compareAndUpdateDimensions(rowIndex);
+                // First ensure DOM is updated with current rowIndex
                 await tick(); // Wait for DOM to update
+                compareAndUpdateDimensions(rowIndex); // Measure the CURRENT row
                 if (rowIndex >= gridDimensions.maxRow) {
                     break;
                 }
@@ -178,6 +179,7 @@
                     styling={cornerHeaderComponent.styles.styling}
                     tailwindStyling={cornerHeaderComponent.styles.tailwindStyling}
                     instanceId={instanceId}
+                    textOverflowMode="full"
                 />
             </div>
 
@@ -198,6 +200,7 @@
                         styling={header.styles.styling}
                         tailwindStyling={header.styles.tailwindStyling}
                         instanceId={instanceId}
+                        textOverflowMode="full"
                     />
                 {/each}
             </div>
@@ -218,6 +221,7 @@
                     styling={rowHeaders[rowIndex].styles.styling}
                     tailwindStyling={rowHeaders[rowIndex].styles.tailwindStyling}
                     instanceId={instanceId}
+                    textOverflowMode="full"
                 />
             </div>
 
@@ -240,6 +244,7 @@
                         styling={cell.styles.styling}
                         tailwindStyling={cell.styles.tailwindStyling}
                         instanceId={instanceId}
+                        textOverflowMode="full"
                     />
                 {/each}
             </div>
