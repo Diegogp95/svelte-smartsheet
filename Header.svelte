@@ -28,8 +28,8 @@
         style={styling}
     />
     <span class="z-[12] font-semibold"
-        class:h-full={textOverflowMode === 'truncated'}
-        class:w-full={textOverflowMode === 'truncated'}
+        class:max-h-full={textOverflowMode === 'truncated'}
+        class:max-w-full={textOverflowMode === 'truncated'}
         class:text-ellipsis={textOverflowMode === 'truncated'}
         class:overflow-hidden={textOverflowMode === 'truncated'}
     >
