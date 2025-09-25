@@ -535,14 +535,14 @@ export default class ColorHandler<TExtraProps = undefined, TRowHeaderProps = und
         // Style the row header
         this.setHeaderStyling('row', row, headerProps);
 
-        // Style all cells in that row
-        this.cellComponents.forEach((cell, key) => {
-            const [cellRow] = key.split('-').map(Number);
-            if (cellRow === row) {
-                const position = { row: cellRow, col: parseInt(key.split('-')[1]) };
+        // Directly construct keys for the row using grid dimensions
+        for (let col = 0; col < this.gridDimensions.maxCol; col++) {
+            const key = `${row}-${col}`;
+            if (this.cellComponents.has(key)) {
+                const position = { row, col };
                 this.setCellStyling(position, cellProps);
             }
-        });
+        }
     }
 
     /**
@@ -552,14 +552,14 @@ export default class ColorHandler<TExtraProps = undefined, TRowHeaderProps = und
         // Style the column header
         this.setHeaderStyling('col', col, headerProps);
 
-        // Style all cells in that column
-        this.cellComponents.forEach((cell, key) => {
-            const [, cellCol] = key.split('-').map(Number);
-            if (cellCol === col) {
-                const position = { row: parseInt(key.split('-')[0]), col: cellCol };
+        // Directly construct keys for the column using grid dimensions
+        for (let row = 0; row < this.gridDimensions.maxRow; row++) {
+            const key = `${row}-${col}`;
+            if (this.cellComponents.has(key)) {
+                const position = { row, col };
                 this.setCellStyling(position, cellProps);
             }
-        });
+        }
     }
 
     /**
@@ -569,14 +569,14 @@ export default class ColorHandler<TExtraProps = undefined, TRowHeaderProps = und
         // Style the row header
         this.setHeaderTailwindStyling('row', row, headerProps);
 
-        // Style all cells in that row
-        this.cellComponents.forEach((cell, key) => {
-            const [cellRow] = key.split('-').map(Number);
-            if (cellRow === row) {
-                const position = { row: cellRow, col: parseInt(key.split('-')[1]) };
+        // Directly construct keys for the row using grid dimensions
+        for (let col = 0; col < this.gridDimensions.maxCol; col++) {
+            const key = `${row}-${col}`;
+            if (this.cellComponents.has(key)) {
+                const position = { row, col };
                 this.setCellTailwindStyling(position, cellProps);
             }
-        });
+        }
     }
 
     /**
@@ -586,14 +586,14 @@ export default class ColorHandler<TExtraProps = undefined, TRowHeaderProps = und
         // Style the column header
         this.setHeaderTailwindStyling('col', col, headerProps);
 
-        // Style all cells in that column
-        this.cellComponents.forEach((cell, key) => {
-            const [, cellCol] = key.split('-').map(Number);
-            if (cellCol === col) {
-                const position = { row: parseInt(key.split('-')[0]), col: cellCol };
+        // Directly construct keys for the column using grid dimensions
+        for (let row = 0; row < this.gridDimensions.maxRow; row++) {
+            const key = `${row}-${col}`;
+            if (this.cellComponents.has(key)) {
+                const position = { row, col };
                 this.setCellTailwindStyling(position, cellProps);
             }
-        });
+        }
     }
 
     /**

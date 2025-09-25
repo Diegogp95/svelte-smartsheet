@@ -281,6 +281,51 @@
         controller.flashHeaders(positions, options);
     }
 
+    // ======================= EXTRAPROPS UPDATE API =======================
+
+    /**
+     * Update all cell extraProps with new values
+     * The matrix must match the current grid dimensions
+     */
+    export function updateAllCellExtraProps(extraPropsMatrix: TExtraProps[][]) {
+        controller.updateAllCellExtraProps(extraPropsMatrix);
+    }
+
+    /**
+     * Update all row header extraProps with new values
+     * The array must match the current number of rows
+     */
+    export function updateAllRowHeaderExtraProps(extraPropsArray: TRowHeaderProps[]) {
+        controller.updateAllRowHeaderExtraProps(extraPropsArray);
+    }
+
+    /**
+     * Update all column header extraProps with new values
+     * The array must match the current number of columns
+     */
+    export function updateAllColHeaderExtraProps(extraPropsArray: TColHeaderProps[]) {
+        controller.updateAllColHeaderExtraProps(extraPropsArray);
+    }
+
+    /**
+     * Check if a specific property exists in extraProps schema
+     * @param type Type of component to check ('cell', 'rowHeader', 'colHeader')
+     * @param property Property name to check
+     * @returns true if property exists in the schema
+     */
+    export function hasExtraProperty(type: 'cell' | 'rowHeader' | 'colHeader', property: string): boolean {
+        return controller.hasExtraProperty(type, property);
+    }
+
+    /**
+     * Get all known properties in extraProps schema for a component type
+     * @param type Type of component ('cell', 'rowHeader', 'colHeader')
+     * @returns Set of property names
+     */
+    export function getExtraPropertiesSchema(type: 'cell' | 'rowHeader' | 'colHeader'): Set<string> {
+        return controller.getExtraPropertiesSchema(type);
+    }
+
     // ======================= SETUP PHASE =======================
     // processed cells and headers
     let cellComponents: Map<string, CellComponent<TExtraProps>> = controller.getCellComponents();

@@ -55,6 +55,13 @@ export default class SmartSheetController<TExtraProps = undefined,
     // Separate header components by type for different extraProps handling
     // Style
     private styleMode: 'style' | 'tailwind'; // Default to inline styles0
+    // ExtraProps schema registry for homogeneous structures
+    private extraPropsSchema = {
+        cellProperties: new Set<keyof TExtraProps>(),
+        rowHeaderProperties: new Set<keyof TRowHeaderProps>(),
+        colHeaderProperties: new Set<keyof TColHeaderProps>(),
+        analyzed: false
+    };
 
     constructor(initialDimensions: GridDimensions,
         gridData: CellValue[][],
@@ -1262,6 +1269,212 @@ export default class SmartSheetController<TExtraProps = undefined,
         this.colorHandler.applyColHeaderAndCellsTailwindStyles(styleGenerator);
         // Update the visible components
         this.virtualizeHandler.onVisibleComponentsChanged?.(this.virtualizeHandler);
+    }
+
+    // ==================== EXTRAPROPS UPDATE API ====================
+
+    /**
+     * Update all cell extraProps with new values
+     * @param extraPropsMatrix 2D array matching grid dimensions
+     */
+    updateAllCellExtraProps(extraPropsMatrix: TExtraProps[][]): void {
+        if (!extraPropsMatrix || extraPropsMatrix.length === 0) {
+            console.warn('[SmartSheetController] updateAllCellExtraProps: extraPropsMatrix is empty or undefined');
+            return;
+        }
+
+        // Validate dimensions
+        const expectedRows = this.gridDimensions.maxRow + 1;
+        const expectedCols = this.gridDimensions.maxCol + 1;
+
+        if (extraPropsMatrix.length !== expectedRows) {
+            console.warn(`[SmartSheetController] updateAllCellExtraProps: Expected ${expectedRows} rows, got ${extraPropsMatrix.length}`);
+            return;
+        }
+
+        // Update all cell components with new extraProps
+        for (let row = 0; row < expectedRows; row++) {
+            if (!extraPropsMatrix[row] || extraPropsMatrix[row].length !== expectedCols) {
+                console.warn(`[SmartSheetController] updateAllCellExtraProps: Row ${row} has incorrect length. Expected ${expectedCols}, got ${extraPropsMatrix[row]?.length}`);
+                continue;
+            }
+
+            for (let col = 0; col < expectedCols; col++) {
+                const key = this.positionToKey({ row, col });
+                const cellComponent = this.cellComponents.get(key);
+
+                if (cellComponent) {
+                    cellComponent.extraProps = extraPropsMatrix[row][col] as TExtraProps;
+                }
+            }
+        }
+
+        // Invalidate analysis to force re-analysis with new extraProps
+        this.invalidateExtraPropsAnalysis();
+
+        // Update visible components
+        this.virtualizeHandler.onVisibleComponentsChanged?.(this.virtualizeHandler);
+    }
+
+    /**
+     * Update all row header extraProps with new values
+     * @param extraPropsArray Array matching number of rows
+     */
+    updateAllRowHeaderExtraProps(extraPropsArray: TRowHeaderProps[]): void {
+        if (!extraPropsArray || extraPropsArray.length === 0) {
+            console.warn('[SmartSheetController] updateAllRowHeaderExtraProps: extraPropsArray is empty or undefined');
+            return;
+        }
+
+        // Validate dimensions
+        const expectedRows = this.gridDimensions.maxRow + 1;
+
+        if (extraPropsArray.length !== expectedRows) {
+            console.warn(`[SmartSheetController] updateAllRowHeaderExtraProps: Expected ${expectedRows} items, got ${extraPropsArray.length}`);
+            return;
+        }
+
+        // Update all row header components with new extraProps
+        for (let index = 0; index < expectedRows; index++) {
+            const key = `row-${index}`;
+            const headerComponent = this.rowHeaderComponents.get(key);
+
+            if (headerComponent) {
+                headerComponent.extraProps = extraPropsArray[index] as TRowHeaderProps;
+            }
+        }
+
+        // Invalidate analysis to force re-analysis with new extraProps
+        this.invalidateExtraPropsAnalysis();
+
+        // Update visible components
+        this.virtualizeHandler.onVisibleComponentsChanged?.(this.virtualizeHandler);
+    }
+
+    /**
+     * Update all column header extraProps with new values
+     * @param extraPropsArray Array matching number of columns
+     */
+    updateAllColHeaderExtraProps(extraPropsArray: TColHeaderProps[]): void {
+        if (!extraPropsArray || extraPropsArray.length === 0) {
+            console.warn('[SmartSheetController] updateAllColHeaderExtraProps: extraPropsArray is empty or undefined');
+            return;
+        }
+
+        // Validate dimensions
+        const expectedCols = this.gridDimensions.maxCol + 1;
+
+        if (extraPropsArray.length !== expectedCols) {
+            console.warn(`[SmartSheetController] updateAllColHeaderExtraProps: Expected ${expectedCols} items, got ${extraPropsArray.length}`);
+            return;
+        }
+
+        // Update all column header components with new extraProps
+        for (let index = 0; index < expectedCols; index++) {
+            const key = `col-${index}`;
+            const headerComponent = this.colHeaderComponents.get(key);
+
+            if (headerComponent) {
+                headerComponent.extraProps = extraPropsArray[index] as TColHeaderProps;
+            }
+        }
+
+        // Invalidate analysis to force re-analysis with new extraProps
+        this.invalidateExtraPropsAnalysis();
+
+        // Update visible components
+        this.virtualizeHandler.onVisibleComponentsChanged?.(this.virtualizeHandler);
+    }
+
+    /**
+     * Analyze the structure of extraProps by examining the first non-null example
+     * Since extraProps are homogeneous, all instances have the same properties
+     */
+    private analyzeExtraPropsStructure(): void {
+        if (this.extraPropsSchema.analyzed) return;
+
+        // Analyze cell extraProps from first available cell
+        for (const [key, cell] of this.cellComponents) {
+            if (cell.extraProps && typeof cell.extraProps === 'object') {
+                Object.keys(cell.extraProps).forEach(prop =>
+                    this.extraPropsSchema.cellProperties.add(prop as keyof TExtraProps)
+                );
+                break; // Solo necesitamos el primero ya que son homogéneos
+            }
+        }
+
+        // Analyze row header extraProps from first available header
+        for (const [key, header] of this.rowHeaderComponents) {
+            if (header.extraProps && typeof header.extraProps === 'object') {
+                Object.keys(header.extraProps).forEach(prop =>
+                    this.extraPropsSchema.rowHeaderProperties.add(prop as keyof TRowHeaderProps)
+                );
+                break;
+            }
+        }
+
+        // Analyze column header extraProps from first available header
+        for (const [key, header] of this.colHeaderComponents) {
+            if (header.extraProps && typeof header.extraProps === 'object') {
+                Object.keys(header.extraProps).forEach(prop =>
+                    this.extraPropsSchema.colHeaderProperties.add(prop as keyof TColHeaderProps)
+                );
+                break;
+            }
+        }
+
+        this.extraPropsSchema.analyzed = true;
+    }
+
+    /**
+     * Invalidate extraProps analysis to force re-analysis with new data
+     */
+    private invalidateExtraPropsAnalysis(): void {
+        this.extraPropsSchema.analyzed = false;
+        this.extraPropsSchema.cellProperties.clear();
+        this.extraPropsSchema.rowHeaderProperties.clear();
+        this.extraPropsSchema.colHeaderProperties.clear();
+    }
+
+    /**
+     * Check if a specific property exists in extraProps schema
+     * @param type Type of component to check ('cell', 'rowHeader', 'colHeader')
+     * @param property Property name to check
+     * @returns true if property exists in the schema
+     */
+    hasExtraProperty(type: 'cell' | 'rowHeader' | 'colHeader', property: string): boolean {
+        this.analyzeExtraPropsStructure();
+
+        switch(type) {
+            case 'cell':
+                return this.extraPropsSchema.cellProperties.has(property as keyof TExtraProps);
+            case 'rowHeader':
+                return this.extraPropsSchema.rowHeaderProperties.has(property as keyof TRowHeaderProps);
+            case 'colHeader':
+                return this.extraPropsSchema.colHeaderProperties.has(property as keyof TColHeaderProps);
+            default:
+                return false;
+        }
+    }
+
+    /**
+     * Get all known properties in extraProps schema for a component type
+     * @param type Type of component ('cell', 'rowHeader', 'colHeader')
+     * @returns Set of property names
+     */
+    getExtraPropertiesSchema(type: 'cell' | 'rowHeader' | 'colHeader'): Set<string> {
+        this.analyzeExtraPropsStructure();
+
+        switch(type) {
+            case 'cell':
+                return new Set(Array.from(this.extraPropsSchema.cellProperties).map(String));
+            case 'rowHeader':
+                return new Set(Array.from(this.extraPropsSchema.rowHeaderProperties).map(String));
+            case 'colHeader':
+                return new Set(Array.from(this.extraPropsSchema.colHeaderProperties).map(String));
+            default:
+                return new Set();
+        }
     }
 
     // Cleanup method to be called when destroying the controller instance
