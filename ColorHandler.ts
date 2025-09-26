@@ -27,6 +27,12 @@ export default class ColorHandler<TExtraProps = undefined, TRowHeaderProps = und
     private styleMode: 'style' | 'tailwind';
     private instanceId: string;
 
+    // Pre-calculated default style strings for performance optimization
+    private readonly DEFAULT_CELL_STYLE_STRING: string;
+    private readonly DEFAULT_CELL_TAILWIND_STRING: string;
+    private readonly DEFAULT_HEADER_STYLE_STRING: string;
+    private readonly DEFAULT_HEADER_TAILWIND_STRING: string;
+
     constructor(
         gridDimensions: GridDimensions,
         styleMode: 'style' | 'tailwind',
@@ -43,6 +49,13 @@ export default class ColorHandler<TExtraProps = undefined, TRowHeaderProps = und
         this.rowHeaderComponents = rowHeaderComponents;
         this.colHeaderComponents = colHeaderComponents;
         this.cornerHeaderComponent = cornerHeaderComponent;
+
+        // Pre-calculate default style strings for performance optimization
+        this.DEFAULT_CELL_STYLE_STRING = this.bgPropertiesToString(this.defaultCellBackgroundProperties);
+        this.DEFAULT_CELL_TAILWIND_STRING = this.tailwindPropertiesToString(this.defaultCellTailwindProperties);
+        this.DEFAULT_HEADER_STYLE_STRING = this.bgPropertiesToString(this.defaultHeaderBackgroundProperties);
+        this.DEFAULT_HEADER_TAILWIND_STRING = this.tailwindPropertiesToString(this.defaultHeaderTailwindProperties);
+
         // Apply defaults styles to cell and header components
         this.resetAllStyles();
     }
@@ -81,37 +94,38 @@ export default class ColorHandler<TExtraProps = undefined, TRowHeaderProps = und
 
     /**
      * Apply default styles to the specified type of component.
+     * Optimized version using pre-calculated default strings
      */
     applyDefaultStyles(type: 'cell' | 'row' | 'col' | 'corner'): void {
         if (type === 'cell') {
             this.cellComponents.forEach(cell => {
                 if (this.styleMode === 'style') {
-                    cell.styles.styling = this.bgPropertiesToString(this.defaultCellBackgroundProperties);
+                    cell.styles.styling = this.DEFAULT_CELL_STYLE_STRING;
                 } else {
-                    cell.styles.tailwindStyling = this.tailwindPropertiesToString(this.defaultCellTailwindProperties);
+                    cell.styles.tailwindStyling = this.DEFAULT_CELL_TAILWIND_STRING;
                 }
             });
         } else if (type === 'row') {
             this.rowHeaderComponents.forEach(header => {
                 if (this.styleMode === 'style') {
-                    header.styles.styling = this.bgPropertiesToString(this.defaultHeaderBackgroundProperties);
+                    header.styles.styling = this.DEFAULT_HEADER_STYLE_STRING;
                 } else {
-                    header.styles.tailwindStyling = this.tailwindPropertiesToString(this.defaultHeaderTailwindProperties);
+                    header.styles.tailwindStyling = this.DEFAULT_HEADER_TAILWIND_STRING;
                 }
             });
         } else if (type === 'col') {
             this.colHeaderComponents.forEach(header => {
                 if (this.styleMode === 'style') {
-                    header.styles.styling = this.bgPropertiesToString(this.defaultHeaderBackgroundProperties);
+                    header.styles.styling = this.DEFAULT_HEADER_STYLE_STRING;
                 } else {
-                    header.styles.tailwindStyling = this.tailwindPropertiesToString(this.defaultHeaderTailwindProperties);
+                    header.styles.tailwindStyling = this.DEFAULT_HEADER_TAILWIND_STRING;
                 }
             });
         } else if (type === 'corner') {
             if (this.styleMode === 'style') {
-                this.cornerHeaderComponent.styles.styling = this.bgPropertiesToString(this.defaultHeaderBackgroundProperties);
+                this.cornerHeaderComponent.styles.styling = this.DEFAULT_HEADER_STYLE_STRING;
             } else {
-                this.cornerHeaderComponent.styles.tailwindStyling = this.tailwindPropertiesToString(this.defaultHeaderTailwindProperties);
+                this.cornerHeaderComponent.styles.tailwindStyling = this.DEFAULT_HEADER_TAILWIND_STRING;
             }
         }
     }

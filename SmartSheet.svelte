@@ -5,12 +5,14 @@
     import CellPointer from './CellPointer.svelte';
     import Header from './Header.svelte';
     import NavigationOverlay from './NavigationOverlay.svelte';
+    import ProcessingOverlay from './ProcessingOverlay.svelte';
     import SmartSheetController from './SmartSheetController';
     import { Selection } from './SelectionHandler';
     import type { SelectionChangedCallback } from './SelectionHandler';
     import type { PointerPositionCallback } from './NavigationHandler';
     import type { VisibleComponentsCallback } from './VirtualizeHandler';
     import type { EditingStateCallback } from './DataHandler';
+    import type { ProcessingStateCallback } from './SmartSheetController';
     import type {
         GridDimensions,
         GridPosition,
@@ -26,6 +28,7 @@
         BackgroundProperties,
         TailwindProperties,
         EditingState,
+        ProcessingState,
     } from './types';
     import SelectionRect from './SelectionRect.svelte';
     import DeselectionRect from './DeselectionRect.svelte';
@@ -82,6 +85,13 @@
         currentEditingState = handler.getCurrentEditingState() || null;
     };
 
+    // PROCESSING STATE: Centralized processing state managed by SmartSheetController
+    let currentProcessingState: ProcessingState = { isProcessing: false, message: '', operation: undefined };
+    // Callback to get processing state from SmartSheetController
+    const subscribeToProcessingState: ProcessingStateCallback<TExtraProps, TRowHeaderProps, TColHeaderProps> = (handler) => {
+        currentProcessingState = handler.getProcessingState();
+    };
+
     // VIRTUALIZATION: Visible components and render area state managed by VirtualizeHandler
     let visibleComponents: VisibleComponents<TExtraProps, TRowHeaderProps, TColHeaderProps> = {
         cells: [],
@@ -96,13 +106,15 @@
     };
 
     // Create controller with grid dimensions
-    let controller = new SmartSheetController<TExtraProps, TRowHeaderProps, TColHeaderProps>({
-        maxRow: gridData.length - 1,
-        maxCol: (gridData[0]?.length || 1) - 1
-    }, gridData as CellValue[][], rowHeaders, columnHeaders, rowsTitle,
-    extraPropsMatrix, rowHeaderExtraProps, colHeaderExtraProps, styleMode, headersReadOnly,
-    subscribeToSelections, subscribeToPointerPosition, subscribeToDeselection,
-    subscribeToVisibleComponents, undefined, subscribeToEditingState);
+    let controller = new SmartSheetController<TExtraProps, TRowHeaderProps, TColHeaderProps>(
+        {
+            maxRow: gridData.length - 1,
+            maxCol: (gridData[0]?.length || 1) - 1
+        }, gridData as CellValue[][], rowHeaders, columnHeaders, rowsTitle,
+        extraPropsMatrix, rowHeaderExtraProps, colHeaderExtraProps, styleMode, headersReadOnly,
+        subscribeToSelections, subscribeToPointerPosition, subscribeToDeselection,
+        subscribeToVisibleComponents, undefined, subscribeToEditingState, subscribeToProcessingState,
+    );
 
     let tableContainer: HTMLDivElement;
     let columnsHeaderContainer: HTMLDivElement;
@@ -234,6 +246,10 @@
         controller.resetAllBackgrounds();
     }
 
+    export function resetAllStyles(): void {
+        controller.resetAllStyles();
+    }
+
     // Header + Row/Column styling APIs
     export function styleRowHeaderAndCells(row: number, headerProps: any, cellProps: any): void {
         controller.styleRowHeaderAndCells(row, headerProps, cellProps);
@@ -324,6 +340,32 @@
      */
     export function getExtraPropertiesSchema(type: 'cell' | 'rowHeader' | 'colHeader'): Set<string> {
         return controller.getExtraPropertiesSchema(type);
+    }
+
+    // ======================= EXTERNAL PROCESSING CONTROL =======================
+
+    /**
+     * Set external processing state (for parent component operations like fetches)
+     * @param message Message to display during processing
+     * @param operation Optional operation identifier
+     */
+    export function setExternalProcessing(message: string, operation?: string): void {
+        controller.setExternalProcessing(message, operation);
+    }
+
+    /**
+     * Clear external processing state
+     */
+    export function clearExternalProcessing(): void {
+        controller.clearExternalProcessing();
+    }
+
+    /**
+     * Get current processing state
+     * @returns Copy of current processing state
+     */
+    export function getProcessingState(): ProcessingState {
+        return controller.getProcessingState();
     }
 
     // ======================= SETUP PHASE =======================
@@ -623,6 +665,11 @@
         visible={!navigationMode}
         on:activate={handleNavigationActivate}
     />
+
+    <!-- Processing overlay -->
+    {#if currentProcessingState.isProcessing}
+        <ProcessingOverlay message={currentProcessingState.message} />
+    {/if}
 
 </div>
 {/if}

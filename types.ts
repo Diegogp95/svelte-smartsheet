@@ -211,3 +211,11 @@ export interface EditingState<TExtraProps, TRowHeaderProps, TColHeaderProps> {
     component: CellComponent<TExtraProps> | HeaderComponent<TRowHeaderProps> | HeaderComponent<TColHeaderProps>;
     inputElement: HTMLInputElement | null;
 }
+
+// Update state for operations feedback
+export interface ProcessingState {
+    isProcessing: boolean;
+    message: string;
+    operation?: string; // Optional: type of operation
+    source?: 'internal' | 'external'; // Track the origin of the processing state
+}

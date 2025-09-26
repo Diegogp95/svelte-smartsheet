@@ -13,6 +13,7 @@ import type {
     HeaderValue,
     FlashOptions,
     GridMouseInteractionType,
+    ProcessingState,
 } from './types';
 import InputAnalyzer from './InputAnalyzer';
 import MouseEventTranslator from './MouseEventTranslator';
@@ -25,6 +26,11 @@ import type { EditingStateCallback } from './DataHandler';
 import ColorHandler from './ColorHandler';
 import VirtualizeHandler from './VirtualizeHandler';
 import type { VisibleComponentsCallback, RenderAreaCallback } from './VirtualizeHandler';
+
+
+// Callback type for processing state changes (using any to avoid circular dependency)
+export type ProcessingStateCallback<TExtraProps, TRowHeaderProps, TColHeaderProps> =
+    (handler: SmartSheetController<TExtraProps, TRowHeaderProps, TColHeaderProps>) => void;
 
 // Main Controller - Mediates between navigation and selection
 export default class SmartSheetController<TExtraProps = undefined,
@@ -62,6 +68,15 @@ export default class SmartSheetController<TExtraProps = undefined,
         colHeaderProperties: new Set<keyof TColHeaderProps>(),
         analyzed: false
     };
+    // Processing state for operations feedback
+    private processingState: ProcessingState = {
+        isProcessing: false,
+        message: '',
+        operation: undefined,
+        source: undefined
+    };
+    // Callback for processing state changes
+    private onProcessingStateChanged?: ProcessingStateCallback<TExtraProps, TRowHeaderProps, TColHeaderProps>;
 
     constructor(initialDimensions: GridDimensions,
         gridData: CellValue[][],
@@ -79,10 +94,12 @@ export default class SmartSheetController<TExtraProps = undefined,
         onVisibleComponentsChanged?: VisibleComponentsCallback<TExtraProps, TRowHeaderProps, TColHeaderProps>,
         onRenderAreaChanged?: RenderAreaCallback<TExtraProps, TRowHeaderProps, TColHeaderProps>,
         onEditingStateChanged?: EditingStateCallback<TExtraProps, TRowHeaderProps, TColHeaderProps>,
+        onProcessingStateChanged?: ProcessingStateCallback<TExtraProps, TRowHeaderProps, TColHeaderProps>,
     ) {
         this.gridDimensions = initialDimensions;
         this.styleMode = styleMode;
         this.headersReadOnly = headersReadOnly;
+        this.onProcessingStateChanged = onProcessingStateChanged;
 
         // Initialize data maps - BUILD FROM INPUT DATA
         this.cellComponents = this.buildCellComponentsMap(gridData, cellsExtraProps);
@@ -948,23 +965,47 @@ export default class SmartSheetController<TExtraProps = undefined,
 
     // Batch background styles via generator
     applyBackgroundStyles(styleGenerator: (cells: Map<string, CellComponent>) => [GridPosition, BackgroundProperties][]): void {
-        this.colorHandler.applyBackgroundStyles(styleGenerator as any);
-        // Update the visible components
-        this.virtualizeHandler.onVisibleComponentsChanged?.(this.virtualizeHandler);
+        this.setProcessing('Applying background styles...', 'background-styles');
+
+        try {
+            this.colorHandler.applyBackgroundStyles(styleGenerator as any);
+            // Update the visible components
+            this.virtualizeHandler.onVisibleComponentsChanged?.(this.virtualizeHandler);
+            this.clearProcessing();
+        } catch (error) {
+            this.clearProcessing();
+            throw error;
+        }
     }
 
     // Batch tailwind styles via generator
     applyTailwindStyles(styleGenerator: (cells: Map<string, CellComponent>) => [GridPosition, TailwindProperties][]): void {
-        this.colorHandler.applyTailwindStyles(styleGenerator as any);
-        // Update the visible components
-        this.virtualizeHandler.onVisibleComponentsChanged?.(this.virtualizeHandler);
+        this.setProcessing('Applying tailwind styles...', 'tailwind-styles');
+
+        try {
+            this.colorHandler.applyTailwindStyles(styleGenerator as any);
+            // Update the visible components
+            this.virtualizeHandler.onVisibleComponentsChanged?.(this.virtualizeHandler);
+            this.clearProcessing();
+        } catch (error) {
+            this.clearProcessing();
+            throw error;
+        }
     }
 
     // Reset all cell backgrounds to default
     resetAllBackgrounds(): void {
-        this.colorHandler.applyDefaultStyles('cell');
-        // Update the visible components
-        this.virtualizeHandler.onVisibleComponentsChanged?.(this.virtualizeHandler);
+        this.setProcessing('Resetting all backgrounds...', 'reset-backgrounds');
+
+        try {
+            this.colorHandler.applyDefaultStyles('cell');
+            // Update the visible components
+            this.virtualizeHandler.onVisibleComponentsChanged?.(this.virtualizeHandler);
+            this.clearProcessing();
+        } catch (error) {
+            this.clearProcessing();
+            throw error;
+        }
     }
 
     // Selection API that takes a function aware of cell structure
@@ -1126,49 +1167,97 @@ export default class SmartSheetController<TExtraProps = undefined,
     applyRowHeaderBackgroundStyles(
         styleGenerator: (headers: Map<string, HeaderComponent<TRowHeaderProps>>) => [number, BackgroundProperties][]
     ): void {
-        this.colorHandler.applyRowHeaderBackgroundStyles(styleGenerator);
-        // Update the visible components
-        this.virtualizeHandler.onVisibleComponentsChanged?.(this.virtualizeHandler);
+        this.setProcessing('Applying row header styles...', 'row-header-styles');
+
+        try {
+            this.colorHandler.applyRowHeaderBackgroundStyles(styleGenerator);
+            // Update the visible components
+            this.virtualizeHandler.onVisibleComponentsChanged?.(this.virtualizeHandler);
+            this.clearProcessing();
+        } catch (error) {
+            this.clearProcessing();
+            throw error;
+        }
     }
 
     applyColHeaderBackgroundStyles(
         styleGenerator: (headers: Map<string, HeaderComponent<TColHeaderProps>>) => [number, BackgroundProperties][]
     ): void {
-        this.colorHandler.applyColHeaderBackgroundStyles(styleGenerator);
-        // Update the visible components
-        this.virtualizeHandler.onVisibleComponentsChanged?.(this.virtualizeHandler);
+        this.setProcessing('Applying column header styles...', 'col-header-styles');
+
+        try {
+            this.colorHandler.applyColHeaderBackgroundStyles(styleGenerator);
+            // Update the visible components
+            this.virtualizeHandler.onVisibleComponentsChanged?.(this.virtualizeHandler);
+            this.clearProcessing();
+        } catch (error) {
+            this.clearProcessing();
+            throw error;
+        }
     }
 
     applyRowHeaderTailwindStyles(
         styleGenerator: (headers: Map<string, HeaderComponent<TRowHeaderProps>>) => [number, TailwindProperties][]
     ): void {
-        this.colorHandler.applyRowHeaderTailwindStyles(styleGenerator);
-        // Update the visible components
-        this.virtualizeHandler.onVisibleComponentsChanged?.(this.virtualizeHandler);
+        this.setProcessing('Applying row header tailwind styles...', 'row-header-tailwind-styles');
+
+        try {
+            this.colorHandler.applyRowHeaderTailwindStyles(styleGenerator);
+            // Update the visible components
+            this.virtualizeHandler.onVisibleComponentsChanged?.(this.virtualizeHandler);
+            this.clearProcessing();
+        } catch (error) {
+            this.clearProcessing();
+            throw error;
+        }
     }
 
     applyColHeaderTailwindStyles(
         styleGenerator: (headers: Map<string, HeaderComponent<TColHeaderProps>>) => [number, TailwindProperties][]
     ): void {
-        this.colorHandler.applyColHeaderTailwindStyles(styleGenerator);
-        // Update the visible components
-        this.virtualizeHandler.onVisibleComponentsChanged?.(this.virtualizeHandler);
+        this.setProcessing('Applying column header tailwind styles...', 'col-header-tailwind-styles');
+
+        try {
+            this.colorHandler.applyColHeaderTailwindStyles(styleGenerator);
+            // Update the visible components
+            this.virtualizeHandler.onVisibleComponentsChanged?.(this.virtualizeHandler);
+            this.clearProcessing();
+        } catch (error) {
+            this.clearProcessing();
+            throw error;
+        }
     }
 
     // Reset header styles
     resetHeaderStyles(): void {
-        this.colorHandler.applyDefaultStyles('row');
-        this.colorHandler.applyDefaultStyles('col');
-        this.colorHandler.applyDefaultStyles('corner');
-        // Update the visible components
-        this.virtualizeHandler.onVisibleComponentsChanged?.(this.virtualizeHandler);
+        this.setProcessing('Resetting header styles...', 'reset-header-styles');
+
+        try {
+            this.colorHandler.applyDefaultStyles('row');
+            this.colorHandler.applyDefaultStyles('col');
+            this.colorHandler.applyDefaultStyles('corner');
+            // Update the visible components
+            this.virtualizeHandler.onVisibleComponentsChanged?.(this.virtualizeHandler);
+            this.clearProcessing();
+        } catch (error) {
+            this.clearProcessing();
+            throw error;
+        }
     }
 
     // Reset all styles (cells and headers)
     resetAllStyles(): void {
-        this.colorHandler.resetAllStyles();
-        // Update the visible components
-        this.virtualizeHandler.onVisibleComponentsChanged?.(this.virtualizeHandler);
+        this.setProcessing('Resetting all styles...', 'reset-all-styles');
+
+        try {
+            this.colorHandler.resetAllStyles();
+            // Update the visible components
+            this.virtualizeHandler.onVisibleComponentsChanged?.(this.virtualizeHandler);
+            this.clearProcessing();
+        } catch (error) {
+            this.clearProcessing();
+            throw error;
+        }
     }
 
     // ==================== HEADER + ROW/COLUMN STYLING API ====================
@@ -1242,33 +1331,65 @@ export default class SmartSheetController<TExtraProps = undefined,
     applyRowHeaderAndCellsBackgroundStyles(
         styleGenerator: (headers: Map<string, HeaderComponent<TRowHeaderProps>>) => [number, BackgroundProperties, BackgroundProperties][]
     ): void {
-        this.colorHandler.applyRowHeaderAndCellsBackgroundStyles(styleGenerator);
-        // Update the visible components
-        this.virtualizeHandler.onVisibleComponentsChanged?.(this.virtualizeHandler);
+        this.setProcessing('Applying row header and cells styles...', 'row-header-cells-styles');
+
+        try {
+            this.colorHandler.applyRowHeaderAndCellsBackgroundStyles(styleGenerator);
+            // Update the visible components
+            this.virtualizeHandler.onVisibleComponentsChanged?.(this.virtualizeHandler);
+            this.clearProcessing();
+        } catch (error) {
+            this.clearProcessing();
+            throw error;
+        }
     }
 
     applyColHeaderAndCellsBackgroundStyles(
         styleGenerator: (headers: Map<string, HeaderComponent<TColHeaderProps>>) => [number, BackgroundProperties, BackgroundProperties][]
     ): void {
-        this.colorHandler.applyColHeaderAndCellsBackgroundStyles(styleGenerator);
-        // Update the visible components
-        this.virtualizeHandler.onVisibleComponentsChanged?.(this.virtualizeHandler);
+        this.setProcessing('Applying column header and cells styles...', 'col-header-cells-styles');
+
+        try {
+            this.colorHandler.applyColHeaderAndCellsBackgroundStyles(styleGenerator);
+            // Update the visible components
+            this.virtualizeHandler.onVisibleComponentsChanged?.(this.virtualizeHandler);
+            this.clearProcessing();
+        } catch (error) {
+            this.clearProcessing();
+            throw error;
+        }
     }
 
     applyRowHeaderAndCellsTailwindStyles(
         styleGenerator: (headers: Map<string, HeaderComponent<TRowHeaderProps>>) => [number, TailwindProperties, TailwindProperties][]
     ): void {
-        this.colorHandler.applyRowHeaderAndCellsTailwindStyles(styleGenerator);
-        // Update the visible components
-        this.virtualizeHandler.onVisibleComponentsChanged?.(this.virtualizeHandler);
+        this.setProcessing('Applying row header and cells tailwind styles...', 'row-header-cells-tailwind-styles');
+
+        try {
+            this.colorHandler.applyRowHeaderAndCellsTailwindStyles(styleGenerator);
+            // Update the visible components
+            this.virtualizeHandler.onVisibleComponentsChanged?.(this.virtualizeHandler);
+            this.clearProcessing();
+        } catch (error) {
+            this.clearProcessing();
+            throw error;
+        }
     }
 
     applyColHeaderAndCellsTailwindStyles(
         styleGenerator: (headers: Map<string, HeaderComponent<TColHeaderProps>>) => [number, TailwindProperties, TailwindProperties][]
     ): void {
-        this.colorHandler.applyColHeaderAndCellsTailwindStyles(styleGenerator);
-        // Update the visible components
-        this.virtualizeHandler.onVisibleComponentsChanged?.(this.virtualizeHandler);
+        this.setProcessing('Applying column header and cells tailwind styles...', 'col-header-cells-tailwind-styles');
+
+        try {
+            this.colorHandler.applyColHeaderAndCellsTailwindStyles(styleGenerator);
+            // Update the visible components
+            this.virtualizeHandler.onVisibleComponentsChanged?.(this.virtualizeHandler);
+            this.clearProcessing();
+        } catch (error) {
+            this.clearProcessing();
+            throw error;
+        }
     }
 
     // ==================== EXTRAPROPS UPDATE API ====================
@@ -1278,42 +1399,53 @@ export default class SmartSheetController<TExtraProps = undefined,
      * @param extraPropsMatrix 2D array matching grid dimensions
      */
     updateAllCellExtraProps(extraPropsMatrix: TExtraProps[][]): void {
-        if (!extraPropsMatrix || extraPropsMatrix.length === 0) {
-            console.warn('[SmartSheetController] updateAllCellExtraProps: extraPropsMatrix is empty or undefined');
-            return;
-        }
+        this.setProcessing('Updating cell properties...', 'cell-extraprops');
 
-        // Validate dimensions
-        const expectedRows = this.gridDimensions.maxRow + 1;
-        const expectedCols = this.gridDimensions.maxCol + 1;
-
-        if (extraPropsMatrix.length !== expectedRows) {
-            console.warn(`[SmartSheetController] updateAllCellExtraProps: Expected ${expectedRows} rows, got ${extraPropsMatrix.length}`);
-            return;
-        }
-
-        // Update all cell components with new extraProps
-        for (let row = 0; row < expectedRows; row++) {
-            if (!extraPropsMatrix[row] || extraPropsMatrix[row].length !== expectedCols) {
-                console.warn(`[SmartSheetController] updateAllCellExtraProps: Row ${row} has incorrect length. Expected ${expectedCols}, got ${extraPropsMatrix[row]?.length}`);
-                continue;
+        try {
+            if (!extraPropsMatrix || extraPropsMatrix.length === 0) {
+                console.warn('[SmartSheetController] updateAllCellExtraProps: extraPropsMatrix is empty or undefined');
+                this.clearProcessing();
+                return;
             }
 
-            for (let col = 0; col < expectedCols; col++) {
-                const key = this.positionToKey({ row, col });
-                const cellComponent = this.cellComponents.get(key);
+            // Validate dimensions
+            const expectedRows = this.gridDimensions.maxRow + 1;
+            const expectedCols = this.gridDimensions.maxCol + 1;
 
-                if (cellComponent) {
-                    cellComponent.extraProps = extraPropsMatrix[row][col] as TExtraProps;
+            if (extraPropsMatrix.length !== expectedRows) {
+                console.warn(`[SmartSheetController] updateAllCellExtraProps: Expected ${expectedRows} rows, got ${extraPropsMatrix.length}`);
+                this.clearProcessing();
+                return;
+            }
+
+            // Update all cell components with new extraProps
+            for (let row = 0; row < expectedRows; row++) {
+                if (!extraPropsMatrix[row] || extraPropsMatrix[row].length !== expectedCols) {
+                    console.warn(`[SmartSheetController] updateAllCellExtraProps: Row ${row} has incorrect length. Expected ${expectedCols}, got ${extraPropsMatrix[row]?.length}`);
+                    continue;
+                }
+
+                for (let col = 0; col < expectedCols; col++) {
+                    const key = this.positionToKey({ row, col });
+                    const cellComponent = this.cellComponents.get(key);
+
+                    if (cellComponent) {
+                        cellComponent.extraProps = extraPropsMatrix[row][col] as TExtraProps;
+                    }
                 }
             }
+
+            // Invalidate analysis to force re-analysis with new extraProps
+            this.invalidateExtraPropsAnalysis();
+
+            // Update visible components
+            this.virtualizeHandler.onVisibleComponentsChanged?.(this.virtualizeHandler);
+
+            this.clearProcessing();
+        } catch (error) {
+            this.clearProcessing();
+            throw error;
         }
-
-        // Invalidate analysis to force re-analysis with new extraProps
-        this.invalidateExtraPropsAnalysis();
-
-        // Update visible components
-        this.virtualizeHandler.onVisibleComponentsChanged?.(this.virtualizeHandler);
     }
 
     /**
@@ -1321,34 +1453,45 @@ export default class SmartSheetController<TExtraProps = undefined,
      * @param extraPropsArray Array matching number of rows
      */
     updateAllRowHeaderExtraProps(extraPropsArray: TRowHeaderProps[]): void {
-        if (!extraPropsArray || extraPropsArray.length === 0) {
-            console.warn('[SmartSheetController] updateAllRowHeaderExtraProps: extraPropsArray is empty or undefined');
-            return;
-        }
+        this.setProcessing('Updating row header properties...', 'row-header-extraprops');
 
-        // Validate dimensions
-        const expectedRows = this.gridDimensions.maxRow + 1;
-
-        if (extraPropsArray.length !== expectedRows) {
-            console.warn(`[SmartSheetController] updateAllRowHeaderExtraProps: Expected ${expectedRows} items, got ${extraPropsArray.length}`);
-            return;
-        }
-
-        // Update all row header components with new extraProps
-        for (let index = 0; index < expectedRows; index++) {
-            const key = `row-${index}`;
-            const headerComponent = this.rowHeaderComponents.get(key);
-
-            if (headerComponent) {
-                headerComponent.extraProps = extraPropsArray[index] as TRowHeaderProps;
+        try {
+            if (!extraPropsArray || extraPropsArray.length === 0) {
+                console.warn('[SmartSheetController] updateAllRowHeaderExtraProps: extraPropsArray is empty or undefined');
+                this.clearProcessing();
+                return;
             }
+
+            // Validate dimensions
+            const expectedRows = this.gridDimensions.maxRow + 1;
+
+            if (extraPropsArray.length !== expectedRows) {
+                console.warn(`[SmartSheetController] updateAllRowHeaderExtraProps: Expected ${expectedRows} items, got ${extraPropsArray.length}`);
+                this.clearProcessing();
+                return;
+            }
+
+            // Update all row header components with new extraProps
+            for (let index = 0; index < expectedRows; index++) {
+                const key = `row-${index}`;
+                const headerComponent = this.rowHeaderComponents.get(key);
+
+                if (headerComponent) {
+                    headerComponent.extraProps = extraPropsArray[index] as TRowHeaderProps;
+                }
+            }
+
+            // Invalidate analysis to force re-analysis with new extraProps
+            this.invalidateExtraPropsAnalysis();
+
+            // Update visible components
+            this.virtualizeHandler.onVisibleComponentsChanged?.(this.virtualizeHandler);
+
+            this.clearProcessing();
+        } catch (error) {
+            this.clearProcessing();
+            throw error;
         }
-
-        // Invalidate analysis to force re-analysis with new extraProps
-        this.invalidateExtraPropsAnalysis();
-
-        // Update visible components
-        this.virtualizeHandler.onVisibleComponentsChanged?.(this.virtualizeHandler);
     }
 
     /**
@@ -1356,34 +1499,45 @@ export default class SmartSheetController<TExtraProps = undefined,
      * @param extraPropsArray Array matching number of columns
      */
     updateAllColHeaderExtraProps(extraPropsArray: TColHeaderProps[]): void {
-        if (!extraPropsArray || extraPropsArray.length === 0) {
-            console.warn('[SmartSheetController] updateAllColHeaderExtraProps: extraPropsArray is empty or undefined');
-            return;
-        }
+        this.setProcessing('Updating column header properties...', 'col-header-extraprops');
 
-        // Validate dimensions
-        const expectedCols = this.gridDimensions.maxCol + 1;
-
-        if (extraPropsArray.length !== expectedCols) {
-            console.warn(`[SmartSheetController] updateAllColHeaderExtraProps: Expected ${expectedCols} items, got ${extraPropsArray.length}`);
-            return;
-        }
-
-        // Update all column header components with new extraProps
-        for (let index = 0; index < expectedCols; index++) {
-            const key = `col-${index}`;
-            const headerComponent = this.colHeaderComponents.get(key);
-
-            if (headerComponent) {
-                headerComponent.extraProps = extraPropsArray[index] as TColHeaderProps;
+        try {
+            if (!extraPropsArray || extraPropsArray.length === 0) {
+                console.warn('[SmartSheetController] updateAllColHeaderExtraProps: extraPropsArray is empty or undefined');
+                this.clearProcessing();
+                return;
             }
+
+            // Validate dimensions
+            const expectedCols = this.gridDimensions.maxCol + 1;
+
+            if (extraPropsArray.length !== expectedCols) {
+                console.warn(`[SmartSheetController] updateAllColHeaderExtraProps: Expected ${expectedCols} items, got ${extraPropsArray.length}`);
+                this.clearProcessing();
+                return;
+            }
+
+            // Update all column header components with new extraProps
+            for (let index = 0; index < expectedCols; index++) {
+                const key = `col-${index}`;
+                const headerComponent = this.colHeaderComponents.get(key);
+
+                if (headerComponent) {
+                    headerComponent.extraProps = extraPropsArray[index] as TColHeaderProps;
+                }
+            }
+
+            // Invalidate analysis to force re-analysis with new extraProps
+            this.invalidateExtraPropsAnalysis();
+
+            // Update visible components
+            this.virtualizeHandler.onVisibleComponentsChanged?.(this.virtualizeHandler);
+
+            this.clearProcessing();
+        } catch (error) {
+            this.clearProcessing();
+            throw error;
         }
-
-        // Invalidate analysis to force re-analysis with new extraProps
-        this.invalidateExtraPropsAnalysis();
-
-        // Update visible components
-        this.virtualizeHandler.onVisibleComponentsChanged?.(this.virtualizeHandler);
     }
 
     /**
@@ -1477,7 +1631,58 @@ export default class SmartSheetController<TExtraProps = undefined,
         }
     }
 
-    // Cleanup method to be called when destroying the controller instance
+    // ==================== UPDATE STATE MANAGEMENT ====================
+
+    /**
+     * Set processing state with a message and optional operation type
+     * @param message - Message to display during processing
+     * @param operation - Optional operation identifier
+     * @param source - Source of the processing state ('internal' by default)
+     */
+    private setProcessing(message: string, operation?: string, source: 'internal' | 'external' = 'internal'): void {
+        this.processingState = { isProcessing: true, message, operation, source };
+        this.onProcessingStateChanged?.(this);
+    }
+
+    /**
+     * Clear processing state
+     */
+    private clearProcessing(): void {
+        this.processingState = { isProcessing: false, message: '', operation: undefined, source: undefined };
+        this.onProcessingStateChanged?.(this);
+    }
+
+    /**
+     * Get current processing state (public getter)
+     * @returns Copy of current processing state
+     */
+    public getProcessingState(): ProcessingState {
+        return { ...this.processingState };
+    }
+
+    // ==================== EXTERNAL PROCESSING CONTROL ====================
+
+    /**
+     * Set external processing state (for parent component operations like fetches)
+     * @param message - Message to display during processing
+     * @param operation - Optional operation identifier
+     */
+    public setExternalProcessing(message: string, operation?: string): void {
+        this.setProcessing(message, operation, 'external');
+    }
+
+    /**
+     * Clear external processing state (we expose this one, just for symmetry)
+     */
+    public clearExternalProcessing(): void {
+        this.clearProcessing();
+    }
+
+    // ==================== CLEANUP ====================
+
+    /**
+     * Cleanup resources and event listeners
+     */
     dispose(): void {
         // Ensure clipboard handlers are removed
         this.removeClipboardHandlers();
