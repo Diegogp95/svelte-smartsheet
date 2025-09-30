@@ -56,13 +56,28 @@ export interface NavigationState {
     navigationMode: boolean;
     anchorPosition: GridPosition;  // For rectangular selection,
     mousePosition?: GridPosition; // For mouse-based navigation
+    headerAnchorRow: number;          // Anchor for row header selection
+    headerPointerRow: number;         // Pointer for row header selection
+    headerAnchorCol: number;          // Anchor for column header selection
+    headerPointerCol: number;         // Pointer for column header selection
     isDragging: boolean;
     draggingContext: DraggingActionContext;
 }
 
+// Navigation anchors and pointers for selection operations
+export interface NavigationAnchorsAndPointers {
+    // Cell navigation state
+    cellPointer: GridPosition;        // Current cell pointer position
+    cellAnchor: GridPosition;         // Cell anchor for rectangular selections
+    headerAnchorRow: number;          // Anchor for row header selection
+    headerPointerRow: number;         // Pointer for row header selection
+    headerAnchorCol: number;          // Anchor for column header selection
+    headerPointerCol: number;         // Pointer for column header selection
+}
+
 // Type for cell values, can be extended later if needed
 export type CellValue = string | number | boolean | null;
-export type HeaderValue = string | number;
+export type HeaderValue = string;
 
 // Flash color options
 export type FlashColor = 'blue'

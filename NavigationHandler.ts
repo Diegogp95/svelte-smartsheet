@@ -3,6 +3,7 @@ import type {
     HeaderPosition,
     GridDimensions,
     NavigationState,
+    NavigationAnchorsAndPointers,
     CellComponent,
     NavigationAnalysis,
     HeaderComponent,
@@ -58,6 +59,11 @@ export default class NavigationHandler<TExtraProps = undefined, TRowHeaderProps 
             pointerPosition: { row: 0, col: 0 },
             anchorPosition: { row: 0, col: 0 },
             navigationMode: false,
+            // Initialize header navigation states
+            headerAnchorRow: 0,
+            headerPointerRow: 0,
+            headerAnchorCol: 0,
+            headerPointerCol: 0,
             isDragging: false,
             draggingContext: {
                 isOutsideDragging: false,
@@ -207,15 +213,14 @@ export default class NavigationHandler<TExtraProps = undefined, TRowHeaderProps 
                 break;
 
             case 'start-row-drag':
-                // Row drag: Set selection to entire row
+                // Row drag: Set header navigation states
                 if (this.isDragging()) {
                     return;
                 }
                 const headerRowPos = position as HeaderPosition;
-                const rowSelection = this.getRowSelectionRange(headerRowPos.index);
-                // Pointer in the start, anchor in the end
-                this.movePointer(rowSelection.start);
-                this.setAnchor(rowSelection.end);
+                // Set header navigation states
+                this.setHeaderAnchorRow(headerRowPos.index);
+                this.setHeaderPointerRow(headerRowPos.index);
                 this.setDragging(true);
 
                 // Setup outside dragging listeners
@@ -223,14 +228,14 @@ export default class NavigationHandler<TExtraProps = undefined, TRowHeaderProps 
                 break;
 
             case 'start-col-drag':
-                // Column drag: Set selection to entire column
+                // Column drag: Set header navigation states
                 if (this.isDragging()) {
                     return;
                 }
                 const headerColPos = position as HeaderPosition;
-                const colSelection = this.getColumnSelectionRange(headerColPos.index);
-                this.movePointer(colSelection.start);
-                this.setAnchor(colSelection.end);
+                // Set header navigation states
+                this.setHeaderAnchorCol(headerColPos.index);
+                this.setHeaderPointerCol(headerColPos.index);
                 this.setDragging(true);
 
                 // Setup outside dragging listeners
@@ -238,27 +243,28 @@ export default class NavigationHandler<TExtraProps = undefined, TRowHeaderProps 
                 break;
 
             case 'update-drag':
-                // Shift+mousedown: Update pointer but keep anchor unchanged
-                // For shift+drag, we need to handle based on original component type
+                // Shift+mousedown: Update pointer to extend active selection
+                // Anchor remains from previous selection
                 if (componentType === 'cell') {
-                    this.movePointer(position as GridPosition);
+                    // Cell update-drag
+                    const cellPosition = position as GridPosition;
+                    this.movePointer(cellPosition);
+                    this.setDragging(true);
                 } else {
-                    // Select rows/cols. Move pointer to start of the new row/col
-                    // and anchor to the end of its actual row/col
-                    if ((position as HeaderPosition).headerType === 'col') {
-                        const colHeaderPos = position as HeaderPosition;
-                        const colStart = this.getColumnSelectionRange(colHeaderPos.index);
-                        this.movePointer(colStart.start);
-                        const colEnd = this.getColumnSelectionRange(this.getAnchor().col);
-                        this.setAnchor(colEnd.end);
+                    // Header update-drag
+                    if ((position as HeaderPosition).headerType === 'row') {
+                        const headerRowPos = position as HeaderPosition;
+                        this.setHeaderPointerRow(headerRowPos.index);
+                        this.setDragging(true);
                     } else {
-                        const rowHeaderPos = position as HeaderPosition;
-                        const rowStart = this.getRowSelectionRange(rowHeaderPos.index);
-                        this.movePointer(rowStart.start);
-                        const rowEnd = this.getRowSelectionRange(this.getAnchor().row);
-                        this.setAnchor(rowEnd.end);
+                        const headerColPos = position as HeaderPosition;
+                        this.setHeaderPointerCol(headerColPos.index);
+                        this.setDragging(true);
                     }
                 }
+
+                // Setup outside dragging listeners
+                this.setupTableOutsideListeners();
                 break;
 
             case 'continue-drag':
@@ -291,46 +297,48 @@ export default class NavigationHandler<TExtraProps = undefined, TRowHeaderProps 
                     return;
                 }
 
-                // Normal continue-drag processing (existing logic)
+                // Normal continue-drag processing
                 if (componentType === 'cell') {
-                    // If the drag was in cell context, just move the pointer
                     if (context.dragType === 'cell') {
+                        // Cell drag over cell: mover pointer de celda
                         this.movePointer(position as GridPosition);
                     } else if (context.dragType === 'row') {
-                        // If the drag was in row context, move pointer to start of the cell's row
+                        // Row drag over cell: actualizar pointer de row
                         const cellPos = position as GridPosition;
-                        const rowStart = this.getRowSelectionRange(cellPos.row);
-                        this.movePointer(rowStart.start);
+                        this.setHeaderPointerRow(cellPos.row);
                     } else if (context.dragType === 'col') {
-                        // If the drag was in col context, move pointer to start of the cell's column
+                        // Col drag over cell: actualizar pointer de col
                         const cellPos = position as GridPosition;
-                        const colStart = this.getColumnSelectionRange(cellPos.col);
-                        this.movePointer(colStart.start);
+                        this.setHeaderPointerCol(cellPos.col);
                     } else {
                         console.warn('Unknown drag type in continue-drag');
                         return;
                     }
                 } else {
-                    // If the drag was in cell context, just move the pointer
-                    // position pointer in the first cell of row/col
+                    // componentType === 'header'
                     if (context.dragType === 'cell') {
+                        // Cell drag over header - IGNORADO (comentado)
                         if ((position as HeaderPosition).headerType === 'col') {
+                            /*
                             const colHeaderPos = position as HeaderPosition;
                             const colStart = this.getColumnSelectionRange(colHeaderPos.index);
                             this.movePointer(colStart.start);
+                            */
                         } else {
+                            /*
                             const rowHeaderPos = position as HeaderPosition;
                             const rowStart = this.getRowSelectionRange(rowHeaderPos.index);
                             this.movePointer(rowStart.start);
+                            */
                         }
                     } else if (context.dragType === 'row') {
+                        // Row drag over header: actualizar pointer de row
                         const rowHeaderPos = position as HeaderPosition;
-                        const rowStart = this.getRowSelectionRange(rowHeaderPos.index);
-                        this.movePointer(rowStart.start);
+                        this.setHeaderPointerRow(rowHeaderPos.index);
                     } else if (context.dragType === 'col') {
+                        // Col drag over header: actualizar pointer de col
                         const colHeaderPos = position as HeaderPosition;
-                        const colStart = this.getColumnSelectionRange(colHeaderPos.index);
-                        this.movePointer(colStart.start);
+                        this.setHeaderPointerCol(colHeaderPos.index);
                     } else {
                         console.warn('Unknown drag type in continue-drag');
                         return;
@@ -715,6 +723,75 @@ export default class NavigationHandler<TExtraProps = undefined, TRowHeaderProps 
 
     getNavigationState(): NavigationState {
         return { ...this.navigationState };
+    }
+
+    /**
+     * Get deep copy of navigation anchors and pointers for selection operations
+     * Returns only the positions needed for selection logic
+     */
+    getNavigationAnchorsAndPointers(): NavigationAnchorsAndPointers {
+        return {
+            // Cell navigation state (deep copy)
+            cellPointer: { ...this.navigationState.pointerPosition },
+            cellAnchor: { ...this.navigationState.anchorPosition },
+
+            // Header navigation states (primitive values, already copied by value)
+            headerAnchorRow: this.navigationState.headerAnchorRow,
+            headerPointerRow: this.navigationState.headerPointerRow,
+            headerAnchorCol: this.navigationState.headerAnchorCol,
+            headerPointerCol: this.navigationState.headerPointerCol
+        };
+    }
+
+    // ==================== HEADER NAVIGATION METHODS ====================
+
+    // Header Row Navigation
+    setHeaderAnchorRow(row: number): void {
+        this.navigationState.headerAnchorRow = row;
+    }
+
+    getHeaderAnchorRow(): number {
+        return this.navigationState.headerAnchorRow;
+    }
+
+    setHeaderPointerRow(row: number): void {
+        this.navigationState.headerPointerRow = row;
+    }
+
+    getHeaderPointerRow(): number {
+        return this.navigationState.headerPointerRow;
+    }
+
+    // Header Column Navigation
+    setHeaderAnchorCol(col: number): void {
+        this.navigationState.headerAnchorCol = col;
+    }
+
+    getHeaderAnchorCol(): number {
+        return this.navigationState.headerAnchorCol;
+    }
+
+    setHeaderPointerCol(col: number): void {
+        this.navigationState.headerPointerCol = col;
+    }
+
+    getHeaderPointerCol(): number {
+        return this.navigationState.headerPointerCol;
+    }
+
+    // Combined getter for SelectionHandler
+    getHeaderNavigationState(): {
+        rowAnchor?: number;
+        rowPointer?: number;
+        colAnchor?: number;
+        colPointer?: number;
+    } {
+        return {
+            rowAnchor: this.navigationState.headerAnchorRow,
+            rowPointer: this.navigationState.headerPointerRow,
+            colAnchor: this.navigationState.headerAnchorCol,
+            colPointer: this.navigationState.headerPointerCol
+        };
     }
 
     // Navigation APIs that take functions aware of cell structure

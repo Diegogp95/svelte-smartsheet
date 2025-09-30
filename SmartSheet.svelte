@@ -7,7 +7,7 @@
     import NavigationOverlay from './NavigationOverlay.svelte';
     import ProcessingOverlay from './ProcessingOverlay.svelte';
     import SmartSheetController from './SmartSheetController';
-    import { Selection } from './SelectionHandler';
+    import { Selection, HeaderSelection } from './SelectionHandler';
     import type { SelectionChangedCallback } from './SelectionHandler';
     import type { PointerPositionCallback } from './NavigationHandler';
     import type { VisibleComponentsCallback } from './VirtualizeHandler';
@@ -34,6 +34,8 @@
     import DeselectionRect from './DeselectionRect.svelte';
     import { tick } from 'svelte';
     import DimensionScanner from './DimensionScanner.svelte';
+    import HeaderSelectionRect from './HeaderSelectionRect.svelte';
+    import HeaderDeselectionRect from './HeaderDeselectionRect.svelte';
 
     // Data
     export let gridData: (CellValue | undefined)[][];
@@ -61,9 +63,15 @@
 
     // Selections array to render, will be subscribed to controller's selections by a callback
     let selections: Selection[] = [];
+    let headerSelectionsRows: HeaderSelection[] = [];
+    let headerSelectionsCols: HeaderSelection[] = [];
+    let derivedCellSelections: Selection[] = []; // Cell selections derived from header selections
     // Callback to get selections from controller
     const subscribeToSelections: SelectionChangedCallback = (handler) => {
         selections = handler.getSelections();
+        headerSelectionsRows = handler.getHeaderSelectionsRows();
+        headerSelectionsCols = handler.getHeaderSelectionsCols();
+        derivedCellSelections = handler.getDerivedCellSelections();
     };
     // Pointer position variable to be subscribed to controller updates
     let pointerPosition: GridPosition = { row: 0, col: 0 };
@@ -73,9 +81,28 @@
     };
 
     let deSelection: Selection | null = null;
+    let headerDeselectionRow: HeaderSelection | null = null;
+    let headerDeselectionCol: HeaderSelection | null = null;
     // Callback to get deselection area from controller
     const subscribeToDeselection: SelectionChangedCallback = (handler) => {
-        deSelection = handler.getDeselection();
+        const headerDeselection = handler.getHeaderDeselection();
+        if (headerDeselection) {
+            if (headerDeselection.getDirection() === 'row') {
+                headerDeselectionRow = headerDeselection;
+                headerDeselectionCol = null;
+                // Asign the inter selection to the cell deselection
+                deSelection = headerDeselection.getCellSelection();
+            } else if (headerDeselection.getDirection() === 'col') {
+                headerDeselectionCol = headerDeselection;
+                headerDeselectionRow = null;
+                // Asign the inter selection to the cell deselection
+                deSelection = headerDeselection.getCellSelection();
+            }
+        } else {
+            headerDeselectionRow = null;
+            headerDeselectionCol = null;
+            deSelection = handler.getDeselection();
+        }
     };
 
     // EDITING STATE: Centralized editing state managed by DataHandler
@@ -295,6 +322,22 @@
 
     export function flashHeaders(positions: HeaderPosition[], options?: FlashOptions) {
         controller.flashHeaders(positions, options);
+    }
+
+    // ========================================================================
+    // ======================= EXPORT DATA API ================================
+    // ========================================================================
+
+    export function exportSelectedCells(): { [primaryHeader: string]: HeaderValue[] } {
+        return controller.exportSelectedCells();
+    }
+
+    export function extractChangedCells(): { [primaryHeader: string]: HeaderValue[] } {
+        return controller.exportChangedCells();
+    }
+
+    export function extractChangedCellsWithValues(): { [primaryHeader: string]: { [secondaryHeader: string]: CellValue } } {
+        return controller.exportChangedCellsWithValues();
     }
 
     // ======================= EXTRAPROPS UPDATE API =======================
@@ -522,6 +565,25 @@
                         />
                     {/if}
                 {/each}
+
+                <!-- Render column header selections -->
+                {#each headerSelectionsCols as selection}
+                    <HeaderSelectionRect
+                        headerGridArea={{...selection.getHeaderGridArea()}}
+                        type="col"
+                        active={selection.isActiveSelection()}
+                    />
+                {/each}
+
+                <!-- Render column header deselection if exists -->
+                {#if headerDeselectionCol}
+                    <HeaderDeselectionRect
+                        headerGridArea={{...headerDeselectionCol.getHeaderGridArea()}}
+                        type="col"
+                        active={false}
+                    />
+                {/if}
+
             </div>
 
             <!-- Rows Headers -->
@@ -571,6 +633,25 @@
                         />
                     {/if}
                 {/each}
+
+                <!-- Render row header selections -->
+                {#each headerSelectionsRows as selection}
+                    <HeaderSelectionRect
+                        headerGridArea={{...selection.getHeaderGridArea()}}
+                        type="row"
+                        active={selection.isActiveSelection()}
+                    />
+                {/each}
+
+                <!-- Render row header deselection if exists -->
+                {#if headerDeselectionRow}
+                    <HeaderDeselectionRect
+                        headerGridArea={{...headerDeselectionRow.getHeaderGridArea()}}
+                        type="row"
+                        active={false}
+                    />
+                {/if}
+
             </div>
 
             <!-- Corner Header (top-left sticky intersection) -->
@@ -644,6 +725,14 @@
 
                 <!-- Render selections -->
                 {#each selections as selection}
+                    <SelectionRect
+                        gridArea={{...selection.getGridArea()}}
+                        active={selection.isActiveSelection()}
+                    />
+                {/each}
+
+                <!-- Render derived cell selections from header selections -->
+                {#each derivedCellSelections as selection}
                     <SelectionRect
                         gridArea={{...selection.getGridArea()}}
                         active={selection.isActiveSelection()}

@@ -9,6 +9,7 @@ import type {
 } from './types';
 import { CellChange, HeaderChange, ChangeSet, HistoryManager } from './HistoryManager';
 import { tick } from 'svelte';
+import type Header from './Header.svelte';
 
 // Callback type for editing state changes
 export type EditingStateCallback<TExtraProps, TRowHeaderProps, TColHeaderProps> =
@@ -772,6 +773,190 @@ export default class DataHandler<TExtraProps = undefined, TRowHeaderProps = unde
         }));
 
         return this.commitChanges(unifiedChanges, 'cell', type);
+    }
+
+    // ==================== TRANSLATION METHODS ====================
+    /**
+     * This section defines methods for translating between cell positions
+     * and different representations (e.g., A1 notation, row/col indices).
+     */
+
+    private groupPositionsByRow(positions: GridPosition[]): Map<number, GridPosition[]> {
+        const rowMap = new Map<number, GridPosition[]>();
+        for (const pos of positions) {
+            if (!rowMap.has(pos.row)) {
+                rowMap.set(pos.row, []);
+            }
+            rowMap.get(pos.row)!.push(pos);
+        }
+        return rowMap;
+    }
+
+    private groupPositionsByCol(positions: GridPosition[]): Map<number, GridPosition[]> {
+        const colMap = new Map<number, GridPosition[]>();
+        for (const pos of positions) {
+            if (!colMap.has(pos.col)) {
+                colMap.set(pos.col, []);
+            }
+            colMap.get(pos.col)!.push(pos);
+        }
+        return colMap;
+    }
+
+    private lookForRowHeader(row: number): HeaderValue | null {
+        return this.rowHeaderComponents.get(`row-${row}`)?.value ?? null;
+    }
+
+    private lookForColHeader(col: number): HeaderValue | null {
+        return this.colHeaderComponents.get(`col-${col}`)?.value ?? null;
+    }
+
+    /**
+     * Core translation logic - processes positions and applies a transformation function
+     * @param positions Array of GridPosition to process
+     * @param agrupation 'row' | 'col' grouping mode
+     * @param processGroup Function to process each primary group
+     * @returns Generic result type
+     */
+    private translatePositionsCore<T>(
+        positions: GridPosition[],
+        agrupation: 'row' | 'col',
+        processGroup: (
+            primaryKey: string,
+            posArray: GridPosition[],
+            getSecondaryHeader: (index: number) => HeaderValue | null,
+            getSecondaryIndex: (pos: GridPosition) => number,
+            secondaryHeaderCache: Map<number, HeaderValue | null>
+        ) => T
+    ): { [primaryHeader: string]: T } {
+        const result: { [primaryHeader: string]: T } = {};
+
+        // Get grouped positions and define header lookup functions based on agrupation
+        const { groupedMap, getPrimaryHeader, getSecondaryHeader, getSecondaryIndex } =
+            agrupation === 'row'
+                ? {
+                    groupedMap: this.groupPositionsByRow(positions),
+                    getPrimaryHeader: (index: number) => this.lookForRowHeader(index),
+                    getSecondaryHeader: (index: number) => this.lookForColHeader(index),
+                    getSecondaryIndex: (pos: GridPosition) => pos.col
+                }
+                : {
+                    groupedMap: this.groupPositionsByCol(positions),
+                    getPrimaryHeader: (index: number) => this.lookForColHeader(index),
+                    getSecondaryHeader: (index: number) => this.lookForRowHeader(index),
+                    getSecondaryIndex: (pos: GridPosition) => pos.row
+                };
+
+        // Cache primary headers to avoid repeated lookups
+        const primaryHeaderCache = new Map<number, HeaderValue | null>();
+
+        for (const [primaryIndex, posArray] of groupedMap.entries()) {
+            // Get or cache primary header
+            let primaryHeader = primaryHeaderCache.get(primaryIndex);
+            if (primaryHeader === undefined) {
+                primaryHeader = getPrimaryHeader(primaryIndex);
+                primaryHeaderCache.set(primaryIndex, primaryHeader);
+            }
+
+            if (primaryHeader !== null) {
+                const primaryKey = String(primaryHeader);
+                // Cache secondary headers for this group's positions
+                const secondaryHeaderCache = new Map<number, HeaderValue | null>();
+
+                // Apply specific processing logic for this group
+                result[primaryKey] = processGroup(
+                    primaryKey,
+                    posArray,
+                    getSecondaryHeader,
+                    getSecondaryIndex,
+                    secondaryHeaderCache
+                );
+            }
+        }
+        return result;
+    }
+
+    public translatePositionsToData(
+        positions: GridPosition[],
+        agrupation: 'row' | 'col' = 'row'
+    ): { [primaryHeader: string]: { [secondaryHeader: string]: CellValue } } {
+        return this.translatePositionsCore(
+            positions,
+            agrupation,
+            (primaryKey, posArray, getSecondaryHeader, getSecondaryIndex, secondaryHeaderCache) => {
+                const groupData: { [secondaryHeader: string]: CellValue } = {};
+
+                for (const pos of posArray) {
+                    const key = `${pos.row}-${pos.col}`;
+                    const cellComponent = this.cellComponents.get(key);
+
+                    if (cellComponent) {
+                        // Get or cache secondary header
+                        const secondaryIndex = getSecondaryIndex(pos);
+                        let secondaryHeader = secondaryHeaderCache.get(secondaryIndex);
+                        if (secondaryHeader === undefined) {
+                            secondaryHeader = getSecondaryHeader(secondaryIndex);
+                            secondaryHeaderCache.set(secondaryIndex, secondaryHeader);
+                        }
+
+                        if (secondaryHeader !== null) {
+                            const secondaryKey = String(secondaryHeader);
+                            groupData[secondaryKey] = cellComponent.value ?? '';
+                        }
+                    }
+                }
+
+                return groupData;
+            }
+        );
+    }
+
+    public translatePositionsToListedHeaders(
+        positions: GridPosition[],
+        agrupation: 'row' | 'col' = 'row'
+    ): { [primaryHeader: string]: HeaderValue[] } {
+        return this.translatePositionsCore(
+            positions,
+            agrupation,
+            (primaryKey, posArray, getSecondaryHeader, getSecondaryIndex, secondaryHeaderCache) => {
+                const headers: HeaderValue[] = [];
+                const addedHeaders = new Set<string>();
+
+                for (const pos of posArray) {
+                    const cellComponent = this.cellComponents.get(`${pos.row}-${pos.col}`);
+
+                    if (cellComponent) {
+                        // Get or cache secondary header
+                        const secondaryIndex = getSecondaryIndex(pos);
+                        let secondaryHeader = secondaryHeaderCache.get(secondaryIndex);
+                        if (secondaryHeader === undefined) {
+                            secondaryHeader = getSecondaryHeader(secondaryIndex);
+                            secondaryHeaderCache.set(secondaryIndex, secondaryHeader);
+                        }
+
+                        if (secondaryHeader !== null) {
+                            const secondaryKey = String(secondaryHeader);
+                            if (!addedHeaders.has(secondaryKey)) {
+                                headers.push(secondaryHeader);
+                                addedHeaders.add(secondaryKey);
+                            }
+                        }
+                    }
+                }
+
+                return headers;
+            }
+        );
+    }
+
+    // ==================== DATA EXTRACTION METHODS ====================
+
+    /**
+     * Extract cells whose values where changed across the entire grid and history
+     * @returns Array of GridPosition for cells that have been changed
+     */
+    extractChangedCells(): GridPosition[] {
+        return this.historyManager.getChangedCells();
     }
 
     // ==================== IMPUTATION APIS ====================

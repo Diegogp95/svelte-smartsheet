@@ -272,4 +272,21 @@ export class HistoryManager {
         this.currentIndex = Math.max(-1, this.currentIndex - entriesToRemove);
     }
 
+    /**
+     * Get all changed cells across the entire history
+     * @returns Array of GridPosition for cells that have been changed
+     */
+    getChangedCells(): GridPosition[] {
+        const changedCells: Set<GridPosition> = new Set();
+
+        for (const changeSet of this.history) {
+            if (changeSet.isCellOnlyEdit()) {
+                for (const change of changeSet.changes as CellChange[]) {
+                    changedCells.add(change.position);
+                }
+            }
+        }
+        return Array.from(changedCells);
+    }
+
 }

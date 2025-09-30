@@ -14,6 +14,7 @@ import type {
     FlashOptions,
     GridMouseInteractionType,
     ProcessingState,
+    NavigationAnchorsAndPointers,
 } from './types';
 import InputAnalyzer from './InputAnalyzer';
 import MouseEventTranslator from './MouseEventTranslator';
@@ -120,6 +121,7 @@ export default class SmartSheetController<TExtraProps = undefined,
 
         // Initialize handlers with populated data maps
         this.selectionHandler = new SelectionHandler<TExtraProps, TRowHeaderProps, TColHeaderProps>(
+            this.gridDimensions,
             this.cellComponents,
             this.rowHeaderComponents,
             this.colHeaderComponents,
@@ -311,17 +313,28 @@ export default class SmartSheetController<TExtraProps = undefined,
         // Create synthetic analysis for continue-drag with update-selection
         const analysis = this.inputAnalyzer.createContinueDragAnalysis(position, anchor);
 
+        let navigationAnchorsAndPointers: NavigationAnchorsAndPointers = {
+            cellPointer: {...position},
+            cellAnchor: {...anchor},
+            headerAnchorRow: 0,
+            headerPointerRow: 0,
+            headerAnchorCol: 0,
+            headerPointerCol: 0,
+        }
+
         // Process selection update
-        this.selectionHandler.processMouseSelection(analysis, position, anchor);
+        this.selectionHandler.processMouseSelection(analysis, navigationAnchorsAndPointers);
 
         // Reflect selections on headers
         this.reflectSelectionsOnHeaders();
     }
 
     // Helper method to reflect cell selections on headers after any selection change
+    // TODO: Implement new header reflection system (old naive implementation removed)
     private reflectSelectionsOnHeaders(): void {
-        const selectedCells = this.selectionHandler.getSelectedCells();
-        this.selectionHandler.reflectCellSelections(selectedCells);
+        // const selectedCells = this.selectionHandler.getSelectedCells();
+        // this.selectionHandler.reflectCellSelections(selectedCells); // ← REMOVED: naive implementation
+        console.log('[SmartSheetController] reflectSelectionsOnHeaders: TODO - implement new header reflection system');
     }
 
     // Add clipboard event handlers when entering navigation mode
@@ -626,12 +639,11 @@ export default class SmartSheetController<TExtraProps = undefined,
         // Process navigation actions
         this.navigationHandler.processMouseNavigation(analysis);
 
-        // Get new positions after navigation
-        const newPosition = this.navigationHandler.getCurrentPosition();
-        const anchorPosition = this.navigationHandler.getAnchor();
+        // Get navigation anchors and pointers after navigation
+        const navigationAnchorsAndPointers = this.navigationHandler.getNavigationAnchorsAndPointers();
 
-        // Process selection actions
-        this.selectionHandler.processMouseSelection(analysis, newPosition, anchorPosition);
+        // Process selection actions with anchors and pointers
+        this.selectionHandler.processMouseSelection(analysis, navigationAnchorsAndPointers);
 
         // Reflect selections on headers
         this.reflectSelectionsOnHeaders();
@@ -1663,6 +1675,11 @@ export default class SmartSheetController<TExtraProps = undefined,
     // ==================== EXTERNAL PROCESSING CONTROL ====================
 
     /**
+     * This section is in evaluation of replacing for the use of a Processing Handler
+     * together with some sort of decorator or context manager
+     */
+
+    /**
      * Set external processing state (for parent component operations like fetches)
      * @param message - Message to display during processing
      * @param operation - Optional operation identifier
@@ -1676,6 +1693,37 @@ export default class SmartSheetController<TExtraProps = undefined,
      */
     public clearExternalProcessing(): void {
         this.clearProcessing();
+    }
+
+    // ==================== EXPORT DATA API ====================
+
+    /**
+     * This section defines methods that export data required from the parent component
+     */
+
+    /**
+     * Export selected cells
+     */
+
+    public exportSelectedCells(): { [primaryHeader: string]: HeaderValue[] } {
+        const selectedPositions = this.selectionHandler.getSelectedPositions();
+        return this.dataHandler.translatePositionsToListedHeaders(selectedPositions);
+    }
+
+    /**
+     * Export changed cells
+     */
+    public exportChangedCells(): { [primaryHeader: string]: HeaderValue[] } {
+        const changedPositions = this.dataHandler.extractChangedCells();
+        return this.dataHandler.translatePositionsToListedHeaders(changedPositions);
+    }
+
+    /**
+     * Export the changed cells with new values
+     */
+    public exportChangedCellsWithValues(): { [primaryHeader: string]: { [secondaryHeader: string]: CellValue } } {
+        const changedPositions = this.dataHandler.extractChangedCells();
+        return this.dataHandler.translatePositionsToData(changedPositions);
     }
 
     // ==================== CLEANUP ====================
