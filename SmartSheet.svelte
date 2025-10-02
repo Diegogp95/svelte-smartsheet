@@ -571,7 +571,6 @@
                     <HeaderSelectionRect
                         headerGridArea={{...selection.getHeaderGridArea()}}
                         type="col"
-                        active={selection.isActiveSelection()}
                     />
                 {/each}
 
@@ -580,7 +579,6 @@
                     <HeaderDeselectionRect
                         headerGridArea={{...headerDeselectionCol.getHeaderGridArea()}}
                         type="col"
-                        active={false}
                     />
                 {/if}
 
@@ -639,7 +637,6 @@
                     <HeaderSelectionRect
                         headerGridArea={{...selection.getHeaderGridArea()}}
                         type="row"
-                        active={selection.isActiveSelection()}
                     />
                 {/each}
 
@@ -648,7 +645,6 @@
                     <HeaderDeselectionRect
                         headerGridArea={{...headerDeselectionRow.getHeaderGridArea()}}
                         type="row"
-                        active={false}
                     />
                 {/if}
 
@@ -727,7 +723,6 @@
                 {#each selections as selection}
                     <SelectionRect
                         gridArea={{...selection.getGridArea()}}
-                        active={selection.isActiveSelection()}
                     />
                 {/each}
 
@@ -735,7 +730,6 @@
                 {#each derivedCellSelections as selection}
                     <SelectionRect
                         gridArea={{...selection.getGridArea()}}
-                        active={selection.isActiveSelection()}
                     />
                 {/each}
 

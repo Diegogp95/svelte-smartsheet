@@ -55,7 +55,7 @@ export interface NavigationState {
     pointerPosition: GridPosition;
     navigationMode: boolean;
     anchorPosition: GridPosition;  // For rectangular selection,
-    mousePosition?: GridPosition; // For mouse-based navigation
+    mousePosition?: GridPosition | HeaderPosition; // For mouse-based navigation
     headerAnchorRow: number;          // Anchor for row header selection
     headerPointerRow: number;         // Pointer for row header selection
     headerAnchorCol: number;          // Anchor for column header selection
@@ -143,7 +143,7 @@ export interface TailwindProperties {
 
 // Keyboard event analysis types
 export type KeyCategory =
-    'arrow' |
+    'navigation' |
     'edit' |
     'confirm' |
     'backspace' |
@@ -169,11 +169,24 @@ export interface RawKeyboardAnalysis {
     shouldPreventDefault: boolean;
 }
 
-// Specialized analysis interfaces for two-phase analysis
-export interface NavigationAnalysis {
-    key: string;
-    modifiers: ModifierState;
-    direction: 'up' | 'down' | 'left' | 'right' | null;
+export type KeyboardNavigationAction =
+    | 'cell-navigation'              // Navigation within cells
+    | 'header-navigation'            // Navigation within headers, only for extending the active selection
+    | 'none';
+
+export type NavigationType =
+    | 'single'                       // Single step (Arrow keys)
+    | 'page'                         // Page navigation (PageUp/PageDown)
+    | 'boundary';                    // Boundary navigation (Ctrl+Arrow)
+
+// Enhanced keyboard navigation analysis similar to MouseEventAnalysis
+export interface KeyboardNavigationAnalysis {
+    direction: 'up' | 'down' | 'left' | 'right' | 'page-up' | 'page-down' | 'page-left' | 'page-right' | null;
+    navigationAction: KeyboardNavigationAction;
+    navigationType: NavigationType;
+    selectionAction: SelectionAction;
+    activeSelectionType: 'cell' | 'header-row' | 'header-col' | null;
+    extendingSelection: boolean; // Indicates if the action should extend current selection (maintain anchor, move pointer)
 }
 
 export interface CommandAnalysis {

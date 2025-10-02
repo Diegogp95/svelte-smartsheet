@@ -15,6 +15,7 @@ import type {
     GridMouseInteractionType,
     ProcessingState,
     NavigationAnchorsAndPointers,
+    DraggingActionContext,
 } from './types';
 import InputAnalyzer from './InputAnalyzer';
 import MouseEventTranslator from './MouseEventTranslator';
@@ -303,7 +304,7 @@ export default class SmartSheetController<TExtraProps = undefined,
      * Handle auto-scroll selection updates during outside dragging
      * This will be called by NavigationHandler when auto-scroll moves the pointer
      */
-    private handleAutoScrollSelection = (position: GridPosition): void => {
+    private handleAutoScrollSelection = (position: GridPosition, draggingContext: DraggingActionContext): void => {
         if (!this.navigationHandler.isDragging()) {
             return;
         }
@@ -311,16 +312,9 @@ export default class SmartSheetController<TExtraProps = undefined,
         const anchor = this.navigationHandler.getAnchor();
 
         // Create synthetic analysis for continue-drag with update-selection
-        const analysis = this.inputAnalyzer.createContinueDragAnalysis(position, anchor);
+        const analysis = this.inputAnalyzer.createContinueDragAnalysis(position, anchor, draggingContext);
 
-        let navigationAnchorsAndPointers: NavigationAnchorsAndPointers = {
-            cellPointer: {...position},
-            cellAnchor: {...anchor},
-            headerAnchorRow: 0,
-            headerPointerRow: 0,
-            headerAnchorCol: 0,
-            headerPointerCol: 0,
-        }
+        let navigationAnchorsAndPointers = this.navigationHandler.getNavigationAnchorsAndPointers();
 
         // Process selection update
         this.selectionHandler.processMouseSelection(analysis, navigationAnchorsAndPointers);
@@ -615,6 +609,12 @@ export default class SmartSheetController<TExtraProps = undefined,
         const isDragging = this.navigationHandler.isDragging();
         const analysis = this.inputAnalyzer.analyzeMouseEvent(event.detail, isDragging, context);
 
+        // If mouseenter type and no navigation and no selection action, update mousePosition and return
+        if (event.detail.type === 'mouseenter' && analysis.navigationAction === 'none' && analysis.selectionAction === 'none') {
+            this.navigationHandler.setMousePosition(event.detail.position);
+            return;
+        }
+
         // Double click sets the cell or header in editing
         if (analysis.type === 'dblclick') {
             this.selectionHandler.clearSelections();
@@ -636,8 +636,11 @@ export default class SmartSheetController<TExtraProps = undefined,
             return;
         }
 
+        // Visible area
+        const visibleArea = this.virtualizeHandler.getVisibleArea();
+
         // Process navigation actions
-        this.navigationHandler.processMouseNavigation(analysis);
+        this.navigationHandler.processMouseNavigation(analysis, visibleArea);
 
         // Get navigation anchors and pointers after navigation
         const navigationAnchorsAndPointers = this.navigationHandler.getNavigationAnchorsAndPointers();
@@ -661,7 +664,7 @@ export default class SmartSheetController<TExtraProps = undefined,
         const currentPosition = this.navigationHandler.getCurrentPosition();
 
         // PHASE 2: Process by category
-        if (basicAnalysis.keyCategory === 'arrow') {
+        if (basicAnalysis.keyCategory === 'navigation') {
             return this.handleNavigationKey(basicAnalysis);
         } else if (basicAnalysis.keyCategory === 'tab') {
             let newPos: GridPosition;
@@ -768,14 +771,19 @@ export default class SmartSheetController<TExtraProps = undefined,
     // Handle navigation keys with specialized analysis
     private handleNavigationKey(basicAnalysis: RawKeyboardAnalysis) {
         // PHASE 2: Specialized navigation analysis
-        const navAnalysis = this.inputAnalyzer.analyzeNavigation(basicAnalysis);
+        const activeSelection = this.selectionHandler.getActiveSelectionType();
+        //const navAnalysis = this.inputAnalyzer.analyzeNavigation(basicAnalysis);
+        const navAnalysis = this.inputAnalyzer.analyzeKeyboardNavigation(basicAnalysis, activeSelection);
 
         // Delegate to NavigationHandler with complete analysis
-        const currentPosition = this.navigationHandler.processKeyboardNavigation(navAnalysis);
-        const anchorPosition = this.navigationHandler.getAnchor() || currentPosition;
+        const visibleArea = this.virtualizeHandler.getVisibleArea();
+        this.navigationHandler.processKeyboardNavigation(navAnalysis, visibleArea);
+
+        // Now we get the navigation anchors and pointers after navigation
+        const navigationAnchorsAndPointers = this.navigationHandler.getNavigationAnchorsAndPointers();
 
         // Delegate selection logic to SelectionHandler with complete context
-        this.selectionHandler.processNavigationSelection(navAnalysis, currentPosition, anchorPosition);
+        this.selectionHandler.processKeyboardSelection(navAnalysis, navigationAnchorsAndPointers);
         //this.reflectSelectionsOnHeaders();
 
     }

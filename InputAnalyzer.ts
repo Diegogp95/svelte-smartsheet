@@ -3,7 +3,6 @@ import type {
     HeaderPosition,
     ModifierState,
     RawKeyboardAnalysis,
-    NavigationAnalysis,
     CommandAnalysis,
     KeyCategory,
     CellMouseEvent,
@@ -13,6 +12,9 @@ import type {
     NavigationAction,
     SelectionAction,
     OutsideScrollAnalysis,
+    KeyboardNavigationAnalysis,
+    KeyboardNavigationAction,
+    NavigationType,
 } from './types';
 
 export default class InputAnalyzer {
@@ -31,21 +33,60 @@ export default class InputAnalyzer {
         };
     }
 
-    // PHASE 2: Specialized navigation analysis (only called if keyCategory === 'arrow')
-    analyzeNavigation(basicAnalysis: RawKeyboardAnalysis): NavigationAnalysis {
-        return {
-            key: basicAnalysis.key,
-            modifiers: basicAnalysis.modifiers,
-            direction: this.getNavigationDirection(basicAnalysis.key),
-        };
-    }
-
     // PHASE 2: Specialized command analysis (only called if keyCategory === 'command')
     analyzeCommand(basicAnalysis: RawKeyboardAnalysis): CommandAnalysis {
         return {
             key: basicAnalysis.key,
             modifiers: basicAnalysis.modifiers,
             command: this.getCommandType(basicAnalysis.key),
+        };
+    }
+
+    // PHASE 2: Enhanced keyboard navigation analysis (only called for navigation keys)
+    analyzeKeyboardNavigation(
+        basicAnalysis: RawKeyboardAnalysis,
+        activeSelectionType: 'cell' | 'header-row' | 'header-col' | null
+    ): KeyboardNavigationAnalysis {
+        const modifiers = basicAnalysis.modifiers;
+        const key = basicAnalysis.key;
+
+        // Validate that this is actually a navigation key
+        if (!this.isNavigationKey(key)) {
+            return {
+                direction: null,
+                navigationAction: 'none',
+                navigationType: 'single',
+                selectionAction: 'none',
+                activeSelectionType,
+                extendingSelection: false
+            };
+        }
+
+        // Cancel conflicting modifiers (Ctrl+Shift on PageUp/PageDown is invalid)
+        const cleanedModifiers = this.cleanModifiers(modifiers, key);
+
+        // Determine navigation action based on selection state and key type
+        const navigationAction = this.determineNavigationAction(key, activeSelectionType, cleanedModifiers);
+
+        // Determine navigation type (single, page, boundary)
+        const navigationType = this.determineNavigationType(key, cleanedModifiers);
+
+        // Determine selection action based on modifiers and current state
+        const selectionAction = this.determineSelectionAction(cleanedModifiers, activeSelectionType);
+
+        // Determine if extending selection (shift modifier + active selection)
+        const extendingSelection = this.isExtendingSelection(cleanedModifiers, activeSelectionType);
+
+        // Get direction with special handling for page navigation with Alt
+        const direction = this.getKeyboardDirection(key, cleanedModifiers);
+
+        return {
+            direction,
+            navigationAction,
+            navigationType,
+            selectionAction,
+            activeSelectionType,
+            extendingSelection
         };
     }
 
@@ -157,6 +198,11 @@ export default class InputAnalyzer {
 
         // MOUSEDOWN: Based on original processClickSelection logic
         if (eventType === 'mousedown') {
+            // Consistent with navigationAction: ignore mousedown if already dragging (drag stuck)
+            if (isDragging) {
+                return 'none';
+            }
+
             if (modifiers.ctrl && !modifiers.shift) {
                 // CTRL+MOUSEDOWN: Create new selection or start deselecting
                 // Note: Original logic checks isCellSelected - this will be handled by SelectionHandler
@@ -207,7 +253,8 @@ export default class InputAnalyzer {
 
     // Categorize key by type
     private categorizeKey(key: string): KeyCategory {
-        if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(key)) return 'arrow';
+        if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight',
+            'PageUp', 'PageDown'].includes(key)) return 'navigation';
         if (['Delete'].includes(key)) return 'delete';
         if (['Backspace'].includes(key)) return 'backspace';
         if (['Enter'].includes(key)) return 'edit';
@@ -266,8 +313,8 @@ export default class InputAnalyzer {
     // Determine if default behavior should be prevented
     private shouldPreventDefault(category: KeyCategory, event: KeyboardEvent): boolean {
 
-        // Prevent default for arrow keys (to avoid scrolling)
-        if (category === 'arrow') return true;
+        // Prevent default for navigation keys (to avoid scrolling)
+        if (category === 'navigation') return true;
 
         // Prevent default for commands
         if (category === 'command') {
@@ -327,7 +374,8 @@ export default class InputAnalyzer {
      */
     createContinueDragAnalysis(
         position: GridPosition,
-        anchor: GridPosition
+        anchor: GridPosition,
+        draggingContext?: DraggingActionContext
     ): MouseEventAnalysis {
         // Create a synthetic dragging context for continue-drag
         const syntheticContext: DraggingActionContext = {
@@ -338,11 +386,11 @@ export default class InputAnalyzer {
 
         return {
             type: 'mouseenter', // Synthetic event type
-            componentType: 'cell',
+            componentType: 'cell', // Not important for auto-scroll
             position: position,
             navigationAction: 'continue-drag',
             selectionAction: 'update-selection',
-            draggingContext: syntheticContext
+            draggingContext: draggingContext || syntheticContext
         };
     }
 
@@ -439,5 +487,145 @@ export default class InputAnalyzer {
         const interval = maxInterval - (normalizedDistance * (maxInterval - minInterval));
 
         return Math.round(Math.max(minInterval, interval));
+    }
+
+    // Helper methods for keyboard navigation analysis
+
+    /**
+     * Determine navigation action based on key type and current selection state
+     */
+    private determineNavigationAction(
+        key: string,
+        activeSelectionType: 'cell' | 'header-row' | 'header-col' | null,
+        modifiers: ModifierState
+    ): KeyboardNavigationAction {
+
+        // Arrow keys and PageUp/PageDown
+        if (this.isNavigationKey(key)) {
+            // Header navigation only occurs when the shift modifier is pressed
+            // and there's an active header selection
+            if (modifiers.shift && (activeSelectionType === 'header-row' || activeSelectionType === 'header-col')) {
+                return 'header-navigation';
+            }
+            // Cell navigation for cells or when no active selection
+            return 'cell-navigation';
+        }
+
+        return 'none';
+    }
+
+    /**
+     * Determine navigation type based on key and modifiers
+     */
+    private determineNavigationType(key: string, modifiers: ModifierState): NavigationType {
+        // Boundary navigation with Ctrl
+        if (modifiers.ctrl && this.isArrowKey(key)) {
+            return 'boundary';
+        }
+
+        // Page navigation
+        if (key === 'PageUp' || key === 'PageDown') {
+            return 'page';
+        }
+
+        // Single step navigation (Arrow keys without Ctrl)
+        if (this.isArrowKey(key)) {
+            return 'single';
+        }
+
+        return 'single'; // Default fallback
+    }
+
+    /**
+     * Determine selection action based on modifiers and current selection state
+     */
+    private determineSelectionAction(
+        modifiers: ModifierState,
+        activeSelectionType: 'cell' | 'header-row' | 'header-col' | null
+    ): SelectionAction {
+        // If no shift, we create new selection
+        if (!modifiers.shift) {
+            return 'new-selection';
+        }
+
+        // Extending selection with Shift (maps to update-selection with extendingSelection=true)
+        if (modifiers.shift && activeSelectionType !== null) {
+            return 'update-selection';
+        }
+
+        // Creating new selection when no active selection
+        if (activeSelectionType === null) {
+            return 'new-selection';
+        }
+
+        // Fallback: add new-selection
+        return 'new-selection';
+    }
+
+    /**
+     * Determine if the action should extend current selection
+     */
+    private isExtendingSelection(
+        modifiers: ModifierState,
+        activeSelectionType: 'cell' | 'header-row' | 'header-col' | null
+    ): boolean {
+        // Only extend when Shift is pressed and there's an active selection
+        return modifiers.shift && activeSelectionType !== null;
+    }
+
+    /**
+     * Get keyboard direction with special handling for Alt+PageUp/PageDown
+     */
+    private getKeyboardDirection(key: string, modifiers: ModifierState): 'up' | 'down' | 'left' | 'right' | 'page-up' | 'page-down' | 'page-left' | 'page-right' | null {
+        // Arrow keys
+        if (this.isArrowKey(key)) {
+            return this.getNavigationDirection(key);
+        }
+
+        // Page keys
+        if (key === 'PageUp') {
+            // Alt+PageUp = horizontal page left
+            return modifiers.alt ? 'page-left' : 'page-up';
+        }
+        if (key === 'PageDown') {
+            // Alt+PageDown = horizontal page right
+            return modifiers.alt ? 'page-right' : 'page-down';
+        }
+
+        return null;
+    }
+
+    /**
+     * Check if key is a navigation key (Arrow or Page)
+     */
+    private isNavigationKey(key: string): boolean {
+        return this.isArrowKey(key) || key === 'PageUp' || key === 'PageDown';
+    }
+
+    /**
+     * Check if key is an arrow key
+     */
+    private isArrowKey(key: string): boolean {
+        return ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(key);
+    }
+
+    /**
+     * Clean conflicting modifiers for specific key combinations
+     */
+    private cleanModifiers(modifiers: ModifierState, key: string): ModifierState {
+        const cleaned = { ...modifiers };
+
+        // Ctrl+Shift+PageUp/PageDown is invalid - clear both modifiers
+        if ((key === 'PageUp' || key === 'PageDown') && modifiers.ctrl && modifiers.shift) {
+            cleaned.ctrl = false;
+            cleaned.shift = false;
+        }
+
+        // Alt+Ctrl combinations are generally invalid for navigation
+        if (modifiers.alt && modifiers.ctrl) {
+            cleaned.ctrl = false;
+        }
+
+        return cleaned;
     }
 }

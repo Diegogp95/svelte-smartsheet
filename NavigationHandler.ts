@@ -5,16 +5,17 @@ import type {
     NavigationState,
     NavigationAnchorsAndPointers,
     CellComponent,
-    NavigationAnalysis,
     HeaderComponent,
     DraggingActionContext,
     MouseEventAnalysis,
     OutsideScrollAnalysis,
+    RenderArea,
+    KeyboardNavigationAnalysis,
 } from './types';
 
 export type PointerPositionCallback = (handler: NavigationHandler<any, any, any>) => void;
 export type DocumentMouseMoveCallback = (event: MouseEvent) => void;
-export type AutoScrollSelectionCallback = (position: GridPosition) => void;
+export type AutoScrollSelectionCallback = (position: GridPosition, draggingContext: DraggingActionContext) => void;
 
 export default class NavigationHandler<TExtraProps = undefined, TRowHeaderProps = undefined, TColHeaderProps = undefined> {
     private gridDimensions: GridDimensions;
@@ -130,79 +131,174 @@ export default class NavigationHandler<TExtraProps = undefined, TRowHeaderProps 
         return this.getCurrentPosition(); // Return current position if out of bounds
     }
 
-    // Process keyboard navigation analysis from InputAnalyzer
-    processKeyboardNavigation(analysis: NavigationAnalysis): GridPosition {
-        if (!this.isNavigationMode()) return this.getCurrentPosition();
+    //========================== HELPER METHODS FOR POSITION CALCULATION ==========================//
 
-        // Only process if we have a valid direction
-        if (!analysis.direction) return this.getCurrentPosition();
-
-        // ANCHOR COORDINATION: Set anchor before navigation if Shift is pressed and no anchor exists
-        if (analysis.modifiers.shift && !this.getAnchor()) {
-            this.setAnchor(this.getCurrentPosition());
-        }
-
-        const { row, col } = this.getCurrentPosition();
-        const { maxRow, maxCol } = this.gridDimensions;
-        let newPosition: GridPosition | null = null;
-
-        // Handle Ctrl+Arrow for jumping to data boundaries (Excel-like behavior)
-        if (analysis.modifiers.ctrl) {
-            newPosition = this.findDataBoundary(row, col, analysis.direction);
-        } else {
-            // Normal single-step navigation
-            switch (analysis.direction) {
-                case 'up':
-                    if (row > 0) {
-                        newPosition = { row: row - 1, col };
-                    }
-                    break;
-                case 'down':
-                    if (row < maxRow) {
-                        newPosition = { row: row + 1, col };
-                    }
-                    break;
-                case 'left':
-                    if (col > 0) {
-                        newPosition = { row, col: col - 1 };
-                    }
-                    break;
-                case 'right':
-                    if (col < maxCol) {
-                        newPosition = { row, col: col + 1 };
-                    }
-                    break;
-            }
-        }
-
-        if (newPosition) {
-            // Move pointer to new position
-            this.movePointer(newPosition);
-
-            // ANCHOR COORDINATION: Update anchor to follow pointer (except when Shift is pressed)
-            if (!analysis.modifiers.shift) {
-                this.setAnchor(newPosition);
-            }
-        }
-
-        return this.navigationState.pointerPosition;
+    private advancePage(direction: string | null, visibleArea?: RenderArea): GridPosition {
+        // Page navigation placeholder - TODO: implement later
+        // Should handle 'page-up', 'page-down', 'page-left', 'page-right' directions
+        console.log('advancePage not implemented yet - direction:', direction, 'visibleArea:', visibleArea);
+        // For now, return current position as placeholder
+        return this.getCurrentPosition();
     }
 
-    // TODO: Reimplement with new MouseEventAnalysis
-    // Process mouse navigation and selection logic
-    processMouseNavigation(analysis: MouseEventAnalysis) {
+    private singleCellStep(position: GridPosition, direction: 'up' | 'down' | 'left' | 'right'): GridPosition {
+        const { row, col } = position;
+        const { maxRow, maxCol } = this.gridDimensions;
+        let newPosition = { row, col };
+        switch (direction) {
+            case 'up':
+                if (row > 0) newPosition.row = row - 1;
+                break;
+            case 'down':
+                if (row < maxRow) newPosition.row = row + 1;
+                break;
+            case 'left':
+                if (col > 0) newPosition.col = col - 1;
+                break;
+            case 'right':
+                if (col < maxCol) newPosition.col = col + 1;
+                break;
+            default:
+                break;
+        }
+        return newPosition;
+    }
+
+    private singleHeaderStep(index: number, direction: 'up' | 'down' | 'left' | 'right', headerType: 'row' | 'col'): number {
+        const { maxRow, maxCol } = this.gridDimensions;
+        let newIndex = index;
+        switch (headerType) {
+            case 'row':
+                if (direction === 'up' || direction === 'left' && index > 0) {
+                    newIndex = index - 1;
+                } else if (direction === 'down' || direction === 'right' && index < maxRow) {
+                    newIndex = index + 1;
+                }
+                break;
+            case 'col':
+                if (direction === 'up' || direction === 'left' && index > 0) {
+                    newIndex = index - 1;
+                } else if (direction === 'down' || direction === 'right' && index < maxCol) {
+                    newIndex = index + 1;
+                }
+                break;
+            default:
+                break;
+        }
+        return newIndex;
+    }
+
+    private boundaryHeaderJump(index: number, direction: 'up' | 'down' | 'left' | 'right', headerType: 'row' | 'col'): number {
+        const { maxRow, maxCol } = this.gridDimensions;
+        let newIndex = index;
+        switch (headerType) {
+            case 'row':
+                if (direction === 'up' || direction === 'left') {
+                    newIndex = 0;
+                } else if (direction === 'down' || direction === 'right') {
+                    newIndex = maxRow;
+                }
+                break;
+            case 'col':
+                if (direction === 'up' || direction === 'left') {
+                    newIndex = 0;
+                } else if (direction === 'down' || direction === 'right') {
+                    newIndex = maxCol;
+                }
+                break;
+            default:
+                break;
+        }
+        return newIndex;
+    }
+
+    /**
+     * Process keyboard navigation events.
+     * @param analysis Keyboard navigation analysis
+     * @param visibleArea Render area for the current view
+     */
+    processKeyboardNavigation(analysis: KeyboardNavigationAnalysis, visibleArea?: RenderArea): void {
+        if (!this.isNavigationMode() || analysis.navigationAction === 'none') return;
+
+        const { direction, navigationAction, navigationType, activeSelectionType, extendingSelection } = analysis;
+
+        // New approach: Handle different navigation actions, direction, extendingSelection, and navigationType
+        switch (navigationAction) {
+            case 'cell-navigation':
+                const cellPointer = this.getCurrentPosition();
+                const cellAnchor = this.getAnchor();
+                let newCellPos: GridPosition;
+                // single step navigation
+                if (navigationType === 'single' && direction) {
+                    newCellPos = this.singleCellStep(cellPointer, direction as 'up' | 'down' | 'left' | 'right');
+                    this.movePointer(newCellPos);
+                } else if (navigationType === 'boundary' && direction) {
+                    newCellPos = this.findDataBoundary(cellPointer.row, cellPointer.col, direction as 'up' | 'down' | 'left' | 'right');
+                    this.movePointer(newCellPos);
+                } else if (navigationType === 'page' && direction) {
+                    // Page navigation placeholder - TODO: implement later
+                    // Should handle 'page-up', 'page-down', 'page-left', 'page-right' directions
+                    newCellPos = this.advancePage(direction, visibleArea);
+                    this.movePointer(newCellPos);
+                } else {
+                    // Fallback: no navigation
+                    newCellPos = cellPointer;
+                }
+                // Coordinate anchor if not extending selection
+                if (!extendingSelection) {
+                    this.setAnchor(newCellPos);
+                }
+                break;
+            case 'header-navigation':
+                // Header navigation only updates pointer (not anchor) to update existing header selection
+                if (activeSelectionType === 'header-row' || activeSelectionType === 'header-col') {
+                    const headerType = activeSelectionType === 'header-row' ? 'row' : 'col';
+                    const currentHeaderIndex = headerType === 'row' ? this.getHeaderPointerRow() : this.getHeaderPointerCol();
+                    let newHeaderIndex: number;
+
+                    if (navigationType === 'single' && direction) {
+                        newHeaderIndex = this.singleHeaderStep(currentHeaderIndex, direction as 'up' | 'down' | 'left' | 'right', headerType);
+                    } else if (navigationType === 'boundary' && direction) {
+                        newHeaderIndex = this.boundaryHeaderJump(currentHeaderIndex, direction as 'up' | 'down' | 'left' | 'right', headerType);
+                    } else {
+                        // Page navigation placeholder - TODO: implement later
+                        newHeaderIndex = currentHeaderIndex;
+                    }
+
+                    // Update header pointer
+                    if (headerType === 'row') {
+                        this.setHeaderPointerRow(newHeaderIndex);
+                        // Update cell pointer to reflect header selection (similar to processMouseNavigation)
+                        const cellForHeader = visibleArea ? { row: newHeaderIndex, col: visibleArea.startCol } : { row: newHeaderIndex, col: 0 };
+                        this.movePointer(cellForHeader);
+                    } else {
+                        this.setHeaderPointerCol(newHeaderIndex);
+                        // Update cell pointer to reflect header selection (similar to processMouseNavigation)
+                        const cellForHeader = visibleArea ? { row: visibleArea.startRow, col: newHeaderIndex } : { row: 0, col: newHeaderIndex };
+                        this.movePointer(cellForHeader);
+                    }
+
+                    // Note: No anchor coordination for header navigation as per specification
+                    // Header navigation only moves pointer to update existing selection
+                }
+                break;
+        }
+
+    }
+
+    /**
+     * Process mouse navigation events.
+     * @param analysis Mouse event analysis
+     * @param visibleArea Render area for the current view
+     */
+    processMouseNavigation(analysis: MouseEventAnalysis, visibleArea?: RenderArea): void {
         const { type, position, navigationAction, componentType } = analysis;
         const context = this.getDraggingActionContext();
 
         // Switch case based on navigation action
         switch (navigationAction) {
+            // Removed isDragging check for stuck drag state, since it is handled in InputAnalyzer
             case 'start-cell-drag':
-                // Cell drag: Normal behavior - set anchor and pointer to clicked cell
-                if (this.isDragging()) {
-                    // If dragging state is stuck it means the mouseup event was not registered
-                    // ignore this current event
-                    return;
-                }
                 const cellPosition = position as GridPosition;
                 this.setAnchor(cellPosition);
                 this.movePointer(cellPosition);
@@ -213,15 +309,17 @@ export default class NavigationHandler<TExtraProps = undefined, TRowHeaderProps 
                 break;
 
             case 'start-row-drag':
-                // Row drag: Set header navigation states
-                if (this.isDragging()) {
-                    return;
-                }
                 const headerRowPos = position as HeaderPosition;
                 // Set header navigation states
                 this.setHeaderAnchorRow(headerRowPos.index);
                 this.setHeaderPointerRow(headerRowPos.index);
                 this.setDragging(true);
+
+                // determine the first visible cell of the row and move pointer there
+                const firstVisibleRowCell = visibleArea ? { row: headerRowPos.index, col: visibleArea.startCol } : undefined;
+                if (firstVisibleRowCell) {
+                    this.movePointer(firstVisibleRowCell);
+                }
 
                 // Setup outside dragging listeners
                 this.setupTableOutsideListeners();
@@ -229,14 +327,17 @@ export default class NavigationHandler<TExtraProps = undefined, TRowHeaderProps 
 
             case 'start-col-drag':
                 // Column drag: Set header navigation states
-                if (this.isDragging()) {
-                    return;
-                }
                 const headerColPos = position as HeaderPosition;
                 // Set header navigation states
                 this.setHeaderAnchorCol(headerColPos.index);
                 this.setHeaderPointerCol(headerColPos.index);
                 this.setDragging(true);
+
+                // determine the first visible cell of the column and move pointer there
+                const firstVisibleColCell = visibleArea ? { row: visibleArea.startRow, col: headerColPos.index } : undefined;
+                if (firstVisibleColCell) {
+                    this.movePointer(firstVisibleColCell);
+                }
 
                 // Setup outside dragging listeners
                 this.setupTableOutsideListeners();
@@ -306,10 +407,20 @@ export default class NavigationHandler<TExtraProps = undefined, TRowHeaderProps 
                         // Row drag over cell: actualizar pointer de row
                         const cellPos = position as GridPosition;
                         this.setHeaderPointerRow(cellPos.row);
+                        // determine the first visible cell of the row and move pointer there
+                        const firstVisibleRowCell = visibleArea ? { row: cellPos.row, col: visibleArea.startCol } : undefined;
+                        if (firstVisibleRowCell) {
+                            this.movePointer(firstVisibleRowCell);
+                        }
                     } else if (context.dragType === 'col') {
                         // Col drag over cell: actualizar pointer de col
                         const cellPos = position as GridPosition;
                         this.setHeaderPointerCol(cellPos.col);
+                        // determine the first visible cell of the column and move pointer there
+                        const firstVisibleColCell = visibleArea ? { row: visibleArea.startRow, col: cellPos.col } : undefined;
+                        if (firstVisibleColCell) {
+                            this.movePointer(firstVisibleColCell);
+                        }
                     } else {
                         console.warn('Unknown drag type in continue-drag');
                         return;
@@ -335,10 +446,20 @@ export default class NavigationHandler<TExtraProps = undefined, TRowHeaderProps 
                         // Row drag over header: actualizar pointer de row
                         const rowHeaderPos = position as HeaderPosition;
                         this.setHeaderPointerRow(rowHeaderPos.index);
+                        // determine the first visible cell of the row and move pointer there
+                        const firstVisibleRowCell = visibleArea ? { row: rowHeaderPos.index, col: visibleArea.startCol } : undefined;
+                        if (firstVisibleRowCell) {
+                            this.movePointer(firstVisibleRowCell);
+                        }
                     } else if (context.dragType === 'col') {
                         // Col drag over header: actualizar pointer de col
                         const colHeaderPos = position as HeaderPosition;
                         this.setHeaderPointerCol(colHeaderPos.index);
+                        // determine the first visible cell of the column and move pointer there
+                        const firstVisibleColCell = visibleArea ? { row: visibleArea.startRow, col: colHeaderPos.index } : undefined;
+                        if (firstVisibleColCell) {
+                            this.movePointer(firstVisibleColCell);
+                        }
                     } else {
                         console.warn('Unknown drag type in continue-drag');
                         return;
@@ -580,11 +701,11 @@ export default class NavigationHandler<TExtraProps = undefined, TRowHeaderProps 
         return this.navigationState.anchorPosition;
     }
 
-    setMousePosition(position: GridPosition): void {
+    setMousePosition(position: GridPosition | HeaderPosition): void {
         this.navigationState.mousePosition = { ...position };
     }
 
-    getMousePosition(): GridPosition | undefined {
+    getMousePosition(): GridPosition | HeaderPosition | undefined {
         return this.navigationState.mousePosition ? { ...this.navigationState.mousePosition } : undefined;
     }
 
@@ -1017,8 +1138,36 @@ export default class NavigationHandler<TExtraProps = undefined, TRowHeaderProps 
     /**
      * Execute auto-scroll by moving the pointer in the specified direction
      * Called by timer intervals during outside dragging
+     * Handles different drag types (cell, row, col) based on current dragging context
      */
     private executeAutoScroll(dimension: 'row' | 'col', direction: number): void {
+        // Read dragging context to determine behavior
+        const context = this.navigationState.draggingContext;
+        const dragType = context.dragType;
+
+        // Behavior depends on the type of drag operation
+        switch (dragType) {
+            case 'cell':
+                this.executeAutoScrollForCell(dimension, direction);
+                break;
+            case 'row':
+                this.executeAutoScrollForRow(dimension, direction);
+                break;
+            case 'col':
+                this.executeAutoScrollForCol(dimension, direction);
+                break;
+            default:
+                // Fallback to cell behavior if dragType is undefined
+                this.executeAutoScrollForCell(dimension, direction);
+                break;
+        }
+    }
+
+    /**
+     * Execute auto-scroll for cell dragging (original behavior)
+     * Updates pointerPosition based on direction
+     */
+    private executeAutoScrollForCell(dimension: 'row' | 'col', direction: number): void {
         const currentPos = this.navigationState.pointerPosition;
         const { maxRow, maxCol } = this.gridDimensions;
 
@@ -1040,7 +1189,73 @@ export default class NavigationHandler<TExtraProps = undefined, TRowHeaderProps 
 
             // Trigger selection update via callback
             if (this.autoScrollSelectionCallback && this.isDragging()) {
-                this.autoScrollSelectionCallback(newPosition);
+                this.autoScrollSelectionCallback(newPosition, this.getDraggingActionContext());
+            }
+        }
+    }
+
+    /**
+     * Execute auto-scroll for row header dragging
+     * Updates headerPointerRow and syncs pointerPosition row component only
+     */
+    private executeAutoScrollForRow(dimension: 'row' | 'col', direction: number): void {
+        // For row dragging, only vertical scrolling makes sense
+        if (dimension !== 'row') {
+            return;
+        }
+
+        const currentRowPointer = this.navigationState.headerPointerRow;
+        const currentCellPos = this.navigationState.pointerPosition;
+        const { maxRow } = this.gridDimensions;
+
+        // Calculate new row pointer
+        const newRowPointer = Math.max(0, Math.min(maxRow, currentRowPointer + direction));
+
+        // Only update if position actually changed
+        if (newRowPointer !== currentRowPointer) {
+            // Update header row pointer
+            this.setHeaderPointerRow(newRowPointer);
+
+            // Sync cell pointer: only update the row, keep the same column
+            const newCellPosition = { row: newRowPointer, col: currentCellPos.col };
+            this.movePointer(newCellPosition);
+
+            // Trigger selection update via callback
+            if (this.autoScrollSelectionCallback && this.isDragging()) {
+                this.autoScrollSelectionCallback(newCellPosition, this.getDraggingActionContext());
+            }
+        }
+    }
+
+    /**
+     * Execute auto-scroll for column header dragging
+     * Updates headerPointerCol and syncs pointerPosition column component only
+     */
+    private executeAutoScrollForCol(dimension: 'row' | 'col', direction: number): void {
+        // For column dragging, only horizontal scrolling makes sense
+        if (dimension !== 'col') {
+            return;
+        }
+
+        const currentColPointer = this.navigationState.headerPointerCol;
+        const currentCellPos = this.navigationState.pointerPosition;
+        const { maxCol } = this.gridDimensions;
+
+        // Calculate new column pointer
+        const newColPointer = Math.max(0, Math.min(maxCol, currentColPointer + direction));
+
+        // Only update if position actually changed
+        if (newColPointer !== currentColPointer) {
+            // Update header column pointer
+            this.setHeaderPointerCol(newColPointer);
+
+            // Sync cell pointer: only update the column, keep the same row
+            const newCellPosition = { row: currentCellPos.row, col: newColPointer };
+            this.movePointer(newCellPosition);
+
+            // Trigger selection update via callback
+            if (this.autoScrollSelectionCallback && this.isDragging()) {
+                this.autoScrollSelectionCallback(newCellPosition, this.getDraggingActionContext());
             }
         }
     }

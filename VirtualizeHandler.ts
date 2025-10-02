@@ -17,6 +17,7 @@ export type RenderAreaCallback<TExtraProps, TRowHeaderProps, TColHeaderProps> =
 export default class VirtualizeHandler<TExtraProps = undefined, TRowHeaderProps = undefined, TColHeaderProps = undefined> {
     private gridDimensions: GridDimensions;
     private renderArea: RenderArea;
+    private visibleArea: RenderArea;
     private cellComponents: Map<string, CellComponent<TExtraProps>>;
     private rowHeaderComponents: Map<string, HeaderComponent<TRowHeaderProps>>;
     private colHeaderComponents: Map<string, HeaderComponent<TColHeaderProps>>;
@@ -53,6 +54,12 @@ export default class VirtualizeHandler<TExtraProps = undefined, TRowHeaderProps 
             startCol: 0,
             endCol: 0
         };
+        this.visibleArea = {
+            startRow: 0,
+            endRow: 0,
+            startCol: 0,
+            endCol: 0
+        };
     }
 
     setTableContainer(container: HTMLDivElement) {
@@ -77,9 +84,9 @@ export default class VirtualizeHandler<TExtraProps = undefined, TRowHeaderProps 
         this.setRowHeights(rowHeights);
         this.setColWidths(colWidths);
         // Calculate initial render area based on container size
-        const initialRenderArea = this.calculateRenderArea();
+        const [initialRenderArea, initialVisibleArea] = this.calculateRenderArea();
 
-        this.updateRenderArea(initialRenderArea);
+        this.updateRenderArea(initialRenderArea, initialVisibleArea);
     }
 
     // Helper method to convert position to key
@@ -92,8 +99,12 @@ export default class VirtualizeHandler<TExtraProps = undefined, TRowHeaderProps 
         return { ...this.renderArea };
     }
 
+    getVisibleArea(): RenderArea {
+        return { ...this.visibleArea };
+    }
+
     // Update render area and notify subscribers
-    updateRenderArea(newRenderArea: Partial<RenderArea>) {
+    updateRenderArea(newRenderArea: Partial<RenderArea>, newVisibleArea: Partial<RenderArea>) {
         const prevRenderArea = { ...this.renderArea };
 
         // Update render area with bounds checking
@@ -102,6 +113,13 @@ export default class VirtualizeHandler<TExtraProps = undefined, TRowHeaderProps 
             endRow: Math.min(this.gridDimensions.maxRow, newRenderArea.endRow ?? this.renderArea.endRow),
             startCol: Math.max(0, newRenderArea.startCol ?? this.renderArea.startCol),
             endCol: Math.min(this.gridDimensions.maxCol, newRenderArea.endCol ?? this.renderArea.endCol),
+        };
+
+        this.visibleArea = {
+            startRow: Math.max(0, newVisibleArea.startRow ?? this.visibleArea.startRow),
+            endRow: Math.min(this.gridDimensions.maxRow, newVisibleArea.endRow ?? this.visibleArea.endRow),
+            startCol: Math.max(0, newVisibleArea.startCol ?? this.visibleArea.startCol),
+            endCol: Math.min(this.gridDimensions.maxCol, newVisibleArea.endCol ?? this.visibleArea.endCol),
         };
 
         // Notify subscribers if render area actually changed
@@ -164,11 +182,13 @@ export default class VirtualizeHandler<TExtraProps = undefined, TRowHeaderProps 
     // Calculate render area based on scroll position and container dimensions
     calculateRenderArea(
         overscan: number = 3 // Extra rows/cols to render outside visible area
-    ): RenderArea {
+    ): [RenderArea, RenderArea] {
         // Calculate visible row range
         let accumulatedHeight = 0;
         let startRow = 0;
         let endRow = this.gridDimensions.maxRow;
+        let startVisibleRow = 0;
+        let endVisibleRow = this.gridDimensions.maxRow;
 
         const scrollTop = this.tableContainer?.scrollTop || 0;
         const containerHeight = this.tableContainer?.clientHeight || 0;
@@ -179,6 +199,7 @@ export default class VirtualizeHandler<TExtraProps = undefined, TRowHeaderProps 
         for (let row = 0; row <= this.gridDimensions.maxRow; row++) {
             const rowHeight = this.rowHeights[row] || 32; // Default height
             if (accumulatedHeight + rowHeight > scrollTop) {
+                startVisibleRow = Math.max(0, row);
                 startRow = Math.max(0, row - overscan);
                 break;
             }
@@ -191,6 +212,7 @@ export default class VirtualizeHandler<TExtraProps = undefined, TRowHeaderProps 
             const rowHeight = this.rowHeights[row] || 32;
             accumulatedHeight += rowHeight;
             if (accumulatedHeight > scrollTop + containerHeight) {
+                endVisibleRow = Math.min(this.gridDimensions.maxRow, row);
                 endRow = Math.min(this.gridDimensions.maxRow, row + overscan);
                 break;
             }
@@ -200,11 +222,14 @@ export default class VirtualizeHandler<TExtraProps = undefined, TRowHeaderProps 
         let accumulatedWidth = 0;
         let startCol = 0;
         let endCol = this.gridDimensions.maxCol;
+        let startVisibleCol = 0;
+        let endVisibleCol = this.gridDimensions.maxCol;
 
         // Find start column
         for (let col = 0; col <= this.gridDimensions.maxCol; col++) {
             const colWidth = this.colWidths[col] || 120; // Default width
             if (accumulatedWidth + colWidth > scrollLeft) {
+                startVisibleCol = Math.max(0, col);
                 startCol = Math.max(0, col - overscan);
                 break;
             }
@@ -217,12 +242,13 @@ export default class VirtualizeHandler<TExtraProps = undefined, TRowHeaderProps 
             const colWidth = this.colWidths[col] || 120;
             accumulatedWidth += colWidth;
             if (accumulatedWidth > scrollLeft + containerWidth) {
+                endVisibleCol = Math.min(this.gridDimensions.maxCol, col);
                 endCol = Math.min(this.gridDimensions.maxCol, col + overscan);
                 break;
             }
         }
 
-        return { startRow, endRow, startCol, endCol };
+        return [{ startRow, endRow, startCol, endCol }, { startRow: startVisibleRow, endRow: endVisibleRow, startCol: startVisibleCol, endCol: endVisibleCol }];
     }
 
     // Update render area based on scroll and container information
@@ -230,7 +256,7 @@ export default class VirtualizeHandler<TExtraProps = undefined, TRowHeaderProps 
         if (!this.rowHeights.length || !this.colWidths.length || !this.tableContainer) {
             return;
         }
-        const newRenderArea = this.calculateRenderArea();
-        this.updateRenderArea(newRenderArea);
+        const [newRenderArea, newVisibleArea] = this.calculateRenderArea();
+        this.updateRenderArea(newRenderArea, newVisibleArea);
     }
 }

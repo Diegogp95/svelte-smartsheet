@@ -1,7 +1,6 @@
 <script lang="ts">
     export let headerGridArea: { rowStart: number, rowEnd: number, colStart: number, colEnd: number };
     export let type: 'row' | 'col';
-    export let active: boolean = false;
 </script>
 <div
     class="transition-all duration-150 relative
@@ -15,7 +14,3 @@
 >
 
 </div>
-
-<style>
-
-</style>
