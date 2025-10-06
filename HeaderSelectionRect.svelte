@@ -5,7 +5,8 @@
 <div
     class="transition-all duration-150 relative
         pointer-events-none z-[2]
-        {type === 'row' ? 'border-r-4 border-green-900' : 'border-b-4 border-green-900'}
+        bg-[rgba(134,239,172,0.4)]
+        border-green-900 border-2
         "
     style="
         grid-row: {headerGridArea.rowStart} / {headerGridArea.rowEnd};
