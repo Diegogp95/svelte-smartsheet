@@ -128,7 +128,8 @@ export default class SmartSheetController<TExtraProps = undefined,
             this.colHeaderComponents,
             this.cornerHeaderComponent,
             onSelectionsChanged,
-            onDeselectionsChanged
+            onDeselectionsChanged,
+            this.handleEndOfDeselection,
         );
         this.navigationHandler = new NavigationHandler<TExtraProps, TRowHeaderProps, TColHeaderProps>(
             this.gridDimensions,
@@ -323,6 +324,15 @@ export default class SmartSheetController<TExtraProps = undefined,
         this.reflectSelectionsOnHeaders();
     }
 
+    /**
+     * Callback to handle end of deselection and synchronize respective pointers and anchors with the resulting active selection
+     */
+    private handleEndOfDeselection = (resultingActiveSelection: 'cell' | 'header-row' | 'header-col' | null,
+            anchor: GridPosition | number, pointer: GridPosition | number): void => {
+        const visibleArea = this.virtualizeHandler.getVisibleArea();
+        this.navigationHandler.synchronizeSelectionPointerAndAnchor(resultingActiveSelection, anchor, pointer, visibleArea);
+    }
+
     // Helper method to reflect cell selections on headers after any selection change
     // TODO: Implement new header reflection system (old naive implementation removed)
     private reflectSelectionsOnHeaders(): void {
@@ -493,6 +503,7 @@ export default class SmartSheetController<TExtraProps = undefined,
     // Set main grid container reference
     setMainGridContainer(container: HTMLDivElement) {
         this.mouseEventTranslator.setMainGridContainer(container);
+        this.navigationHandler.setMainGridContainer(container);
     }
 
     // Update grid dimensions (when data structure changes)
@@ -720,7 +731,9 @@ export default class SmartSheetController<TExtraProps = undefined,
                 //console.warn(`[SmartSheetController] Unhandled command: ${commandAnalysis.command}`);
                 return;
             }
-        } else if (basicAnalysis.keyCategory === 'write' || basicAnalysis.keyCategory === 'backspace') {
+        } else if (basicAnalysis.keyCategory === 'write' || basicAnalysis.keyCategory === 'backspace'
+            || basicAnalysis.keyCategory === 'space'
+        ) {
             // Handle writing input (e.g. typing in a cell)
             this.dataHandler.startEditingComponent(currentPosition, 'cell', basicAnalysis.key);
             this.selectionHandler.clearSelections();
@@ -737,9 +750,6 @@ export default class SmartSheetController<TExtraProps = undefined,
             this.dataHandler.startEditingComponent(currentPosition, 'cell');
             this.selectionHandler.clearSelections();
             this.reflectSelectionsOnHeaders();
-            return;
-        } else if (basicAnalysis.keyCategory === 'space') {
-            // TODO: Implement Delete/Backspace handling
             return;
         }
         // Other categories not processed yet

@@ -20,7 +20,10 @@ export type AutoScrollSelectionCallback = (position: GridPosition, draggingConte
 export default class NavigationHandler<TExtraProps = undefined, TRowHeaderProps = undefined, TColHeaderProps = undefined> {
     private gridDimensions: GridDimensions;
     private navigationState: NavigationState;
+    // Container references
     private tableContainer: HTMLDivElement | undefined;
+    private mainGridContainer: HTMLDivElement | undefined;
+
     private columnsHeaderContainer: HTMLDivElement | undefined;
     private rowsHeaderContainer: HTMLDivElement | undefined;
     private cellComponents: Map<string, CellComponent<TExtraProps>>;
@@ -82,6 +85,14 @@ export default class NavigationHandler<TExtraProps = undefined, TRowHeaderProps 
         this.tableContainer = container;
     }
 
+    setMainGridContainer(container: HTMLDivElement) {
+        this.mainGridContainer = container;
+    }
+
+    getMainGridContainer(): HTMLDivElement | undefined {
+        return this.mainGridContainer;
+    }
+
     getTableContainer(): HTMLDivElement | undefined {
         return this.tableContainer;
     }
@@ -133,12 +144,56 @@ export default class NavigationHandler<TExtraProps = undefined, TRowHeaderProps 
 
     //========================== HELPER METHODS FOR POSITION CALCULATION ==========================//
 
-    private advancePage(direction: string | null, visibleArea?: RenderArea): GridPosition {
-        // Page navigation placeholder - TODO: implement later
-        // Should handle 'page-up', 'page-down', 'page-left', 'page-right' directions
-        console.log('advancePage not implemented yet - direction:', direction, 'visibleArea:', visibleArea);
-        // For now, return current position as placeholder
-        return this.getCurrentPosition();
+    /**
+     * Advances the page in the specified direction.
+     * @param direction The direction to advance the page ('up', 'down', 'left', 'right').
+     * @returns The new grid position after advancing the page.
+     * This method delegates the scroll action to movePointer after calculating the new position.
+     * This works for now, but it does not work just like Excel's page up/down behavior. We might need to revisit this later.
+     */
+    private advancePage(direction: string | null): GridPosition {
+        const currentPosition = this.getCurrentPosition();
+        let newPosition = { ...currentPosition };
+
+        switch (direction) {
+            case 'page-up':
+                newPosition.row = this.calculateVerticalPage(currentPosition.row, 'up');
+                break;
+            case 'page-down':
+                newPosition.row = this.calculateVerticalPage(currentPosition.row, 'down');
+                break;
+            case 'page-left':
+                newPosition.col = this.calculateHorizontalPage(currentPosition.col, 'left');
+                break;
+            case 'page-right':
+                newPosition.col = this.calculateHorizontalPage(currentPosition.col, 'right');
+                break;
+            default:
+                // Unknown direction, return current position
+                return currentPosition;
+        }
+
+        return newPosition;
+    }
+
+    private advanceHeaderPage(headerType: 'row' | 'col', direction: 'page-up' | 'page-down' | 'page-left' | 'page-right'): number {
+        if (headerType === 'row') {
+            // For row headers, only vertical navigation makes sense, so interpret page-left as 'page-up' and page-right as 'page-down'
+            if (direction === 'page-up' || direction === 'page-left') {
+                return this.calculateVerticalPage(this.getHeaderPointerRow(), 'up');
+            } else if (direction === 'page-down' || direction === 'page-right') {
+                return this.calculateVerticalPage(this.getHeaderPointerRow(), 'down');
+            }
+            return this.getHeaderPointerRow(); // No change for horizontal directions
+        } else {
+            // For col headers, only horizontal navigation makes sense
+            if (direction === 'page-left' || direction === 'page-up') {
+                return this.calculateHorizontalPage(this.getHeaderPointerCol(), 'left');
+            } else if (direction === 'page-right' || direction === 'page-down') {
+                return this.calculateHorizontalPage(this.getHeaderPointerCol(), 'right');
+            }
+            return this.getHeaderPointerCol(); // No change for vertical directions
+        }
     }
 
     private singleCellStep(position: GridPosition, direction: 'up' | 'down' | 'left' | 'right'): GridPosition {
@@ -236,9 +291,7 @@ export default class NavigationHandler<TExtraProps = undefined, TRowHeaderProps 
                     newCellPos = this.findDataBoundary(cellPointer.row, cellPointer.col, direction as 'up' | 'down' | 'left' | 'right');
                     this.movePointer(newCellPos);
                 } else if (navigationType === 'page' && direction) {
-                    // Page navigation placeholder - TODO: implement later
-                    // Should handle 'page-up', 'page-down', 'page-left', 'page-right' directions
-                    newCellPos = this.advancePage(direction, visibleArea);
+                    newCellPos = this.advancePage(direction);
                     this.movePointer(newCellPos);
                 } else {
                     // Fallback: no navigation
@@ -260,8 +313,11 @@ export default class NavigationHandler<TExtraProps = undefined, TRowHeaderProps 
                         newHeaderIndex = this.singleHeaderStep(currentHeaderIndex, direction as 'up' | 'down' | 'left' | 'right', headerType);
                     } else if (navigationType === 'boundary' && direction) {
                         newHeaderIndex = this.boundaryHeaderJump(currentHeaderIndex, direction as 'up' | 'down' | 'left' | 'right', headerType);
+                    } else if (navigationType === 'page' && direction) {
+                        // Page navigation for headers using specialized method
+                        newHeaderIndex = this.advanceHeaderPage(headerType, direction as 'page-up' | 'page-down' | 'page-left' | 'page-right');
                     } else {
-                        // Page navigation placeholder - TODO: implement later
+                        // Fallback: no navigation
                         newHeaderIndex = currentHeaderIndex;
                     }
 
@@ -721,7 +777,119 @@ export default class NavigationHandler<TExtraProps = undefined, TRowHeaderProps 
         return { ...this.navigationState.pointerPosition };
     }
 
-    // Navigation utility methods for programmatic movement
+
+    //========================= Page Calculation Methods =========================//
+
+    /**
+     * Vertical page calculator
+     * @returns New row index after page navigation
+     */
+
+    private calculateVerticalPage(currentRow: number, direction: 'up' | 'down'): number {
+        const { maxRow } = this.gridDimensions;
+        if (!this.tableContainer || !this.mainGridContainer) {
+            return currentRow;
+        }
+
+        const currentScrollTop = this.tableContainer.scrollTop;
+        const effectiveContainerHeight = this.tableContainer.clientHeight - (this.rowHeights[0] || 0);
+        let newScrollTop: number;
+
+        // Calculate new scroll position based on direction
+        if (direction === 'up') {
+            newScrollTop = Math.max(0, currentScrollTop - effectiveContainerHeight);
+        } else {
+            // Optimized max scroll calculation using mainGridContainer
+            const maxScrollTop = Math.max(0, this.mainGridContainer.clientHeight - effectiveContainerHeight);
+            newScrollTop = Math.min(maxScrollTop, currentScrollTop + effectiveContainerHeight);
+        }
+
+        // Convert scroll position to row index
+        if (direction === 'up') {
+            // For up: find first row that starts after newScrollTop (same as before)
+            let accumulatedHeight = 0;
+            for (let row = 0; row <= maxRow; row++) {
+                const rowHeight = this.rowHeights[row + 1] || 32; // +1 because first element is header
+                if (accumulatedHeight + rowHeight > newScrollTop) {
+                    return Math.max(0, Math.min(maxRow, row));
+                }
+                accumulatedHeight += rowHeight;
+            }
+            return maxRow;
+        } else {
+            // For down: find last row that fits completely within visible area
+            let accumulatedHeight = 0;
+            let lastCompleteRow = 0;
+
+            for (let row = 0; row <= maxRow; row++) {
+                const rowHeight = this.rowHeights[row + 1] || 32;
+                if (accumulatedHeight + rowHeight <= newScrollTop + effectiveContainerHeight) {
+                    lastCompleteRow = row;
+                }
+                accumulatedHeight += rowHeight;
+                if (accumulatedHeight > newScrollTop + effectiveContainerHeight) {
+                    break;
+                }
+            }
+            return Math.max(0, Math.min(maxRow, lastCompleteRow));
+        }
+    }
+
+    /**
+     * Horizontal page calculator
+     * @returns New column index after page navigation
+     */
+    private calculateHorizontalPage(currentCol: number, direction: 'left' | 'right'): number {
+        const { maxCol } = this.gridDimensions;
+        if (!this.tableContainer || !this.mainGridContainer) {
+            return currentCol;
+        }
+
+        const currentScrollLeft = this.tableContainer.scrollLeft;
+        const effectiveContainerWidth = this.tableContainer.clientWidth - (this.colWidths[0] || 0);
+        let newScrollLeft: number;
+
+        // Calculate new scroll position based on direction
+        if (direction === 'left') {
+            newScrollLeft = Math.max(0, currentScrollLeft - effectiveContainerWidth);
+        } else {
+            // Optimized max scroll calculation using mainGridContainer
+            const maxScrollLeft = Math.max(0, this.mainGridContainer.clientWidth - effectiveContainerWidth);
+            newScrollLeft = Math.min(maxScrollLeft, currentScrollLeft + effectiveContainerWidth);
+        }
+
+        // Convert scroll position to column index
+        if (direction === 'left') {
+            // For left: find first column that starts after newScrollLeft (same as before)
+            let accumulatedWidth = 0;
+            for (let col = 0; col <= maxCol; col++) {
+                const colWidth = this.colWidths[col + 1] || 120; // +1 because first element is header
+                if (accumulatedWidth + colWidth > newScrollLeft) {
+                    return Math.max(0, Math.min(maxCol, col));
+                }
+                accumulatedWidth += colWidth;
+            }
+            return maxCol;
+        } else {
+            // For right: find last column that fits completely within visible area
+            let accumulatedWidth = 0;
+            let lastCompleteCol = 0;
+
+            for (let col = 0; col <= maxCol; col++) {
+                const colWidth = this.colWidths[col + 1] || 120;
+                if (accumulatedWidth + colWidth <= newScrollLeft + effectiveContainerWidth) {
+                    lastCompleteCol = col;
+                }
+                accumulatedWidth += colWidth;
+                if (accumulatedWidth > newScrollLeft + effectiveContainerWidth) {
+                    break;
+                }
+            }
+            return Math.max(0, Math.min(maxCol, lastCompleteCol));
+        }
+    }
+
+    //============ Navigation utility methods for programmatic movement ================
 
     /**
      * Navigate to the next cell to the right within grid bounds
@@ -1353,5 +1521,32 @@ export default class NavigationHandler<TExtraProps = undefined, TRowHeaderProps 
         });
         // Setup document mouse move listener using stored callback
         this.setupDocumentMouseMoveListener();
+    }
+
+    /**
+     * Synchronize resulting active selection from a deselection with respective
+     * pointer and anchor positions.
+     * This is needed because SelectionHandler does not manage pointer/anchor state.
+     */
+    synchronizeSelectionPointerAndAnchor(resultingActiveSelection: 'cell' | 'header-row' | 'header-col' | null,
+            anchor: GridPosition | number, pointer: GridPosition | number, visibleArea?: RenderArea): void {
+        if (resultingActiveSelection === 'cell' && typeof anchor === 'object' && typeof pointer === 'object') {
+            this.setAnchor(anchor);
+            this.movePointer(pointer);
+        } else if (resultingActiveSelection === 'header-row' && typeof anchor === 'number' && typeof pointer === 'number') {
+            this.setHeaderAnchorRow(anchor);
+            this.setHeaderPointerRow(pointer);
+            if (visibleArea) {
+                const cellForHeader = visibleArea ? { row: pointer, col: visibleArea.startCol } : { row: pointer, col: 0 };
+                this.movePointer(cellForHeader);
+            }
+        } else if (resultingActiveSelection === 'header-col' && typeof anchor === 'number' && typeof pointer === 'number') {
+            this.setHeaderAnchorCol(anchor);
+            this.setHeaderPointerCol(pointer);
+            if (visibleArea) {
+                const cellForHeader = visibleArea ? { row: visibleArea.startRow, col: pointer } : { row: 0, col: pointer };
+                this.movePointer(cellForHeader);
+            }
+        } // If null or mismatched types, do nothing
     }
 }

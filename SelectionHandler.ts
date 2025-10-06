@@ -19,6 +19,8 @@ export default class SelectionHandler<TExtraProps = undefined, TRowHeaderProps =
     private selections: Selection[];
     private onSelectionsChanged?: SelectionChangedCallback;
     private onDeselectionsChanged?: SelectionChangedCallback;
+    private onDeselectionFinished?: (resultingActiveSelection: 'cell' | 'header-row' | 'header-col' | null,
+        anchor: GridPosition | number, pointer: GridPosition | number) => void;
     private isDeselecting: boolean;
     private deselection: Selection | null;
     private headerDeselection: HeaderSelection | null;
@@ -41,6 +43,8 @@ export default class SelectionHandler<TExtraProps = undefined, TRowHeaderProps =
         cornerHeaderComponent: HeaderComponent | null,
         onSelectionsChanged?: SelectionChangedCallback,
         onDeselectionsChanged?: SelectionChangedCallback,
+        onDeselectionFinished?: (resultingActiveSelection: 'cell' | 'header-row' | 'header-col' | null,
+            anchor: GridPosition | number, pointer: GridPosition | number) => void
     ) {
         this.gridDimensions = gridDimensions;
         this.selectedCells = new Set<string>();
@@ -48,6 +52,7 @@ export default class SelectionHandler<TExtraProps = undefined, TRowHeaderProps =
         this.selections = [];
         this.onSelectionsChanged = onSelectionsChanged;
         this.onDeselectionsChanged = onDeselectionsChanged;
+        this.onDeselectionFinished = onDeselectionFinished;
         this.isDeselecting = false;
         this.deselection = null;
         this.headerDeselection = null;
@@ -434,10 +439,12 @@ export default class SelectionHandler<TExtraProps = undefined, TRowHeaderProps =
                         // Finalize header deselection
                         this.deselectHeaderArea();
                         this.clearHeaderDeselection();
+                        this.executeEndDeselectionCallback();
                     } else if (this.deselection !== null) {
                         // Finalize cell deselection
                         this.deselectArea();
                         this.clearDeselection();
+                        this.executeEndDeselectionCallback();
                     }
                 }
                 // No additional actions needed for normal selection finalization (mouseup without deselection)
@@ -823,6 +830,23 @@ export default class SelectionHandler<TExtraProps = undefined, TRowHeaderProps =
         // Update visual state for both cells and headers
         this.syncSelectedCells();
         this.syncSelectedHeaders();
+    }
+
+    // ===================== END DESELECTION CALLBACK EXECUTION =====================
+
+    private executeEndDeselectionCallback(): void {
+        if (!this.onDeselectionFinished) return;
+        const resultingActiveSelection = this.getActiveSelection();
+        if (resultingActiveSelection instanceof HeaderSelection) {
+            const headerType = resultingActiveSelection.getDirection();
+            const bounds = resultingActiveSelection.getBounds();
+            this.onDeselectionFinished(headerType === 'row' ? 'header-row' : 'header-col',
+                bounds.startIndex, bounds.endIndex);
+        } else if (resultingActiveSelection instanceof Selection) {
+            const bounds = resultingActiveSelection.getBounds();
+            this.onDeselectionFinished('cell', { row: bounds.topLeft.row, col: bounds.topLeft.col },
+                { row: bounds.bottomRight.row, col: bounds.bottomRight.col });
+        } // If no active selection remains, no callback is executed
     }
 
     // ==================== HEADERS SELECTION METHODS ====================
