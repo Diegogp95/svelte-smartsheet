@@ -1736,6 +1736,16 @@ export default class SmartSheetController<TExtraProps = undefined,
         return this.dataHandler.translatePositionsToListedHeaders(changedPositions);
     }
 
+    public exportSelectedRows(): string[] {
+        const selectedRowIndices = this.selectionHandler.getSelectedRowHeaders();
+        return this.dataHandler.translateIndicesToHeaderValues(selectedRowIndices, 'row');
+    }
+
+    public exportSelectedCols(): string[] {
+        const selectedColIndices = this.selectionHandler.getSelectedColHeaders();
+        return this.dataHandler.translateIndicesToHeaderValues(selectedColIndices, 'col');
+    }
+
     /**
      * Export the changed cells with new values
      */

@@ -488,7 +488,7 @@ export default class ColorHandler<TExtraProps = undefined, TRowHeaderProps = und
     ): void {
         const header: HeaderPosition = { headerType: 'row', index: row };
         const cells: GridPosition[] = [];
-        for (let col = 0; col < this.gridDimensions.maxCol; col++) {
+        for (let col = 0; col <= this.gridDimensions.maxCol; col++) {
             cells.push({ row, col });
         }
         this.flashComponents({ headers: [header], cells }, visibleComponents, options);
@@ -506,7 +506,7 @@ export default class ColorHandler<TExtraProps = undefined, TRowHeaderProps = und
         const header: HeaderPosition = { headerType: 'col', index: col };
         // Cells (más eficiente usando gridDimensions)
         const cells: GridPosition[] = [];
-        for (let row = 0; row < this.gridDimensions.maxRow; row++) {
+        for (let row = 0; row <= this.gridDimensions.maxRow; row++) {
             cells.push({ row, col });
         }
         this.flashComponents({ headers: [header], cells }, visibleComponents, options);
@@ -550,7 +550,7 @@ export default class ColorHandler<TExtraProps = undefined, TRowHeaderProps = und
         this.setHeaderStyling('row', row, headerProps);
 
         // Directly construct keys for the row using grid dimensions
-        for (let col = 0; col < this.gridDimensions.maxCol; col++) {
+        for (let col = 0; col <= this.gridDimensions.maxCol; col++) {
             const key = `${row}-${col}`;
             if (this.cellComponents.has(key)) {
                 const position = { row, col };
@@ -567,7 +567,7 @@ export default class ColorHandler<TExtraProps = undefined, TRowHeaderProps = und
         this.setHeaderStyling('col', col, headerProps);
 
         // Directly construct keys for the column using grid dimensions
-        for (let row = 0; row < this.gridDimensions.maxRow; row++) {
+        for (let row = 0; row <= this.gridDimensions.maxRow; row++) {
             const key = `${row}-${col}`;
             if (this.cellComponents.has(key)) {
                 const position = { row, col };
@@ -584,7 +584,7 @@ export default class ColorHandler<TExtraProps = undefined, TRowHeaderProps = und
         this.setHeaderTailwindStyling('row', row, headerProps);
 
         // Directly construct keys for the row using grid dimensions
-        for (let col = 0; col < this.gridDimensions.maxCol; col++) {
+        for (let col = 0; col <= this.gridDimensions.maxCol; col++) {
             const key = `${row}-${col}`;
             if (this.cellComponents.has(key)) {
                 const position = { row, col };
@@ -601,7 +601,7 @@ export default class ColorHandler<TExtraProps = undefined, TRowHeaderProps = und
         this.setHeaderTailwindStyling('col', col, headerProps);
 
         // Directly construct keys for the column using grid dimensions
-        for (let row = 0; row < this.gridDimensions.maxRow; row++) {
+        for (let row = 0; row <= this.gridDimensions.maxRow; row++) {
             const key = `${row}-${col}`;
             if (this.cellComponents.has(key)) {
                 const position = { row, col };

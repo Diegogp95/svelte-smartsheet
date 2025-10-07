@@ -336,6 +336,14 @@
         return controller.exportChangedCells();
     }
 
+    export function extractSelectedRows(): string[] {
+        return controller.exportSelectedRows();
+    }
+
+    export function extractSelectedCols(): string[] {
+        return controller.exportSelectedCols();
+    }
+
     export function extractChangedCellsWithValues(): { [primaryHeader: string]: { [secondaryHeader: string]: CellValue } } {
         return controller.exportChangedCellsWithValues();
     }

@@ -993,15 +993,15 @@ export default class SelectionHandler<TExtraProps = undefined, TRowHeaderProps =
 	/**
 	 * Get currently selected row header indices
 	 */
-	getSelectedRowHeaders(): Set<number> {
-		return new Set(this.selectedRowHeaders);
+	getSelectedRowHeaders(): number[] {
+		return Array.from(this.selectedRowHeaders);
 	}
 
 	/**
 	 * Get currently selected column header indices
 	 */
-	getSelectedColHeaders(): Set<number> {
-		return new Set(this.selectedColHeaders);
+	getSelectedColHeaders(): number[] {
+		return Array.from(this.selectedColHeaders);
 	}
 
 	/**

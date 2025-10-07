@@ -949,6 +949,23 @@ export default class DataHandler<TExtraProps = undefined, TRowHeaderProps = unde
         );
     }
 
+    public translateIndicesToHeaderValues(
+        indices: number[],
+        headerType: 'row' | 'col'
+    ): HeaderValue[] {
+        const headers: HeaderValue[] = [];
+        const headerMap = headerType === 'row' ? this.rowHeaderComponents : this.colHeaderComponents;
+
+        for (const index of indices) {
+            const header = headerMap.get(`${headerType}-${index}`);
+            if (header) {
+                headers.push(header.value);
+            }
+        }
+
+        return headers;
+    }
+
     // ==================== DATA EXTRACTION METHODS ====================
 
     /**
