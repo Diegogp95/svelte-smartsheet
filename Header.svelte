@@ -32,6 +32,7 @@
         class:max-w-full={textOverflowMode === 'truncated'}
         class:text-ellipsis={textOverflowMode === 'truncated'}
         class:overflow-hidden={textOverflowMode === 'truncated'}
+        class:whitespace-pre-line={textOverflowMode === 'full'}
     >
         {value ?? ''}
     </span>
