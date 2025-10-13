@@ -29,6 +29,7 @@
         TailwindProperties,
         EditingState,
         ProcessingState,
+        NumberFormatOptions,
     } from './types';
     import SelectionRect from './SelectionRect.svelte';
     import DeselectionRect from './DeselectionRect.svelte';
@@ -54,6 +55,7 @@
     export let minCellWidth: string = '6rem'; // Minimum cell width (px or rem)
     export let minCellHeight: string = '3rem'; // Minimum cell height (px or rem)
     export let styleMode: 'style' | 'tailwind' = 'style'; // Choose between inline styles or Tailwind CSS classes
+    export let numberFormat: NumberFormatOptions = { decimalPlaces: 3 }; // Number formatting configuration
 
     // Scan phase
     let gridDimensions: GridDimensions = { maxRow: gridData.length - 1, maxCol: (gridData[0]?.length || 1) - 1 };
@@ -471,6 +473,7 @@
         {fontSize}
         {minCellWidth}
         {minCellHeight}
+        {numberFormat}
         instanceId={controller.getInstanceId()}
         on:done={initializeVirtualizerOnTableMount}
     />
@@ -718,6 +721,7 @@
                             styling={cellComponent.styles.styling}
                             tailwindStyling={cellComponent.styles.tailwindStyling}
                             instanceId={controller.getInstanceId()}
+                            numberFormat={numberFormat}
                         />
                     {/if}
                 {/each}

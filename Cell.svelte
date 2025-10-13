@@ -2,6 +2,7 @@
     import type {
         GridPosition,
         CellValue,
+        NumberFormatOptions,
     } from './types';
 
     // Props from parent
@@ -11,6 +12,7 @@
     export let tailwindStyling: string = '';
     export let instanceId: string;
     export let textOverflowMode: 'full' | 'truncated' = 'truncated';
+    export let numberFormat: NumberFormatOptions = { decimalPlaces: 3 };
     /*
         'full' mode: text wraps and shows all content, expanding cell height as needed
         'truncated' mode: text is truncated with ellipsis if it overflows cell width, single line only
@@ -18,6 +20,36 @@
         for rows and columns, then switch to truncated for the actual display, when we have the
         initial dimensions set.
     */
+
+    // Helper function to format numbers according to the configuration
+    function formatNumber(value: CellValue, options: NumberFormatOptions): string {
+        // If value is not a number, return as string
+        if (typeof value !== 'number') {
+            return value?.toString() ?? '';
+        }
+
+        const { decimalPlaces = 2, thousandsSeparator = false, locale = 'en-US' } = options;
+
+        // Check if it's an integer (no decimal part)
+        const isInteger = Number.isInteger(value);
+
+        // Use toLocaleString if we need thousands separator or non-default locale
+        if (thousandsSeparator || locale !== 'en-US') {
+            return value.toLocaleString(locale, {
+                minimumFractionDigits: 0, // Never force decimal places
+                maximumFractionDigits: decimalPlaces
+            });
+        }
+
+        // For integers, don't force decimal places
+        if (isInteger) {
+            return value.toString();
+        }
+
+        // For decimals, format and remove trailing zeros
+        const formatted = value.toFixed(decimalPlaces);
+        return parseFloat(formatted).toString();
+    }
 
 </script>
 
@@ -40,6 +72,6 @@
         class:overflow-hidden={textOverflowMode === 'truncated'}
         class:whitespace-pre-line={textOverflowMode === 'full'}
     >
-        {value ?? ''}
+        {formatNumber(value, numberFormat)}
     </span>
 </div>

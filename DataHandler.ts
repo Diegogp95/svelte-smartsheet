@@ -9,7 +9,6 @@ import type {
 } from './types';
 import { CellChange, HeaderChange, ChangeSet, HistoryManager } from './HistoryManager';
 import { tick } from 'svelte';
-import type Header from './Header.svelte';
 
 // Callback type for editing state changes
 export type EditingStateCallback<TExtraProps, TRowHeaderProps, TColHeaderProps> =
