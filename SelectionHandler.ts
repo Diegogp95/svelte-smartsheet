@@ -13,6 +13,14 @@ import type {
 // Callback type for selection changes
 export type SelectionChangedCallback = (handler: SelectionHandler<any, any, any>) => void;
 
+// Callback type for header reflection changes (borders)
+export type HeaderReflectionCallback = (
+    toAddRowReflections: Set<number>,
+    toRemoveRowReflections: Set<number>,
+    toAddColReflections: Set<number>,
+    toRemoveColReflections: Set<number>
+) => void;
+
 export default class SelectionHandler<TExtraProps = undefined, TRowHeaderProps = undefined, TColHeaderProps = undefined> {
     private selectedCells: Set<string>;
     private cellComponents: Map<string, CellComponent<TExtraProps>>;
@@ -21,6 +29,7 @@ export default class SelectionHandler<TExtraProps = undefined, TRowHeaderProps =
     private onDeselectionsChanged?: SelectionChangedCallback;
     private onDeselectionFinished?: (resultingActiveSelection: 'cell' | 'header-row' | 'header-col' | null,
         anchor: GridPosition | number, pointer: GridPosition | number) => void;
+    private onHeaderReflectionChanged?: HeaderReflectionCallback;
     private isDeselecting: boolean;
     private deselection: Selection | null;
     private headerDeselection: HeaderSelection | null;
@@ -34,6 +43,9 @@ export default class SelectionHandler<TExtraProps = undefined, TRowHeaderProps =
     private headerSelectionsCols: HeaderSelection[];
     private gridDimensions: GridDimensions;
     private activeSelection: Selection | HeaderSelection | null;
+    // Track current header reflections to calculate diffs
+    private currentReflectedRowHeaders: Set<number>;
+    private currentReflectedColHeaders: Set<number>;
 
     constructor(
         gridDimensions: GridDimensions,
@@ -44,7 +56,8 @@ export default class SelectionHandler<TExtraProps = undefined, TRowHeaderProps =
         onSelectionsChanged?: SelectionChangedCallback,
         onDeselectionsChanged?: SelectionChangedCallback,
         onDeselectionFinished?: (resultingActiveSelection: 'cell' | 'header-row' | 'header-col' | null,
-            anchor: GridPosition | number, pointer: GridPosition | number) => void
+            anchor: GridPosition | number, pointer: GridPosition | number) => void,
+        onHeaderReflectionChanged?: HeaderReflectionCallback
     ) {
         this.gridDimensions = gridDimensions;
         this.selectedCells = new Set<string>();
@@ -53,6 +66,7 @@ export default class SelectionHandler<TExtraProps = undefined, TRowHeaderProps =
         this.onSelectionsChanged = onSelectionsChanged;
         this.onDeselectionsChanged = onDeselectionsChanged;
         this.onDeselectionFinished = onDeselectionFinished;
+        this.onHeaderReflectionChanged = onHeaderReflectionChanged;
         this.isDeselecting = false;
         this.deselection = null;
         this.headerDeselection = null;
@@ -64,6 +78,8 @@ export default class SelectionHandler<TExtraProps = undefined, TRowHeaderProps =
         this.headerSelectionsRows = [];
         this.headerSelectionsCols = [];
         this.activeSelection = null;
+        this.currentReflectedRowHeaders = new Set<number>();
+        this.currentReflectedColHeaders = new Set<number>();
     }
 
     // Helper method to convert position to key
@@ -109,6 +125,9 @@ export default class SelectionHandler<TExtraProps = undefined, TRowHeaderProps =
         // Update selectedCells state
         this.applyCellChanges(toDeselect, toSelect);
         this.selectedCells = finalSelection;
+
+        // Update header reflections after cell selection changes
+        this.updateHeaderReflections();
 
         // Emit change event if a handler is set
         if (this.onSelectionsChanged) {
@@ -199,6 +218,86 @@ export default class SelectionHandler<TExtraProps = undefined, TRowHeaderProps =
         this.headerSelectionsCols = [];
         this.updateSelection(new Set());
         this.updateHeaderSelections(new Set<number>(), new Set<number>());
+    }
+
+    // ==================== HEADER REFLECTION METHODS ====================
+
+    /**
+     * Calculate headers affected by current regular selections (not HeaderSelections)
+     * Only considers Selection objects, not HeaderSelection objects
+     */
+    private calculateAffectedHeaders(): {
+        affectedRowHeaders: Set<number>,
+        affectedColHeaders: Set<number>
+    } {
+        const affectedRowHeaders = new Set<number>();
+        const affectedColHeaders = new Set<number>();
+
+        // Only consider regular selections (Selection objects), not HeaderSelections
+        this.selections.forEach(selection => {
+            selection.getDerivedRowHeaders().forEach(row => affectedRowHeaders.add(row));
+            selection.getDerivedColHeaders().forEach(col => affectedColHeaders.add(col));
+        });
+
+        return { affectedRowHeaders, affectedColHeaders };
+    }
+
+    /**
+     * Update header reflections with differential logic
+     * Similar to updateSelection, only applies changes to headers that actually changed
+     */
+    private updateHeaderReflections(): void {
+        if (!this.onHeaderReflectionChanged) return;
+
+        const { affectedRowHeaders, affectedColHeaders } = this.calculateAffectedHeaders();
+
+        // Calculate row header changes
+        const toRemoveRowReflections = new Set<number>();
+        this.currentReflectedRowHeaders.forEach(rowIndex => {
+            if (!affectedRowHeaders.has(rowIndex)) {
+                toRemoveRowReflections.add(rowIndex);
+            }
+        });
+
+        const toAddRowReflections = new Set<number>();
+        affectedRowHeaders.forEach(rowIndex => {
+            if (!this.currentReflectedRowHeaders.has(rowIndex)) {
+                toAddRowReflections.add(rowIndex);
+            }
+        });
+
+        // Calculate column header changes
+        const toRemoveColReflections = new Set<number>();
+        this.currentReflectedColHeaders.forEach(colIndex => {
+            if (!affectedColHeaders.has(colIndex)) {
+                toRemoveColReflections.add(colIndex);
+            }
+        });
+
+        const toAddColReflections = new Set<number>();
+        affectedColHeaders.forEach(colIndex => {
+            if (!this.currentReflectedColHeaders.has(colIndex)) {
+                toAddColReflections.add(colIndex);
+            }
+        });
+
+        // If no changes, do nothing for performance
+        if (toRemoveRowReflections.size === 0 && toAddRowReflections.size === 0 &&
+            toRemoveColReflections.size === 0 && toAddColReflections.size === 0) {
+            return;
+        }
+
+        // Update current state
+        this.currentReflectedRowHeaders = new Set(affectedRowHeaders);
+        this.currentReflectedColHeaders = new Set(affectedColHeaders);
+
+        // Emit header reflection change event
+        this.onHeaderReflectionChanged(
+            toAddRowReflections,
+            toRemoveRowReflections,
+            toAddColReflections,
+            toRemoveColReflections
+        );
     }
 
     // Getters
@@ -477,13 +576,6 @@ export default class SelectionHandler<TExtraProps = undefined, TRowHeaderProps =
     selectSingle(position: GridPosition): void {
         this.clearSelections();
         this.addNewSelection(position, position);
-    }
-
-    // Add multiple individual selections
-    addMultipleSelections(positions: GridPosition[]): void {
-        positions.forEach(pos => {
-            this.addNewSelection(pos, pos);
-        });
     }
 
     // Update Active - Modifies the currently active selection
@@ -1017,6 +1109,257 @@ export default class SelectionHandler<TExtraProps = undefined, TRowHeaderProps =
 	isColHeaderSelected(index: number): boolean {
 		return this.selectedColHeaders.has(index);
 	}
+
+    // ==================== HARD ALGORITHMS =====================
+
+    // Analyze positions to find optimal rectangular groupings
+    private analyzeRectangularSelections(positions: GridPosition[]): {
+        rectangles: Array<{ topLeft: GridPosition, bottomRight: GridPosition }>,
+        individuals: GridPosition[]
+    } {
+        if (positions.length === 0) {
+            return { rectangles: [], individuals: [] };
+        }
+
+        // Convert positions to a Set for O(1) lookup
+        const positionSet = new Set(positions.map(pos => `${pos.row}-${pos.col}`));
+        const processed = new Set<string>();
+        const rectangles: Array<{ topLeft: GridPosition, bottomRight: GridPosition }> = [];
+        const individuals: GridPosition[] = [];
+
+        for (const position of positions) {
+            const key = `${position.row}-${position.col}`;
+
+            if (processed.has(key)) continue;
+
+            // Try to find the largest rectangle starting from this position
+            const rectangle = this.findLargestRectangle(position, positionSet, processed);
+
+            if (rectangle.area > 1) {
+                rectangles.push({
+                    topLeft: rectangle.topLeft,
+                    bottomRight: rectangle.bottomRight
+                });
+
+                // Mark all positions in this rectangle as processed
+                for (let row = rectangle.topLeft.row; row <= rectangle.bottomRight.row; row++) {
+                    for (let col = rectangle.topLeft.col; col <= rectangle.bottomRight.col; col++) {
+                        processed.add(`${row}-${col}`);
+                    }
+                }
+            } else {
+                // Single isolated position
+                individuals.push(position);
+                processed.add(key);
+            }
+        }
+
+        return { rectangles, individuals };
+    }
+
+    // Find the largest rectangle starting from a given position
+    private findLargestRectangle(
+        startPos: GridPosition,
+        positionSet: Set<string>,
+        processed: Set<string>
+    ): { topLeft: GridPosition, bottomRight: GridPosition, area: number } {
+        const key = `${startPos.row}-${startPos.col}`;
+
+        if (processed.has(key) || !positionSet.has(key)) {
+            return { topLeft: startPos, bottomRight: startPos, area: 0 };
+        }
+
+        let maxArea = 1;
+        let bestRect = { topLeft: startPos, bottomRight: startPos };
+
+        // Try expanding in all four directions to find rectangles
+        for (let endRow = startPos.row; endRow <= this.gridDimensions.maxRow; endRow++) {
+            for (let endCol = startPos.col; endCol <= this.gridDimensions.maxCol; endCol++) {
+                // Check if we can form a rectangle from startPos to (endRow, endCol)
+                if (this.isValidRectangle(startPos, { row: endRow, col: endCol }, positionSet, processed)) {
+                    const area = (endRow - startPos.row + 1) * (endCol - startPos.col + 1);
+                    if (area > maxArea) {
+                        maxArea = area;
+                        bestRect = {
+                            topLeft: startPos,
+                            bottomRight: { row: endRow, col: endCol }
+                        };
+                    }
+                } else {
+                    // If this position fails, no point checking further in this row
+                    break;
+                }
+            }
+        }
+
+        return { ...bestRect, area: maxArea };
+    }
+
+    // Check if all positions in a rectangle are available and not processed
+    private isValidRectangle(
+        topLeft: GridPosition,
+        bottomRight: GridPosition,
+        positionSet: Set<string>,
+        processed: Set<string>
+    ): boolean {
+        for (let row = topLeft.row; row <= bottomRight.row; row++) {
+            for (let col = topLeft.col; col <= bottomRight.col; col++) {
+                const key = `${row}-${col}`;
+                if (!positionSet.has(key) || processed.has(key)) {
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
+    // Find consecutive ranges in a sorted array of header indices
+    private findConsecutiveHeaderRanges(indices: number[]): {
+        ranges: Array<{ start: number, end: number }>,
+        individuals: number[]
+    } {
+        if (indices.length === 0) {
+            return { ranges: [], individuals: [] };
+        }
+
+        // Remove duplicates and sort
+        const uniqueIndices = Array.from(new Set(indices)).sort((a, b) => a - b);
+        const ranges: Array<{ start: number, end: number }> = [];
+        const individuals: number[] = [];
+
+        let currentRangeStart = uniqueIndices[0];
+        let currentRangeEnd = uniqueIndices[0];
+
+        for (let i = 1; i < uniqueIndices.length; i++) {
+            const currentIndex = uniqueIndices[i];
+
+            if (currentIndex === currentRangeEnd + 1) {
+                // Consecutive, extend current range
+                currentRangeEnd = currentIndex;
+            } else {
+                // Not consecutive, finalize current range
+                if (currentRangeStart === currentRangeEnd) {
+                    // Single element, add as individual
+                    individuals.push(currentRangeStart);
+                } else {
+                    // Range of 2+ elements, add as range
+                    ranges.push({ start: currentRangeStart, end: currentRangeEnd });
+                }
+
+                // Start new range
+                currentRangeStart = currentIndex;
+                currentRangeEnd = currentIndex;
+            }
+        }
+
+        // Handle the last range
+        if (currentRangeStart === currentRangeEnd) {
+            individuals.push(currentRangeStart);
+        } else {
+            ranges.push({ start: currentRangeStart, end: currentRangeEnd });
+        }
+
+        return { ranges, individuals };
+    }
+
+    // ==================== HEADER SUBSET CALCULATIONS =====================
+
+    /**
+     * Calculate intersection of cells between row header selections and column header selections
+     * @param rowSelections Array of row header selections
+     * @param colSelections Array of column header selections
+     * @returns Set of cell keys that exist in both row and column selections
+     */
+    calculateRowColIntersection(
+        rowSelections: HeaderSelection[],
+        colSelections: HeaderSelection[]
+    ): Set<string> {
+        // Get all cells from row header selections
+        const rowCells = new Set<string>();
+        rowSelections.forEach(headerSelection => {
+            headerSelection.getCells().forEach(cell => rowCells.add(cell));
+        });
+
+        // Get all cells from column header selections
+        const colCells = new Set<string>();
+        colSelections.forEach(headerSelection => {
+            headerSelection.getCells().forEach(cell => colCells.add(cell));
+        });
+
+        // Calculate intersection: cells that exist in both sets
+        const intersection = new Set<string>();
+        rowCells.forEach(cell => {
+            if (colCells.has(cell)) {
+                intersection.add(cell);
+            }
+        });
+
+        return intersection;
+    }
+
+    // ==================== SELECTION APIs FOR EXTERNAL USE =====================
+
+    // Add multiple individual selections
+    addMultipleSelections(positions: GridPosition[]): void {
+        positions.forEach(pos => {
+            this.addNewSelection(pos, pos);
+        });
+    }
+
+    // Add intelligent selections - automatically groups positions into rectangular selections
+    addIntelligentSelections(positions: GridPosition[]): void {
+        if (positions.length === 0) return;
+
+        const analysis = this.analyzeRectangularSelections(positions);
+
+        // Create rectangular selections
+        analysis.rectangles.forEach(rect => {
+            this.addNewSelection(rect.topLeft, rect.bottomRight);
+        });
+
+        // Create individual selections for isolated positions
+        analysis.individuals.forEach(pos => {
+            this.addNewSelection(pos, pos);
+        });
+    }
+
+    // Add multiple cell range selections
+    addMultipleCellRanges(cellRanges: Array<{ topLeft: GridPosition, bottomRight: GridPosition }>): void {
+        cellRanges.forEach(range => {
+            this.addNewSelection(range.topLeft, range.bottomRight);
+        });
+    }
+
+    // Add multiple header range selections
+    addMultipleHeaderRanges(headerType: 'row' | 'col', headerRanges: Array<{ startIndex: number, endIndex: number }>): void {
+        headerRanges.forEach(range => {
+            this.addNewHeaderSelection(headerType, range.startIndex, range.endIndex);
+        });
+    }
+
+    // Add multiple individual header selections
+    addMultipleHeaderSelections(headerType: 'row' | 'col', indices: number[]): void {
+        indices.forEach(index => {
+            this.addNewHeaderSelection(headerType, index, index);
+        });
+    }
+
+    // Add intelligent header selections - automatically groups consecutive headers into ranges (operates by type)
+    addIntelligentHeaderSelections(headerType: 'row' | 'col', indices: number[]): void {
+        if (indices.length === 0) return;
+
+        const analysis = this.findConsecutiveHeaderRanges(indices);
+
+        // Create ranges
+        analysis.ranges.forEach(range => {
+            this.addNewHeaderSelection(headerType, range.start, range.end);
+        });
+
+        // Create individual selections
+        analysis.individuals.forEach(index => {
+            this.addNewHeaderSelection(headerType, index, index);
+        });
+    }
 
 }
 

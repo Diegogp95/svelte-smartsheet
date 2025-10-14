@@ -130,6 +130,7 @@ export default class SmartSheetController<TExtraProps = undefined,
             onSelectionsChanged,
             onDeselectionsChanged,
             this.handleEndOfDeselection,
+            this.handleHeaderReflectionChanges,
         );
         this.navigationHandler = new NavigationHandler<TExtraProps, TRowHeaderProps, TColHeaderProps>(
             this.gridDimensions,
@@ -319,9 +320,6 @@ export default class SmartSheetController<TExtraProps = undefined,
 
         // Process selection update
         this.selectionHandler.processMouseSelection(analysis, navigationAnchorsAndPointers);
-
-        // Reflect selections on headers
-        this.reflectSelectionsOnHeaders();
     }
 
     /**
@@ -333,13 +331,94 @@ export default class SmartSheetController<TExtraProps = undefined,
         this.navigationHandler.synchronizeSelectionPointerAndAnchor(resultingActiveSelection, anchor, pointer, visibleArea);
     }
 
-    // Helper method to reflect cell selections on headers after any selection change
-    // TODO: Implement new header reflection system (old naive implementation removed)
-    private reflectSelectionsOnHeaders(): void {
-        // const selectedCells = this.selectionHandler.getSelectedCells();
-        // this.selectionHandler.reflectCellSelections(selectedCells); // ← REMOVED: naive implementation
-        console.log('[SmartSheetController] reflectSelectionsOnHeaders: TODO - implement new header reflection system');
-    }
+    /**
+     * Header reflection callback - handles adding/removing borders to headers
+     * based on cell selection changes (Excel-like behavior)
+     */
+    private handleHeaderReflectionChanges = (
+        toAddRowReflections: Set<number>,
+        toRemoveRowReflections: Set<number>,
+        toAddColReflections: Set<number>,
+        toRemoveColReflections: Set<number>
+    ): void => {
+        // Define reflection colors and styles
+        const reflectionColor = 'rgba(59, 130, 246, 1.0)'; // Blue color for reflections
+        const reflectionWidth = '4px';
+
+        // Row headers: Remove right borders from headers no longer affected (restore defaults)
+        toRemoveRowReflections.forEach(rowIndex => {
+            if (this.styleMode === 'style') {
+                this.colorHandler.setHeaderStyling('row', rowIndex, {
+                    'border-right-color': this.colorHandler.defaultHeaderBackgroundProperties['border-right-color'],
+                    'border-right-width': this.colorHandler.defaultHeaderBackgroundProperties['border-right-width'],
+                    'border-right-style': this.colorHandler.defaultHeaderBackgroundProperties['border-right-style']
+                });
+            } else {
+                this.colorHandler.setHeaderTailwindStyling('row', rowIndex, {
+                    'border-right-color': this.colorHandler.defaultHeaderTailwindProperties['border-right-color'],
+                    'border-right-width': this.colorHandler.defaultHeaderTailwindProperties['border-right-width'],
+                    'border-right-style': this.colorHandler.defaultHeaderTailwindProperties['border-right-style']
+                });
+            }
+        });
+
+        // Column headers: Remove bottom borders from headers no longer affected (restore defaults)
+        toRemoveColReflections.forEach(colIndex => {
+            if (this.styleMode === 'style') {
+                this.colorHandler.setHeaderStyling('col', colIndex, {
+                    'border-bottom-color': this.colorHandler.defaultHeaderBackgroundProperties['border-bottom-color'],
+                    'border-bottom-width': this.colorHandler.defaultHeaderBackgroundProperties['border-bottom-width'],
+                    'border-bottom-style': this.colorHandler.defaultHeaderBackgroundProperties['border-bottom-style']
+                });
+            } else {
+                this.colorHandler.setHeaderTailwindStyling('col', colIndex, {
+                    'border-bottom-color': this.colorHandler.defaultHeaderTailwindProperties['border-bottom-color'],
+                    'border-bottom-width': this.colorHandler.defaultHeaderTailwindProperties['border-bottom-width'],
+                    'border-bottom-style': this.colorHandler.defaultHeaderTailwindProperties['border-bottom-style']
+                });
+            }
+        });
+
+        // Row headers: Add right borders to newly affected headers
+        toAddRowReflections.forEach(rowIndex => {
+            if (this.styleMode === 'style') {
+                this.colorHandler.setHeaderStyling('row', rowIndex, {
+                    'border-right-color': reflectionColor,
+                    'border-right-width': reflectionWidth,
+                    'border-right-style': 'solid'
+                });
+            } else {
+                this.colorHandler.setHeaderTailwindStyling('row', rowIndex, {
+                    'border-right-color': 'blue-500',
+                    'border-right-width': '3',
+                    'border-right-style': 'solid'
+                });
+            }
+        });
+
+        // Column headers: Add bottom borders to newly affected headers
+        toAddColReflections.forEach(colIndex => {
+            if (this.styleMode === 'style') {
+                this.colorHandler.setHeaderStyling('col', colIndex, {
+                    'border-bottom-color': reflectionColor,
+                    'border-bottom-width': reflectionWidth,
+                    'border-bottom-style': 'solid'
+                });
+            } else {
+                this.colorHandler.setHeaderTailwindStyling('col', colIndex, {
+                    'border-bottom-color': 'blue-500',
+                    'border-bottom-width': '3',
+                    'border-bottom-style': 'solid'
+                });
+            }
+        });
+
+        // Invalidate virtualization to re-render affected headers
+        if (toAddRowReflections.size > 0 || toRemoveRowReflections.size > 0 ||
+            toAddColReflections.size > 0 || toRemoveColReflections.size > 0) {
+            this.virtualizeHandler.onVisibleComponentsChanged?.(this.virtualizeHandler);
+        }
+    };
 
     // Add clipboard event handlers when entering navigation mode
     private addClipboardHandlers(): void {
@@ -658,9 +737,6 @@ export default class SmartSheetController<TExtraProps = undefined,
 
         // Process selection actions with anchors and pointers
         this.selectionHandler.processMouseSelection(analysis, navigationAnchorsAndPointers);
-
-        // Reflect selections on headers
-        this.reflectSelectionsOnHeaders();
     }
 
     // Keyboard navigation: process input and update selection
@@ -686,7 +762,6 @@ export default class SmartSheetController<TExtraProps = undefined,
                 newPos = this.navigationHandler.getCurrentPosition();
             }
                 this.selectionHandler.selectSingle(newPos);
-                this.reflectSelectionsOnHeaders();
                 return;
         } else if (basicAnalysis.keyCategory === 'command') {
             const commandAnalysis = this.inputAnalyzer.analyzeCommand(basicAnalysis);
@@ -737,7 +812,6 @@ export default class SmartSheetController<TExtraProps = undefined,
             // Handle writing input (e.g. typing in a cell)
             this.dataHandler.startEditingComponent(currentPosition, 'cell', basicAnalysis.key);
             this.selectionHandler.clearSelections();
-            this.reflectSelectionsOnHeaders();
             return;
         } else if (basicAnalysis.keyCategory === 'delete') {
             const selections = this.selectionHandler.getSelectedPositions();
@@ -749,7 +823,6 @@ export default class SmartSheetController<TExtraProps = undefined,
             // Handle edit input (e.g. pressing Enter in a cell)
             this.dataHandler.startEditingComponent(currentPosition, 'cell');
             this.selectionHandler.clearSelections();
-            this.reflectSelectionsOnHeaders();
             return;
         }
         // Other categories not processed yet
@@ -766,7 +839,6 @@ export default class SmartSheetController<TExtraProps = undefined,
         this.selectionHandler.selectSingle(this.navigationHandler.getCurrentPosition());
         // Update the visible components
         this.virtualizeHandler.onVisibleComponentsChanged?.(this.virtualizeHandler);
-        this.reflectSelectionsOnHeaders();
     }
 
     handleInputCancel(event: KeyboardEvent) {
@@ -775,7 +847,6 @@ export default class SmartSheetController<TExtraProps = undefined,
         this.selectionHandler.selectSingle(this.navigationHandler.getCurrentPosition());
         // Update the visible components
         this.virtualizeHandler.onVisibleComponentsChanged?.(this.virtualizeHandler);
-        this.reflectSelectionsOnHeaders();
     }
 
     // Handle navigation keys with specialized analysis
@@ -812,11 +883,11 @@ export default class SmartSheetController<TExtraProps = undefined,
         this.addClipboardHandlers();
 
         // Only auto-select current position if there's no existing selection
+        // currently disabled, might be eliminated or enabled later
         const currentSelection = this.selectionHandler.getSelectedCells();
         if (currentSelection.size === 0) {
             const currentPosition = this.navigationHandler.getCurrentPosition();
             //this.selectionHandler.selectSingle(currentPosition);
-            this.reflectSelectionsOnHeaders();
         }
         return true;
     }
@@ -887,23 +958,6 @@ export default class SmartSheetController<TExtraProps = undefined,
         return this.virtualizeHandler.getVisibleComponents();
     }
 
-    // =============================================================================================
-    // ===================== PUBLIC API - Methods exposed for external control =====================
-    // =============================================================================================
-
-    selectPositions(positions: GridPosition[]): void {
-        // Clear existing selections first
-        this.selectionHandler.clearSelections();
-        // Add individual selections for each position
-        this.selectionHandler.addMultipleSelections(positions);
-        this.reflectSelectionsOnHeaders();
-    }
-
-    navigateToPosition(position: GridPosition): boolean {
-        const result = this.navigationHandler.movePointer(position);
-        return result !== null;
-    }
-
     // Helper to get grid info for external logic
     getGridDimensions(): GridDimensions {
         return { ...this.gridDimensions };
@@ -931,6 +985,181 @@ export default class SmartSheetController<TExtraProps = undefined,
 
     getSelections() {
         return this.selectionHandler.getSelections();
+    }
+
+    // ===================== HEADER SUBSET CALCULATIONS =====================
+
+    /**
+     * This section defines the logic for calculating subsets of cells based on header selections.
+     * This is the base for NARROWING concept in study, the aim is to operate certains APIs in a
+     * subset of cells defined by header selections.
+     */
+
+    /**
+     * Calculate subset of cells based on current header selections
+     * - If only row selections exist: use cells derived from row headers
+     * - If only column selections exist: use cells derived from column headers
+     * - If both exist: calculate intersection of row and column selections
+     * - If neither exist: return empty set
+     */
+    private calculateHeaderSubsetCells(): {
+        subsetCells: Set<string>,
+        hasRowSelections: boolean,
+        hasColSelections: boolean
+    } {
+        const rowSelections = this.selectionHandler.getHeaderSelectionsRows();
+        const colSelections = this.selectionHandler.getHeaderSelectionsCols();
+
+        const hasRowSelections = rowSelections.length > 0;
+        const hasColSelections = colSelections.length > 0;
+
+        let subsetCells: Set<string>;
+
+        if (hasRowSelections && hasColSelections) {
+            // INTERSECTION: cells that exist in BOTH row and column selections
+            subsetCells = this.selectionHandler.calculateRowColIntersection(rowSelections, colSelections);
+        } else if (hasRowSelections) {
+            // Only rows: use cells derived from row header selections
+            subsetCells = new Set<string>();
+            rowSelections.forEach(headerSelection => {
+                headerSelection.getCells().forEach(cell => subsetCells.add(cell));
+            });
+        } else if (hasColSelections) {
+            // Only columns: use cells derived from column header selections
+            subsetCells = new Set<string>();
+            colSelections.forEach(headerSelection => {
+                headerSelection.getCells().forEach(cell => subsetCells.add(cell));
+            });
+        } else {
+            // No header selections: empty set
+            subsetCells = new Set<string>();
+        }
+
+        return { subsetCells, hasRowSelections, hasColSelections };
+    }
+
+    /** =============================================================================================
+    /*  ===================== PUBLIC API - Methods exposed for external control =====================
+    /*  =============================================================================================
+    */
+
+    // ===================== SELECTION APIs =====================
+    selectPositions(positions: GridPosition[]): void {
+        // Clear existing selections first
+        this.selectionHandler.clearSelections();
+        // Add individual selections for each position
+        this.selectionHandler.addMultipleSelections(positions);
+    }
+
+    selectHeaders(headerType: 'row' | 'col', indices: number[]): void {
+        // Clear existing selections first
+        this.selectionHandler.clearSelections();
+        // Add individual selections for each header index
+        this.selectionHandler.addMultipleHeaderSelections(headerType, indices);
+    }
+
+    // Selection API that takes a function aware of cell structure
+    applySelections(
+        selectionGenerator: (cells: Map<string, CellComponent<TExtraProps>>) => GridPosition[]
+    ): void {
+        this.selectionHandler.clearSelections();
+        const positions = selectionGenerator(this.cellComponents);
+        //this.selectPositions(positions);
+        // New intelligent selection application
+        this.selectionHandler.addIntelligentSelections(positions);
+    }
+
+    applyHeaderSelections(
+        headerType: 'row' | 'col',
+        selectionGenerator: (
+            headers: Map<string, TRowHeaderProps | TColHeaderProps>
+        ) => number[]
+    ): void {
+        this.selectionHandler.clearSelections();
+        let indices: number[] = [];
+        if (headerType === 'row') {
+            indices = selectionGenerator(this.rowHeaderComponents as Map<string, TRowHeaderProps>);
+        } else {
+            indices = selectionGenerator(this.colHeaderComponents as Map<string, TColHeaderProps>);
+        }
+        //this.selectionHandler.addMultipleHeaderSelections(headerType, indices);
+        // New intelligent header selection application
+        this.selectionHandler.addIntelligentHeaderSelections(headerType, indices);
+    }
+
+    // ===================== NAVIGATION APIs =====================
+
+    navigateToPosition(position: GridPosition): boolean {
+        const result = this.navigationHandler.movePointer(position);
+        return result !== null;
+    }
+
+    // Navigation APIs that take functions aware of cell structure
+    navigateToFirst(
+        cellMatcher: (cell: CellComponent<TExtraProps>) => boolean
+    ): boolean {
+        const success = this.navigationHandler.navigateToFirst(cellMatcher);
+
+        // If navigation was successful, select the cell
+        if (success) {
+            const currentPosition = this.navigationHandler.getCurrentPosition();
+            this.selectionHandler.selectSingle(currentPosition);
+        }
+
+        return success;
+    }
+
+    navigateToNext(
+        cellMatcher: (cell: CellComponent<TExtraProps>) => boolean
+    ): boolean {
+        const success = this.navigationHandler.navigateToNext(cellMatcher);
+        // If navigation was successful, select the cell
+        if (success) {
+            const currentPosition = this.navigationHandler.getCurrentPosition();
+            this.selectionHandler.selectSingle(currentPosition);
+        }
+        return success;
+    }
+
+    /**
+     * Apply selections to a subset of cells based on current header selections
+     * This is a "narrowing" version of applySelections that only operates on cells 
+     * that are part of the current header selections.
+     *
+     * Logic:
+     * - If only row selections exist: operates on cells derived from row headers
+     * - If only column selections exist: operates on cells derived from column headers
+     * - If both exist: operates on intersection of row and column selections
+     * - If neither exist: returns without applying any selections
+     *
+     * @param selectionGenerator Function that receives filtered cell map and returns positions to select
+     */
+    applySelectionsToHeaderSubset(
+        selectionGenerator: (cells: Map<string, CellComponent<TExtraProps>>) => GridPosition[]
+    ): void {
+        // 1. Calculate subset of cells based on current header selections
+        const { subsetCells, hasRowSelections, hasColSelections } = this.calculateHeaderSubsetCells();
+
+        // 2. If no header selections exist, return without doing anything
+        if (subsetCells.size === 0) {
+            return;
+        }
+
+        // 3. Create filtered map with only cells from the subset
+        const subsetCellComponents = new Map<string, CellComponent<TExtraProps>>();
+        subsetCells.forEach(cellKey => {
+            const cellComponent = this.cellComponents.get(cellKey);
+            if (cellComponent) {
+                subsetCellComponents.set(cellKey, cellComponent);
+            }
+        });
+
+        // 4. Apply selection generator function to the filtered subset
+        const positions = selectionGenerator(subsetCellComponents);
+
+        // 5. Apply intelligent selections to the generated positions, clearing existing selections first
+        this.selectionHandler.clearSelections();
+        this.selectionHandler.addIntelligentSelections(positions);
     }
 
     // PUBLIC API for background control (supports single or batch via tuple arrays)
@@ -994,11 +1223,11 @@ export default class SmartSheetController<TExtraProps = undefined,
     }
 
     // Batch background styles via generator
-    applyBackgroundStyles(styleGenerator: (cells: Map<string, CellComponent>) => [GridPosition, BackgroundProperties][]): void {
+    applyBackgroundStyles(styleGenerator: (cells: Map<string, CellComponent<TExtraProps>>) => [GridPosition, BackgroundProperties][]): void {
         this.setProcessing('Applying background styles...', 'background-styles');
 
         try {
-            this.colorHandler.applyBackgroundStyles(styleGenerator as any);
+            this.colorHandler.applyBackgroundStyles(styleGenerator);
             // Update the visible components
             this.virtualizeHandler.onVisibleComponentsChanged?.(this.virtualizeHandler);
             this.clearProcessing();
@@ -1009,11 +1238,11 @@ export default class SmartSheetController<TExtraProps = undefined,
     }
 
     // Batch tailwind styles via generator
-    applyTailwindStyles(styleGenerator: (cells: Map<string, CellComponent>) => [GridPosition, TailwindProperties][]): void {
+    applyTailwindStyles(styleGenerator: (cells: Map<string, CellComponent<TExtraProps>>) => [GridPosition, TailwindProperties][]): void {
         this.setProcessing('Applying tailwind styles...', 'tailwind-styles');
 
         try {
-            this.colorHandler.applyTailwindStyles(styleGenerator as any);
+            this.colorHandler.applyTailwindStyles(styleGenerator);
             // Update the visible components
             this.virtualizeHandler.onVisibleComponentsChanged?.(this.virtualizeHandler);
             this.clearProcessing();
@@ -1036,43 +1265,6 @@ export default class SmartSheetController<TExtraProps = undefined,
             this.clearProcessing();
             throw error;
         }
-    }
-
-    // Selection API that takes a function aware of cell structure
-    applySelections(
-        selectionGenerator: (cells: Map<string, CellComponent<TExtraProps>>) => GridPosition[]
-    ): void {
-        const positions = selectionGenerator(this.cellComponents);
-        this.selectPositions(positions);
-    }
-
-    // Navigation APIs that take functions aware of cell structure
-    navigateToFirst(
-        cellMatcher: (cell: CellComponent<TExtraProps>) => boolean
-    ): boolean {
-        const success = this.navigationHandler.navigateToFirst(cellMatcher);
-
-        // If navigation was successful, select the cell
-        if (success) {
-            const currentPosition = this.navigationHandler.getCurrentPosition();
-            this.selectionHandler.selectSingle(currentPosition);
-            this.reflectSelectionsOnHeaders();
-        }
-
-        return success;
-    }
-
-    navigateToNext(
-        cellMatcher: (cell: CellComponent<TExtraProps>) => boolean
-    ): boolean {
-        const success = this.navigationHandler.navigateToNext(cellMatcher);
-        // If navigation was successful, select the cell
-        if (success) {
-            const currentPosition = this.navigationHandler.getCurrentPosition();
-            this.selectionHandler.selectSingle(currentPosition);
-            this.reflectSelectionsOnHeaders();
-        }
-        return success;
     }
 
     // Data imputation APIs

@@ -62,32 +62,72 @@ export default class ColorHandler<TExtraProps = undefined, TRowHeaderProps = und
 
     defaultCellBackgroundProperties: BackgroundProperties = {
         'background-color': 'transparent',
-        'border-color': 'rgba(0, 100, 200, 0.15)',
-        'border-width': '1px',
+        'border-top-color': 'rgba(0, 100, 200, 0.15)',
+        'border-top-width': '1px',
+        'border-top-style': 'solid',
+        'border-right-color': 'rgba(0, 100, 200, 0.15)',
+        'border-right-width': '1px',
+        'border-right-style': 'solid',
+        'border-bottom-color': 'rgba(0, 100, 200, 0.15)',
+        'border-bottom-width': '1px',
+        'border-bottom-style': 'solid',
+        'border-left-color': 'rgba(0, 100, 200, 0.15)',
+        'border-left-width': '1px',
+        'border-left-style': 'solid',
         'opacity': 1,
         'text-color': 'inherit',
     };
 
     defaultCellTailwindProperties: TailwindProperties = {
         'bg-color': 'transparent',
-        'border-color': 'electric-blue/15',
-        'border-width': '1',
+        'border-top-color': 'electric-blue/15',
+        'border-top-width': '1',
+        'border-top-style': 'solid',
+        'border-right-color': 'electric-blue/15',
+        'border-right-width': '1',
+        'border-right-style': 'solid',
+        'border-bottom-color': 'electric-blue/15',
+        'border-bottom-width': '1',
+        'border-bottom-style': 'solid',
+        'border-left-color': 'electric-blue/15',
+        'border-left-width': '1',
+        'border-left-style': 'solid',
         'text-color': 'inherit',
         'opacity': 1,
     };
 
     defaultHeaderBackgroundProperties: BackgroundProperties = {
-        'background-color': 'rgba(0, 120, 200, 0.3)', // Fondo azul muy suave
-        'border-color': 'rgba(0, 100, 200, 0.15)', // Borde azul un poco más marcado
-        'border-width': '1px',
+        'background-color': 'rgba(0, 120, 200, 0.3)',
+        'border-right-color': 'rgba(0, 100, 200, 0.15)',
+        'border-right-width': '1px',
+        'border-right-style': 'solid',
+        'border-bottom-color': 'rgba(0, 100, 200, 0.15)',
+        'border-bottom-width': '1px',
+        'border-bottom-style': 'solid',
+        'border-left-color': 'rgba(0, 100, 200, 0.15)',
+        'border-left-width': '1px',
+        'border-left-style': 'solid',
+        'border-top-color': 'rgba(0, 100, 200, 0.15)',
+        'border-top-width': '1px',
+        'border-top-style': 'solid',
         'opacity': 1,
         'text-color': 'inherit',
     };
 
     defaultHeaderTailwindProperties: TailwindProperties = {
         'bg-color': 'electric-blue/30',
-        'border-color': 'electric-blue/15',
-        'border-width': '1',
+        'border-top-color': 'electric-blue/15',
+        'border-top-width': '1',
+        'border-top-style': 'solid',
+        'border-right-color': 'electric-blue/15',
+        'border-right-width': '1',
+        'border-right-style': 'solid',
+        'border-bottom-color': 'electric-blue/15',
+        'border-bottom-width': '1',
+        'border-bottom-style': 'solid',
+        'border-left-color': 'electric-blue/15',
+        'border-left-width': '1',
+        'border-left-style': 'solid',
         'text-color': 'inherit',
         'opacity': 1,
     };
@@ -153,21 +193,45 @@ export default class ColorHandler<TExtraProps = undefined, TRowHeaderProps = und
                 case 'bg-color':
                     tailwindClasses.push(`bg-${value}`);
                     break;
-                case 'border-color':
-                    tailwindClasses.push(`border-${value}`);
-                    break;
-                case 'border-width':
-                    if (value === '1') {
-                        tailwindClasses.push(`border`);
-                    } else {
-                        tailwindClasses.push(`border-${value}`);
-                    }
-                    break;
-                case 'border-style':
-                    tailwindClasses.push(`border-${value}`);
-                    break;
                 case 'border-radius':
                     tailwindClasses.push(`rounded-${value}`);
+                    break;
+                // Directional borders - granular control
+                case 'border-top-color':
+                    tailwindClasses.push(`border-t-${value}`);
+                    break;
+                case 'border-top-width':
+                    tailwindClasses.push(`border-t-${value}`);
+                    break;
+                case 'border-top-style':
+                    tailwindClasses.push(`border-t-${value}`);
+                    break;
+                case 'border-right-color':
+                    tailwindClasses.push(`border-r-${value}`);
+                    break;
+                case 'border-right-width':
+                    tailwindClasses.push(`border-r-${value}`);
+                    break;
+                case 'border-right-style':
+                    tailwindClasses.push(`border-r-${value}`);
+                    break;
+                case 'border-bottom-color':
+                    tailwindClasses.push(`border-b-${value}`);
+                    break;
+                case 'border-bottom-width':
+                    tailwindClasses.push(`border-b-${value}`);
+                    break;
+                case 'border-bottom-style':
+                    tailwindClasses.push(`border-b-${value}`);
+                    break;
+                case 'border-left-color':
+                    tailwindClasses.push(`border-l-${value}`);
+                    break;
+                case 'border-left-width':
+                    tailwindClasses.push(`border-l-${value}`);
+                    break;
+                case 'border-left-style':
+                    tailwindClasses.push(`border-l-${value}`);
                     break;
                 case 'text-color':
                     tailwindClasses.push(`text-${value}`);
@@ -211,7 +275,12 @@ export default class ColorHandler<TExtraProps = undefined, TRowHeaderProps = und
     }
 
     changeCellBorderColor(position: GridPosition, color: string): void {
-        this.setCellStyling(position, { 'border-color': color });
+        this.setCellStyling(position, {
+            'border-top-color': color,
+            'border-right-color': color,
+            'border-bottom-color': color,
+            'border-left-color': color
+        });
     }
 
     changeCellOpacity(position: GridPosition, value: number): void {
@@ -223,7 +292,12 @@ export default class ColorHandler<TExtraProps = undefined, TRowHeaderProps = und
     }
 
     changeBorderStyle(position: GridPosition, style: string): void {
-        this.setCellStyling(position, { 'border-style': style });
+        this.setCellStyling(position, {
+            'border-top-style': style,
+            'border-right-style': style,
+            'border-bottom-style': style,
+            'border-left-style': style
+        });
     }
 
     changeCellTailwindBackgroundColor(position: GridPosition, color: string): void {
@@ -235,7 +309,12 @@ export default class ColorHandler<TExtraProps = undefined, TRowHeaderProps = und
     }
 
     changeCellTailwindBorder(position: GridPosition, color: string): void {
-        this.setCellTailwindStyling(position, { 'border-color': color });
+        this.setCellTailwindStyling(position, {
+            'border-top-color': color,
+            'border-right-color': color,
+            'border-bottom-color': color,
+            'border-left-color': color
+        });
     }
 
     changeCellTailwindOpacity(position: GridPosition, opacity: number): void {

@@ -209,6 +209,33 @@
         controller.selectPositions(positions);
     }
 
+    export function selectHeaders(headerType: 'row' | 'col', indices: number[]) {
+        controller.selectHeaders(headerType, indices);
+    }
+
+    // Selection APIs that take functions aware of cell structure
+    export function applySelections(selectionGenerator: (cells: Map<string, CellComponent<TExtraProps>>) => GridPosition[]) {
+        controller.applySelections(selectionGenerator);
+    }
+
+    export function applyHeaderSelections(
+        headerType: 'row' | 'col',
+        selectionGenerator: (
+            headers: Map<string, TRowHeaderProps | TColHeaderProps>
+        ) => number[]
+    ) {
+        controller.applyHeaderSelections(headerType, selectionGenerator);
+    }
+
+    export function applySelectionsToHeaderSubset(selectionGenerator: (cells: Map<string, CellComponent<TExtraProps>>) => GridPosition[]) {
+        controller.applySelectionsToHeaderSubset(selectionGenerator);
+    }
+
+    // Navigation APIs that take functions aware of cell structure
+    export function navigateToFirst(cellMatcher: (cell: CellComponent<TExtraProps>) => boolean) {
+        return controller.navigateToFirst(cellMatcher);
+    }
+
     export function navigateToPosition(position: GridPosition) {
         return controller.navigateToPosition(position);
     }
@@ -234,22 +261,12 @@
     }
 
     // Batch styling helpers exposed
-    export function applyBackgroundStyles(styleGenerator: (cells: Map<string, CellComponent<TExtraProps>>) => [GridPosition, any][]) {
-        controller.applyBackgroundStyles(styleGenerator as any);
+    export function applyBackgroundStyles(styleGenerator: (cells: Map<string, CellComponent<TExtraProps>>) => [GridPosition, BackgroundProperties][]) {
+        controller.applyBackgroundStyles(styleGenerator);
     }
 
-    export function applyTailwindStyles(styleGenerator: (cells: Map<string, CellComponent<TExtraProps>>) => [GridPosition, any][]) {
-        controller.applyTailwindStyles(styleGenerator as any);
-    }
-
-    // Selection APIs that take functions aware of cell structure
-    export function applySelections(selectionGenerator: (cells: Map<string, CellComponent<TExtraProps>>) => GridPosition[]) {
-        controller.applySelections(selectionGenerator as any);
-    }
-
-    // Navigation APIs that take functions aware of cell structure
-    export function navigateToFirst(cellMatcher: (cell: CellComponent<TExtraProps>) => boolean) {
-        return controller.navigateToFirst(cellMatcher as any);
+    export function applyTailwindStyles(styleGenerator: (cells: Map<string, CellComponent<TExtraProps>>) => [GridPosition, TailwindProperties][]) {
+        controller.applyTailwindStyles(styleGenerator);
     }
 
     // Headers styling APIs
@@ -259,16 +276,16 @@
     }
 
     export function navigateToNext(cellMatcher: (cell: CellComponent<TExtraProps>) => boolean) {
-        return controller.navigateToNext(cellMatcher as any);
+        return controller.navigateToNext(cellMatcher);
     }
 
     // Data imputation APIs
-    export function imputeValues(imputations: [GridPosition, any][]) {
-        return controller.imputeValues(imputations as any);
+    export function imputeValues(imputations: [GridPosition, CellValue][]) {
+        return controller.imputeValues(imputations);
     }
 
-    export function applyImputations(imputationGenerator: (cells: Map<string, CellComponent<TExtraProps>>) => [GridPosition, any][]): GridPosition[] {
-        return controller.applyImputations(imputationGenerator as any);
+    export function applyImputations(imputationGenerator: (cells: Map<string, CellComponent<TExtraProps>>) => [GridPosition, CellValue][]): GridPosition[] {
+        return controller.applyImputations(imputationGenerator);
     }
 
     export function resetAllBackgrounds(): void {
@@ -299,22 +316,22 @@
     // Batch header + cells styling APIs
     export function applyRowHeaderAndCellsBackgroundStyles(styleGenerator: (headers: Map<string,
     HeaderComponent<TRowHeaderProps>>) => [number, BackgroundProperties, BackgroundProperties][]): void {
-        controller.applyRowHeaderAndCellsBackgroundStyles(styleGenerator as any);
+        controller.applyRowHeaderAndCellsBackgroundStyles(styleGenerator);
     }
 
     export function applyColHeaderAndCellsBackgroundStyles(styleGenerator: (headers: Map<string,
     HeaderComponent<TColHeaderProps>>) => [number, BackgroundProperties, BackgroundProperties][]): void {
-        controller.applyColHeaderAndCellsBackgroundStyles(styleGenerator as any);
+        controller.applyColHeaderAndCellsBackgroundStyles(styleGenerator);
     }
 
     export function applyRowHeaderAndCellsTailwindStyles(styleGenerator: (headers: Map<string,
     HeaderComponent<TRowHeaderProps>>) => [number, TailwindProperties, TailwindProperties][]): void {
-        controller.applyRowHeaderAndCellsTailwindStyles(styleGenerator as any);
+        controller.applyRowHeaderAndCellsTailwindStyles(styleGenerator);
     }
 
     export function applyColHeaderAndCellsTailwindStyles(styleGenerator: (headers: Map<string,
     HeaderComponent<TColHeaderProps>>) => [number, TailwindProperties, TailwindProperties][]): void {
-        controller.applyColHeaderAndCellsTailwindStyles(styleGenerator as any);
+        controller.applyColHeaderAndCellsTailwindStyles(styleGenerator);
     }
 
     // Flash effect APIs
