@@ -524,7 +524,7 @@
         >
             <!-- Top-Left Corner -->
             <div
-                class="corner-header sticky top-0 left-0 z-10 bg-tertiaryBg"
+                class="corner-header sticky top-0 left-0 z-10 bg-tertiaryBg cursor-pointer"
                 style="
                     display: grid;
                     grid-column: 1;
@@ -549,7 +549,7 @@
             <!-- Columns Headers -->
             <div
                 bind:this={columnsHeaderContainer}
-                class="columns-headers sticky top-0 z-[6] bg-tertiaryBg"
+                class="columns-headers sticky top-0 z-[6] bg-tertiaryBg cursor-pointer"
                 style="
                     display: grid;
                     grid-column: 2 / -1;
@@ -615,7 +615,7 @@
             <!-- Rows Headers -->
             <div
                 bind:this={rowsHeaderContainer}
-                class="rows-headers text-center sticky left-0 z-[6] bg-tertiaryBg"
+                class="rows-headers text-center sticky left-0 z-[6] bg-tertiaryBg cursor-pointer"
                 style="
                     display: grid;
                     grid-column: 1;
@@ -678,24 +678,10 @@
 
             </div>
 
-            <!-- Corner Header (top-left sticky intersection) -->
-            <div
-                class="corner-header sticky top-0 left-0 z-60 bg-tertiaryBg border-r border-b border-tertiaryOnBg"
-                style="
-                    grid-column: 1;
-                    grid-row: 1;
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                "
-            >
-                <!-- Corner content can be added here if needed -->
-            </div>
-
             <!-- Main grid as subgrid (tu grid actual sin cambios) -->
             <div
                 bind:this={mainGridContainer}
-                class="main-grid"
+                class="main-grid cursor-cell"
                 style="
                     display: grid;
                     grid-column: 2 / -1;

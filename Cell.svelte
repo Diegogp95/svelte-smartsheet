@@ -55,7 +55,7 @@
 
 <div
     style=" grid-row: {position.row + 1}; grid-column: {position.col + 1};"
-    class="px-2 py-1 cursor-pointer select-none transition-colors
+    class="px-2 py-1 select-none transition-colors
         duration-200 w-full h-full flex items-center relative"
     data-row={position.row}
     data-col={position.col}

@@ -613,6 +613,13 @@ export default class SmartSheetController<TExtraProps = undefined,
             return;
         }
 
+        // No need to translate mousedown in corner header (always the same position)
+        // No need for start drag, just create a selection of all cells
+        if (containerType === 'corner' && eventType === 'mousedown') {
+            this.handleCornerHeaderClick(event);
+            return;
+        }
+
         const position = this.mouseEventTranslator.translateMouseToGridPosition(event, containerType);
 
         if (!position) {
@@ -634,6 +641,22 @@ export default class SmartSheetController<TExtraProps = undefined,
             // Connect to existing system
             this.handleMouseEvent(new CustomEvent('header-mouse', { detail: headerMouseEvent }));
         }
+    }
+
+    /**
+     * Handle click in corner header (select all)
+     */
+    handleCornerHeaderClick(event: MouseEvent) {
+        // Only left click
+        if (event.button !== 0) {
+            return;
+        }
+        this.navigationHandler.setAnchor({ row: this.gridDimensions.maxRow, col: this.gridDimensions.maxCol });
+        this.navigationHandler.movePointer({ row: 0, col: 0 });
+        this.selectionHandler.clearSelections();
+        this.selectionHandler.addMultipleCellRanges([{ topLeft: { row: 0, col: 0 },
+            bottomRight: { row: this.gridDimensions.maxRow, col: this.gridDimensions.maxCol } }]);
+        return;
     }
 
     /**

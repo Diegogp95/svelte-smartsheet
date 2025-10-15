@@ -244,13 +244,110 @@ export default class ColorHandler<TExtraProps = undefined, TRowHeaderProps = und
         return tailwindClasses.join(' ');
     }
 
+    /**
+     * Parse CSS style string back to BackgroundProperties object
+     */
+    parseStyleString(styleString: string): BackgroundProperties {
+        const properties: BackgroundProperties = {};
+        if (!styleString) return properties;
+
+        // Split by semicolon and process each declaration
+        const declarations = styleString.split(';').filter(decl => decl.trim());
+
+        for (const declaration of declarations) {
+            const colonIndex = declaration.indexOf(':');
+            if (colonIndex === -1) continue;
+
+            const property = declaration.substring(0, colonIndex).trim() as keyof BackgroundProperties;
+            const value = declaration.substring(colonIndex + 1).trim();
+
+            // Only include valid BackgroundProperties keys
+            if (property in this.defaultCellBackgroundProperties || property in this.defaultHeaderBackgroundProperties) {
+                if (property === 'opacity') {
+                    properties[property] = parseFloat(value) || 1;
+                } else {
+                    (properties as any)[property] = value;
+                }
+            }
+        }
+
+        return properties;
+    }
+
+    /**
+     * Parse Tailwind class string back to TailwindProperties object
+     */
+    parseTailwindString(tailwindString: string): TailwindProperties {
+        const properties: TailwindProperties = {};
+        if (!tailwindString) return properties;
+
+        const classes = tailwindString.split(' ').filter(cls => cls.trim());
+
+        for (const cls of classes) {
+            // Background color: bg-{value}
+            if (cls.startsWith('bg-') && !cls.startsWith('bg-opacity-')) {
+                properties['bg-color'] = cls.substring(3);
+            }
+            // Border radius: rounded-{value}
+            else if (cls.startsWith('rounded-')) {
+                properties['border-radius'] = cls.substring(8);
+            }
+            // Border top color: border-t-{value}
+            else if (cls.startsWith('border-t-') && !cls.match(/border-t-\d+$/)) {
+                properties['border-top-color'] = cls.substring(9);
+            }
+            // Border top width: border-t-{number}
+            else if (cls.match(/^border-t-\d+$/)) {
+                properties['border-top-width'] = cls.substring(9);
+            }
+            // Border right color: border-r-{value}
+            else if (cls.startsWith('border-r-') && !cls.match(/border-r-\d+$/)) {
+                properties['border-right-color'] = cls.substring(9);
+            }
+            // Border right width: border-r-{number}
+            else if (cls.match(/^border-r-\d+$/)) {
+                properties['border-right-width'] = cls.substring(9);
+            }
+            // Border bottom color: border-b-{value}
+            else if (cls.startsWith('border-b-') && !cls.match(/border-b-\d+$/)) {
+                properties['border-bottom-color'] = cls.substring(9);
+            }
+            // Border bottom width: border-b-{number}
+            else if (cls.match(/^border-b-\d+$/)) {
+                properties['border-bottom-width'] = cls.substring(9);
+            }
+            // Border left color: border-l-{value}
+            else if (cls.startsWith('border-l-') && !cls.match(/border-l-\d+$/)) {
+                properties['border-left-color'] = cls.substring(9);
+            }
+            // Border left width: border-l-{number}
+            else if (cls.match(/^border-l-\d+$/)) {
+                properties['border-left-width'] = cls.substring(9);
+            }
+            // Text color: text-{value}
+            else if (cls.startsWith('text-')) {
+                properties['text-color'] = cls.substring(5);
+            }
+            // Opacity: opacity-{value}
+            else if (cls.startsWith('opacity-')) {
+                properties['opacity'] = parseFloat(cls.substring(8)) || 1;
+            }
+        }
+
+        return properties;
+    }
+
     setCellStyling(position: GridPosition, properties: BackgroundProperties): void {
         if (this.styleMode !== 'style') return
         const cell = this.cellComponents.get(`${position.row}-${position.col}`);
         if (cell) {
+            // Parse current styles to preserve existing properties
+            const currentProperties = this.parseStyleString(cell.styles.styling);
+
+            // Merge current properties with new ones (new properties override existing ones)
             cell.styles.styling = this.bgPropertiesToString(
                 {
-                    ...this.defaultCellBackgroundProperties,
+                    ...currentProperties,
                     ...properties
                 }
             );
@@ -261,9 +358,13 @@ export default class ColorHandler<TExtraProps = undefined, TRowHeaderProps = und
         if (this.styleMode !== 'tailwind') return
         const cell = this.cellComponents.get(`${position.row}-${position.col}`);
         if (cell) {
+            // Parse current Tailwind classes to preserve existing properties
+            const currentProperties = this.parseTailwindString(cell.styles.tailwindStyling);
+
+            // Merge current properties with new ones (new properties override existing ones)
             cell.styles.tailwindStyling = this.tailwindPropertiesToString(
                 {
-                    ...this.defaultCellTailwindProperties,
+                    ...currentProperties,
                     ...properties
                 }
             );
@@ -337,9 +438,13 @@ export default class ColorHandler<TExtraProps = undefined, TRowHeaderProps = und
             header = this.cornerHeaderComponent;
         }
         if (header) {
+            // Parse current styles to preserve existing properties
+            const currentProperties = this.parseStyleString(header.styles.styling);
+
+            // Merge current properties with new ones (new properties override existing ones)
             header.styles.styling = this.bgPropertiesToString(
                 {
-                    ...this.defaultHeaderBackgroundProperties,
+                    ...currentProperties,
                     ...properties
                 }
             );
@@ -360,9 +465,13 @@ export default class ColorHandler<TExtraProps = undefined, TRowHeaderProps = und
             header = this.cornerHeaderComponent;
         }
         if (header) {
+            // Parse current Tailwind classes to preserve existing properties
+            const currentProperties = this.parseTailwindString(header.styles.tailwindStyling);
+
+            // Merge current properties with new ones (new properties override existing ones)
             header.styles.tailwindStyling = this.tailwindPropertiesToString(
                 {
-                    ...this.defaultHeaderTailwindProperties,
+                    ...currentProperties,
                     ...properties
                 }
             );
