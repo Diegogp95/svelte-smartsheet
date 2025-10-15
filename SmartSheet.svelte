@@ -236,6 +236,10 @@
         return controller.navigateToFirst(cellMatcher);
     }
 
+    export function navigateToNext(cellMatcher: (cell: CellComponent<TExtraProps>) => boolean) {
+        return controller.navigateToNext(cellMatcher);
+    }
+
     export function navigateToPosition(position: GridPosition) {
         return controller.navigateToPosition(position);
     }
@@ -273,10 +277,6 @@
 
     export function colorizeHeader(type: 'row' | 'col', index: number, color: string) {
         controller.setHeaderBackgroundColor(type, index, color);
-    }
-
-    export function navigateToNext(cellMatcher: (cell: CellComponent<TExtraProps>) => boolean) {
-        return controller.navigateToNext(cellMatcher);
     }
 
     // Data imputation APIs
