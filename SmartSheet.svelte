@@ -13,6 +13,7 @@
     import type { VisibleComponentsCallback } from './VirtualizeHandler';
     import type { EditingStateCallback } from './DataHandler';
     import type { ProcessingStateCallback } from './SmartSheetController';
+    import type { ImputedElementsCallback } from './DataHandler';
     import type {
         GridDimensions,
         GridPosition,
@@ -29,7 +30,8 @@
         TailwindProperties,
         EditingState,
         ProcessingState,
-        NumberFormatOptions,
+        NumberDisplayOptions,
+        NumberFormat,
     } from './types';
     import SelectionRect from './SelectionRect.svelte';
     import DeselectionRect from './DeselectionRect.svelte';
@@ -37,6 +39,7 @@
     import DimensionScanner from './DimensionScanner.svelte';
     import HeaderSelectionRect from './HeaderSelectionRect.svelte';
     import HeaderDeselectionRect from './HeaderDeselectionRect.svelte';
+    import ImputedLayer from './ImputedLayer.svelte';
 
     // Data
     export let gridData: (CellValue | undefined)[][];
@@ -55,13 +58,20 @@
     export let minCellWidth: string = '6rem'; // Minimum cell width (px or rem)
     export let minCellHeight: string = '3rem'; // Minimum cell height (px or rem)
     export let styleMode: 'style' | 'tailwind' = 'style'; // Choose between inline styles or Tailwind CSS classes
-    export let numberFormat: NumberFormatOptions = { decimalPlaces: 3 }; // Number formatting configuration
+    export let numberDisplayOptions: NumberDisplayOptions = { decimalPlaces: 3 }; // Number formatting configuration
+    export let numberFormat: NumberFormat = 'anglo'; // 'latin' or 'anglo' number format
 
     // Scan phase
     let gridDimensions: GridDimensions = { maxRow: gridData.length - 1, maxCol: (gridData[0]?.length || 1) - 1 };
     let scanning: boolean = true;
     let rowHeights: number[] = [];
     let colWidths: number[] = [];
+
+    /**
+     * ============================================================================================
+     * =============== STATE VARIABLES AND CALLBACKS FOR VISUAL REPRESENTATION ====================
+     * ============================================================================================
+     */
 
     // Selections array to render, will be subscribed to controller's selections by a callback
     let selections: Selection[] = [];
@@ -134,15 +144,33 @@
         visibleComponents = handler.getVisibleComponents();
     };
 
-    // Create controller with grid dimensions
+    // Imputed elements tracking layer
+    let imputedCells: Set<string> = new Set();
+    let imputedRowHeaders: Set<string> = new Set();
+    let imputedColHeaders: Set<string> = new Set();
+
+    // Subscribe to imputed elements changes from DataHandler
+    const subscribeToImputedElements: ImputedElementsCallback<TExtraProps, TRowHeaderProps, TColHeaderProps> = (handler) => {
+        imputedCells = handler.getImputedCells();
+        imputedRowHeaders = handler.getImputedRowHeaders();
+        imputedColHeaders = handler.getImputedColHeaders();
+    };
+
+    /**
+     * Controller instance for managing SmartSheet interactions
+     * This instance is responsible for handling user inputs, managing states,
+     * and coordinating between different components.
+     */
+
     let controller = new SmartSheetController<TExtraProps, TRowHeaderProps, TColHeaderProps>(
         {
             maxRow: gridData.length - 1,
             maxCol: (gridData[0]?.length || 1) - 1
         }, gridData as CellValue[][], rowHeaders, columnHeaders, rowsTitle,
         extraPropsMatrix, rowHeaderExtraProps, colHeaderExtraProps, styleMode, headersReadOnly,
-        subscribeToSelections, subscribeToPointerPosition, subscribeToDeselection,
+        numberFormat, subscribeToSelections, subscribeToPointerPosition, subscribeToDeselection,
         subscribeToVisibleComponents, undefined, subscribeToEditingState, subscribeToProcessingState,
+        subscribeToImputedElements,
     );
 
     let tableContainer: HTMLDivElement;
@@ -153,14 +181,6 @@
 
     // Reactive states managed by controller
     let navigationMode = false;
-
-    // Unified mouse event handler
-    function handleMouseEvent(event: CustomEvent<CellMouseEvent | HeaderMouseEvent>) {
-        if (!navigationMode) {
-            handleNavigationActivate();
-        }
-        controller.handleMouseEvent(event);
-    }
 
     // Cell input blur handler
     function handleInputBlur(event: CustomEvent<{ event: FocusEvent, position: GridPosition }>) {
@@ -490,7 +510,7 @@
         {fontSize}
         {minCellWidth}
         {minCellHeight}
-        {numberFormat}
+        {numberDisplayOptions}
         instanceId={controller.getInstanceId()}
         on:done={initializeVirtualizerOnTableMount}
     />
@@ -578,7 +598,7 @@
                     />
                 {/if}
                 <!-- Render visible column headers from VirtualizeHandler -->
-                {#each visibleComponents.colHeaders as headerComponent}
+                {#each visibleComponents.colHeaders as headerComponent (`col-header-${headerComponent.position.index}`)}
                     <!-- Only render if the header is not being edited -->
                     {#if !(currentEditingState && currentEditingState.type === 'header' &&
                            currentEditingState.position && 'headerType' in currentEditingState.position &&
@@ -590,6 +610,16 @@
                             styling={headerComponent.styles.styling}
                             tailwindStyling={headerComponent.styles.tailwindStyling}
                             instanceId={controller.getInstanceId()}
+                        />
+                    {/if}
+                {/each}
+
+                {#each visibleComponents.colHeaders as headerComponent (`imputed-col-header-${headerComponent.position.index}`)}
+                    <!-- Render imputed layer for visible column headers -->
+                    {#if imputedColHeaders.has(`${headerComponent.position.headerType}-${headerComponent.position.index}`)}
+                        <ImputedLayer
+                            position={headerComponent.position}
+                            type="col-header"
                         />
                     {/if}
                 {/each}
@@ -644,7 +674,7 @@
                     />
                 {/if}
                 <!-- Render visible row headers from VirtualizeHandler -->
-                {#each visibleComponents.rowHeaders as headerComponent}
+                {#each visibleComponents.rowHeaders as headerComponent (`row-header-${headerComponent.position.index}`)}
                     <!-- Only render if the header is not being edited -->
                     {#if !(currentEditingState && currentEditingState.type === 'header' &&
                            currentEditingState.position && 'headerType' in currentEditingState.position &&
@@ -656,6 +686,16 @@
                             styling={headerComponent.styles.styling}
                             tailwindStyling={headerComponent.styles.tailwindStyling}
                             instanceId={controller.getInstanceId()}
+                        />
+                    {/if}
+                {/each}
+
+                {#each visibleComponents.rowHeaders as headerComponent (`imputed-row-header-${headerComponent.position.index}`)}
+                    <!-- Render imputed layer for visible row headers -->
+                    {#if imputedRowHeaders.has(`${headerComponent.position.headerType}-${headerComponent.position.index}`)}
+                        <ImputedLayer
+                            position={headerComponent.position}
+                            type="row-header"
                         />
                     {/if}
                 {/each}
@@ -724,7 +764,17 @@
                             styling={cellComponent.styles.styling}
                             tailwindStyling={cellComponent.styles.tailwindStyling}
                             instanceId={controller.getInstanceId()}
-                            numberFormat={numberFormat}
+                            numberDisplayOptions={numberDisplayOptions}
+                        />
+                    {/if}
+                {/each}
+
+                {#each visibleComponents.cells as cellComponent (`imputed-cell-${cellComponent.position.row}-${cellComponent.position.col}`)}
+                    <!-- Render imputed layer for visible cells -->
+                    {#if imputedCells.has(`${cellComponent.position.row}-${cellComponent.position.col}`)}
+                        <ImputedLayer
+                            position={cellComponent.position}
+                            type="cell"
                         />
                     {/if}
                 {/each}

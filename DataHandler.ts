@@ -6,12 +6,17 @@ import type {
     HeaderComponent,
     HeaderValue,
     EditingState,
+    NumberFormat,
 } from './types';
 import { CellChange, HeaderChange, ChangeSet, HistoryManager } from './HistoryManager';
 import { tick } from 'svelte';
 
 // Callback type for editing state changes
 export type EditingStateCallback<TExtraProps, TRowHeaderProps, TColHeaderProps> =
+    (handler: DataHandler<TExtraProps, TRowHeaderProps, TColHeaderProps>) => void;
+
+// Callback type for imputed elements changes
+export type ImputedElementsCallback<TExtraProps, TRowHeaderProps, TColHeaderProps> =
     (handler: DataHandler<TExtraProps, TRowHeaderProps, TColHeaderProps>) => void;
 
 // Types for validation results
@@ -34,7 +39,6 @@ type AnyComponent<TExtraProps, TRowHeaderProps, TColHeaderProps> =
     | HeaderComponent<TColHeaderProps>;
 
 type AnyValue = CellValue | HeaderValue;
-type AnyPosition = GridPosition | HeaderPosition;
 
 // Generic interface for component changes
 interface ComponentChange<T extends AnyComponent<any, any, any>> {
@@ -50,6 +54,12 @@ interface ValidatedComponentChange<T extends AnyComponent<any, any, any>, V exte
 // ==================== VALUE VALIDATOR CLASS ====================
 
 class ValueValidator {
+    private numberFormat: NumberFormat;
+
+    constructor(numberFormat: NumberFormat) {
+        this.numberFormat = numberFormat;
+    }
+
     /**
      * Parse and validate input value based on expected type or auto-detection
      */
@@ -126,18 +136,242 @@ class ValueValidator {
     private tryParseNumber(inputValue: string): ValidationResult {
         const trimmed = inputValue.trim();
 
-        // Check for empty or non-numeric patterns
-        if (trimmed === '' || !/^-?(\d+\.?\d*|\.\d+)$/.test(trimmed)) {
+        // Handle empty input
+        if (trimmed === '') {
+            return { isValid: false, error: 'Empty input' };
+        }
+
+        // Handle edge cases: numbers starting or ending with separators
+        if (trimmed.startsWith('.') || trimmed.startsWith(',')) {
+            // Handle cases like ".5" or ",5"
+            const withoutLeading = trimmed.substring(1);
+            if (/^\d+$/.test(withoutLeading)) {
+                const value = Number('0.' + withoutLeading);
+                return { isValid: true, value, detectedType: 'number' };
+            }
+        }
+
+        if (trimmed.endsWith('.') || trimmed.endsWith(',')) {
+            // Handle cases like "1." or "1,"
+            const withoutTrailing = trimmed.substring(0, trimmed.length - 1);
+            if (/^\d+$/.test(withoutTrailing)) {
+                return { isValid: true, value: Number(withoutTrailing), detectedType: 'number' };
+            }
+        }
+
+        // Check for basic integer (no separators)
+        if (/^-?\d+$/.test(trimmed)) {
+            const value = Number(trimmed);
+            if (!isNaN(value) && isFinite(value)) {
+                return { isValid: true, value, detectedType: 'number' };
+            }
+        }
+
+        // Analyze separator positions
+        const commaPositions = [...trimmed.matchAll(/,/g)].map(m => m.index!);
+        const dotPositions = [...trimmed.matchAll(/\./g)].map(m => m.index!);
+        const commaCount = commaPositions.length;
+        const dotCount = dotPositions.length;
+
+        // No separators case already handled above
+        if (commaCount === 0 && dotCount === 0) {
             return { isValid: false, error: 'Not a valid number' };
         }
 
-        const parsed = Number(trimmed);
+        // Mixed separators - determine format by last separator
+        if (commaCount > 0 && dotCount > 0) {
+            const lastComma = Math.max(...commaPositions);
+            const lastDot = Math.max(...dotPositions);
 
-        if (isNaN(parsed) || !isFinite(parsed)) {
-            return { isValid: false, error: 'Not a valid number' };
+            if (lastComma > lastDot) {
+                // 1.000,50 → Latino format (dots=thousands, comma=decimal)
+                return this.validateAndParseLatinFormat(trimmed, dotPositions, lastComma);
+            } else {
+                // 1,000.50 → Anglo format (commas=thousands, dot=decimal)
+                return this.validateAndParseAngloFormat(trimmed, commaPositions, lastDot);
+            }
         }
 
-        return { isValid: true, value: parsed, detectedType: 'number' };
+        // Multiple of same separator
+        if (commaCount > 1 && dotCount === 0) {
+            // Multiple commas → Anglo thousands format
+            return this.validateAndParseThousands(trimmed, commaPositions, 'anglo');
+        }
+
+        if (dotCount > 1 && commaCount === 0) {
+            // Multiple dots → Latin thousands format
+            return this.validateAndParseThousands(trimmed, dotPositions, 'latin');
+        }
+
+        // Single separator - ambiguous case, use configuration
+        if ((commaCount === 1 && dotCount === 0) || (dotCount === 1 && commaCount === 0)) {
+            return this.parseAmbiguousSeparator(trimmed);
+        }
+
+        return { isValid: false, error: 'Invalid number format' };
+    }
+
+    /**
+     * Validate and parse Latin format (dots=thousands, comma=decimal)
+     */
+    private validateAndParseLatinFormat(input: string, dotPositions: number[], decimalPos: number): ValidationResult {
+        const beforeDecimal = input.substring(0, decimalPos);
+        const afterDecimal = input.substring(decimalPos + 1);
+
+        // Validate decimal part (only digits)
+        if (!/^\d+$/.test(afterDecimal)) {
+            return { isValid: false, error: 'Invalid decimal part' };
+        }
+
+        // Validate thousands part
+        if (!this.validateThousandsPattern(beforeDecimal, dotPositions, '.')) {
+            return { isValid: false, error: 'Invalid thousands pattern' };
+        }
+
+        // Parse: remove dots, replace comma with dot
+        const normalized = input.replace(/\./g, '').replace(',', '.');
+        const value = Number(normalized);
+
+        if (isNaN(value) || !isFinite(value)) {
+            return { isValid: false, error: 'Failed to parse number' };
+        }
+
+        return { isValid: true, value, detectedType: 'number' };
+    }
+
+    /**
+     * Validate and parse Anglo format (commas=thousands, dot=decimal)
+     */
+    private validateAndParseAngloFormat(input: string, commaPositions: number[], decimalPos: number): ValidationResult {
+        const beforeDecimal = input.substring(0, decimalPos);
+        const afterDecimal = input.substring(decimalPos + 1);
+
+        // Validate decimal part (only digits)
+        if (!/^\d+$/.test(afterDecimal)) {
+            return { isValid: false, error: 'Invalid decimal part' };
+        }
+
+        // Validate thousands part
+        if (!this.validateThousandsPattern(beforeDecimal, commaPositions, ',')) {
+            return { isValid: false, error: 'Invalid thousands pattern' };
+        }
+
+        // Parse: remove commas
+        const normalized = input.replace(/,/g, '');
+        const value = Number(normalized);
+
+        if (isNaN(value) || !isFinite(value)) {
+            return { isValid: false, error: 'Failed to parse number' };
+        }
+
+        return { isValid: true, value, detectedType: 'number' };
+    }
+
+    /**
+     * Validate and parse thousands-only format
+     */
+    private validateAndParseThousands(input: string, positions: number[], format: NumberFormat): ValidationResult {
+        const separator = format === 'latin' ? '.' : ',';
+
+        if (!this.validateThousandsPattern(input, positions, separator)) {
+            return { isValid: false, error: 'Invalid thousands pattern' };
+        }
+
+        // Parse: remove separators
+        const normalized = input.replace(new RegExp('\\' + separator, 'g'), '');
+        const value = Number(normalized);
+
+        if (isNaN(value) || !isFinite(value)) {
+            return { isValid: false, error: 'Failed to parse number' };
+        }
+
+        return { isValid: true, value, detectedType: 'number' };
+    }
+
+    /**
+     * Validate thousands separator pattern (1-3 digits, then groups of 3)
+     */
+    private validateThousandsPattern(input: string, positions: number[], separator: string): boolean {
+        const parts = input.split(separator);
+
+        // First part: 1-3 digits
+        if (!/^\d{1,3}$/.test(parts[0])) {
+            return false;
+        }
+
+        // Subsequent parts: exactly 3 digits each
+        for (let i = 1; i < parts.length; i++) {
+            if (!/^\d{3}$/.test(parts[i])) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * Parse ambiguous single separator using configuration
+     */
+    private parseAmbiguousSeparator(input: string): ValidationResult {
+        if (this.numberFormat === 'latin') {
+            if (input.includes(',')) {
+                // Comma always decimal in Latin
+                const normalized = input.replace(',', '.');
+                const value = Number(normalized);
+                if (!isNaN(value) && isFinite(value)) {
+                    return { isValid: true, value, detectedType: 'number' };
+                }
+            } else if (input.includes('.')) {
+                // Dot could be thousands or decimal - use heuristic
+                const parts = input.split('.');
+                const afterDot = parts[1];
+
+                if (afterDot.length === 3) {
+                    // Exactly 3 digits → thousands
+                    const normalized = input.replace(/\./g, '');
+                    const value = Number(normalized);
+                    if (!isNaN(value) && isFinite(value)) {
+                        return { isValid: true, value, detectedType: 'number' };
+                    }
+                } else {
+                    // Not 3 digits → decimal (Anglo style exception)
+                    const value = Number(input);
+                    if (!isNaN(value) && isFinite(value)) {
+                        return { isValid: true, value, detectedType: 'number' };
+                    }
+                }
+            }
+        } else { // anglo format
+            if (input.includes('.')) {
+                // Dot always decimal in Anglo
+                const value = Number(input);
+                if (!isNaN(value) && isFinite(value)) {
+                    return { isValid: true, value, detectedType: 'number' };
+                }
+            } else if (input.includes(',')) {
+                // Comma could be thousands or decimal - use heuristic
+                const parts = input.split(',');
+                const afterComma = parts[1];
+
+                if (afterComma.length === 3) {
+                    // Exactly 3 digits → thousands
+                    const normalized = input.replace(/,/g, '');
+                    const value = Number(normalized);
+                    if (!isNaN(value) && isFinite(value)) {
+                        return { isValid: true, value, detectedType: 'number' };
+                    }
+                } else {
+                    // Not 3 digits → decimal (Latin style exception)
+                    const normalized = input.replace(',', '.');
+                    const value = Number(normalized);
+                    if (!isNaN(value) && isFinite(value)) {
+                        return { isValid: true, value, detectedType: 'number' };
+                    }
+                }
+            }
+        }
+
+        return { isValid: false, error: 'Failed to parse ambiguous number' };
     }
 
     /**
@@ -180,9 +414,16 @@ export default class DataHandler<TExtraProps = undefined, TRowHeaderProps = unde
     private colHeaderComponents: Map<string, HeaderComponent<TColHeaderProps>>;
     private cornerHeaderComponent: HeaderComponent | null;
     private instanceId: string;
+    private numberFormat: NumberFormat = 'anglo'; // Default number format
 
     // Centralized editing state
     private editingStateCallback?: EditingStateCallback<TExtraProps, TRowHeaderProps, TColHeaderProps>;
+
+    // Imputed elements tracking (separated by type)
+    private imputedCells: Set<string>;
+    private imputedRowHeaders: Set<string>;
+    private imputedColHeaders: Set<string>;
+    private imputedElementsCallback?: ImputedElementsCallback<TExtraProps, TRowHeaderProps, TColHeaderProps>;
 
     // Editing state
     private editingState: EditingState<TExtraProps, TRowHeaderProps, TColHeaderProps> | null = null;
@@ -193,16 +434,23 @@ export default class DataHandler<TExtraProps = undefined, TRowHeaderProps = unde
         colHeaderComponents: Map<string, HeaderComponent<TColHeaderProps>>,
         cornerHeaderComponent: HeaderComponent | null,
         instanceId: string,
+        numberFormat: NumberFormat = 'anglo',
         editingStateCallback?: EditingStateCallback<TExtraProps, TRowHeaderProps, TColHeaderProps>,
+        imputedElementsCallback?: ImputedElementsCallback<TExtraProps, TRowHeaderProps, TColHeaderProps>,
     ) {
         this.cellComponents = cellComponents;
         this.rowHeaderComponents = rowHeaderComponents;
         this.colHeaderComponents = colHeaderComponents;
         this.cornerHeaderComponent = cornerHeaderComponent;
         this.instanceId = instanceId;
-        this.validator = new ValueValidator();
+        this.numberFormat = numberFormat;
+        this.validator = new ValueValidator(numberFormat);
         this.historyManager = new HistoryManager();
         this.editingStateCallback = editingStateCallback;
+        this.imputedCells = new Set<string>();
+        this.imputedRowHeaders = new Set<string>();
+        this.imputedColHeaders = new Set<string>();
+        this.imputedElementsCallback = imputedElementsCallback;
     }
 
     // Helper method to get header component from any of the header maps
@@ -387,22 +635,18 @@ export default class DataHandler<TExtraProps = undefined, TRowHeaderProps = unde
             const rowData: CellValue[] = [];
 
             for (const cellText of cells) {
-                // Parse each cell value - could be enhanced with type detection
+                // Parse each cell value using the centralized validator
                 let cellValue: CellValue = cellText;
 
-                // Basic type conversion (can be enhanced)
-                if (cellText === '') {
-                    cellValue = '';
-                } else if (cellText.toLowerCase() === 'null' || cellText.toLowerCase() === 'undefined') {
+                // Handle special null/undefined cases before validation
+                if (cellText.toLowerCase() === 'null' || cellText.toLowerCase() === 'undefined') {
                     cellValue = null;
-                } else if (!isNaN(Number(cellText)) && cellText.trim() !== '') {
-                    cellValue = Number(cellText);
-                } else if (cellText.toLowerCase() === 'true') {
-                    cellValue = true;
-                } else if (cellText.toLowerCase() === 'false') {
-                    cellValue = false;
                 } else {
-                    cellValue = cellText;
+                    // Use the validator with auto-detection for consistent parsing
+                    const validationResult = this.validator.validate(cellText, 'auto');
+
+                    // If validation succeeds, use the parsed value; otherwise keep original text
+                    cellValue = validationResult.isValid ? validationResult.value! : cellText;
                 }
 
                 rowData.push(cellValue);
@@ -533,6 +777,12 @@ export default class DataHandler<TExtraProps = undefined, TRowHeaderProps = unde
             this.historyManager.add(changeSet);
             this.applyChangeSet(changeSet, 'cell');
 
+            // Update imputed elements and notify
+            this.updateImputedElements();
+            if (this.imputedElementsCallback) {
+                this.imputedElementsCallback(this);
+            }
+
         } else {
             const headerChanges: HeaderChange[] = [];
 
@@ -561,6 +811,12 @@ export default class DataHandler<TExtraProps = undefined, TRowHeaderProps = unde
             // Add to history and apply
             this.historyManager.add(changeSet);
             this.applyChangeSet(changeSet, 'header');
+
+            // Update imputed elements and notify
+            this.updateImputedElements();
+            if (this.imputedElementsCallback) {
+                this.imputedElementsCallback(this);
+            }
         }
 
         return true;
@@ -653,6 +909,13 @@ export default class DataHandler<TExtraProps = undefined, TRowHeaderProps = unde
                 componentType = 'header';
             }
             this.revertChangeSet(changeSet, componentType);
+
+            // Update imputed elements and notify (same as commitChanges)
+            this.updateImputedElements();
+            if (this.imputedElementsCallback) {
+                this.imputedElementsCallback(this);
+            }
+
             // Return affected positions (we are sure it's one of the two types)
             return [changeSet.changes.map(change => change.position
                 ) as (GridPosition[] | HeaderPosition[]), componentType]
@@ -675,6 +938,13 @@ export default class DataHandler<TExtraProps = undefined, TRowHeaderProps = unde
                 componentType = 'header';
             }
             this.applyChangeSet(changeSet, componentType);
+
+            // Update imputed elements and notify (same as commitChanges)
+            this.updateImputedElements();
+            if (this.imputedElementsCallback) {
+                this.imputedElementsCallback(this);
+            }
+
             // Return affected positions (we are sure it's one of the two types)
             return [changeSet.changes.map(change => change.position
                 ) as (GridPosition[] | HeaderPosition[]), componentType];
@@ -973,6 +1243,61 @@ export default class DataHandler<TExtraProps = undefined, TRowHeaderProps = unde
      */
     extractChangedCells(): GridPosition[] {
         return this.historyManager.getChangedCells();
+    }
+
+    // ==================== IMPUTED ELEMENTS METHODS ====================
+
+    /**
+     * Get all imputed cells as Set for efficient lookup
+     * @returns Set of string keys in format "row-col" for cells that have been imputed
+     */
+    getImputedCells(): Set<string> {
+        return new Set(this.imputedCells);
+    }
+
+    /**
+     * Get all imputed row headers as Set for efficient lookup
+     * @returns Set of string keys in format "headerType-index" for row headers that have been imputed
+     */
+    getImputedRowHeaders(): Set<string> {
+        return new Set(this.imputedRowHeaders);
+    }
+
+    /**
+     * Get all imputed column headers as Set for efficient lookup
+     * @returns Set of string keys in format "headerType-index" for column headers that have been imputed
+     */
+    getImputedColHeaders(): Set<string> {
+        return new Set(this.imputedColHeaders);
+    }
+
+    /**
+     * Update imputed elements sets based on history manager data
+     * This method synchronizes the internal sets with all changed elements in history
+     */
+    private updateImputedElements(): void {
+        // Clear current sets
+        this.imputedCells.clear();
+        this.imputedRowHeaders.clear();
+        this.imputedColHeaders.clear();
+
+        // Get all changed elements from history manager
+        const changedElements = this.historyManager.getChangedElements();
+
+        // Populate cells set
+        for (const cellPos of changedElements.cells) {
+            this.imputedCells.add(`${cellPos.row}-${cellPos.col}`);
+        }
+
+        // Populate row headers set
+        for (const headerPos of changedElements.rowHeaders) {
+            this.imputedRowHeaders.add(`${headerPos.headerType}-${headerPos.index}`);
+        }
+
+        // Populate column headers set
+        for (const headerPos of changedElements.colHeaders) {
+            this.imputedColHeaders.add(`${headerPos.headerType}-${headerPos.index}`);
+        }
     }
 
     // ==================== IMPUTATION APIS ====================

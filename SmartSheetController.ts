@@ -16,6 +16,7 @@ import type {
     ProcessingState,
     NavigationAnchorsAndPointers,
     DraggingActionContext,
+    NumberFormat,
 } from './types';
 import InputAnalyzer from './InputAnalyzer';
 import MouseEventTranslator from './MouseEventTranslator';
@@ -24,7 +25,7 @@ import SelectionHandler from './SelectionHandler';
 import DataHandler from './DataHandler';
 import type { SelectionChangedCallback } from './SelectionHandler';
 import type { PointerPositionCallback, AutoScrollSelectionCallback } from './NavigationHandler';
-import type { EditingStateCallback } from './DataHandler';
+import type { EditingStateCallback, ImputedElementsCallback } from './DataHandler';
 import ColorHandler from './ColorHandler';
 import VirtualizeHandler from './VirtualizeHandler';
 import type { VisibleComponentsCallback, RenderAreaCallback } from './VirtualizeHandler';
@@ -90,6 +91,7 @@ export default class SmartSheetController<TExtraProps = undefined,
         colHeaderProps: TColHeaderProps[] | undefined,
         styleMode: 'style' | 'tailwind',
         headersReadOnly: boolean,
+        numberFormat: NumberFormat,
         onSelectionsChanged?: SelectionChangedCallback,
         pointerPositionCallback?: PointerPositionCallback,
         onDeselectionsChanged?: SelectionChangedCallback,
@@ -97,6 +99,7 @@ export default class SmartSheetController<TExtraProps = undefined,
         onRenderAreaChanged?: RenderAreaCallback<TExtraProps, TRowHeaderProps, TColHeaderProps>,
         onEditingStateChanged?: EditingStateCallback<TExtraProps, TRowHeaderProps, TColHeaderProps>,
         onProcessingStateChanged?: ProcessingStateCallback<TExtraProps, TRowHeaderProps, TColHeaderProps>,
+        onImputedElementsChanged?: ImputedElementsCallback<TExtraProps, TRowHeaderProps, TColHeaderProps>,
     ) {
         this.gridDimensions = initialDimensions;
         this.styleMode = styleMode;
@@ -150,7 +153,9 @@ export default class SmartSheetController<TExtraProps = undefined,
             this.colHeaderComponents,
             this.cornerHeaderComponent,
             this.instanceId,
-            onEditingStateChanged
+            numberFormat,
+            onEditingStateChanged,
+            onImputedElementsChanged,
         );
         this.colorHandler = new ColorHandler<TExtraProps, TRowHeaderProps, TColHeaderProps>(
             this.gridDimensions,

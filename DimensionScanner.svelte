@@ -27,7 +27,7 @@
     export let instanceId: string;
     export let minCellWidth: string = '5rem'; // Minimum cell width (supports px or rem)
     export let minCellHeight: string = '2.5rem'; // Minimum cell height (supports px or rem)
-    export let numberFormat: NumberFormatOptions = { decimalPlaces: 3 }; // Number formatting configuration
+    export let numberDisplayOptions: NumberFormatOptions = { decimalPlaces: 3 }; // Number formatting configuration
 
     function convertMapTo2DArray(cellMap: Map<string, CellComponent<any>>): CellComponent<any>[][] {
         const cells2D: CellComponent<any>[][] = [];
@@ -247,7 +247,7 @@
                         tailwindStyling={cell.styles.tailwindStyling}
                         instanceId={instanceId}
                         textOverflowMode="full"
-                        numberFormat={numberFormat}
+                        numberDisplayOptions={numberDisplayOptions}
                     />
                 {/each}
             </div>

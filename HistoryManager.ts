@@ -273,20 +273,90 @@ export class HistoryManager {
     }
 
     /**
-     * Get all changed cells across the entire history
-     * @returns Array of GridPosition for cells that have been changed
+     * Get all changed cells across the currently applied history (up to currentIndex)
+     * @returns Array of GridPosition for cells that have been changed and are currently applied
      */
     getChangedCells(): GridPosition[] {
         const changedCells: Set<GridPosition> = new Set();
 
-        for (const changeSet of this.history) {
-            if (changeSet.isCellOnlyEdit()) {
+        // Only consider changeSets that are currently applied (0 to currentIndex)
+        for (let i = 0; i <= this.currentIndex; i++) {
+            const changeSet = this.history[i];
+            if (changeSet && changeSet.isCellOnlyEdit()) {
                 for (const change of changeSet.changes as CellChange[]) {
                     changedCells.add(change.position);
                 }
             }
         }
         return Array.from(changedCells);
+    }
+
+    /**
+     * Get all changed headers across the currently applied history (up to currentIndex), separated by type
+     * @returns Object containing arrays of changed row headers and column headers that are currently applied
+     */
+    getChangedHeaders(): { rows: HeaderPosition[], cols: HeaderPosition[] } {
+        const changedRowHeaders: Set<HeaderPosition> = new Set();
+        const changedColHeaders: Set<HeaderPosition> = new Set();
+
+        // Only consider changeSets that are currently applied (0 to currentIndex)
+        for (let i = 0; i <= this.currentIndex; i++) {
+            const changeSet = this.history[i];
+            if (changeSet && changeSet.isHeaderOnlyEdit()) {
+                for (const change of changeSet.changes as HeaderChange[]) {
+                    if (change.position.headerType === 'row') {
+                        changedRowHeaders.add(change.position);
+                    } else if (change.position.headerType === 'col') {
+                        changedColHeaders.add(change.position);
+                    }
+                }
+            }
+        }
+
+        return {
+            rows: Array.from(changedRowHeaders),
+            cols: Array.from(changedColHeaders)
+        };
+    }
+
+    /**
+     * Get all changed elements (cells and headers) across the currently applied history (up to currentIndex)
+     * @returns Object containing arrays of changed cells, row headers, and column headers that are currently applied
+     */
+    getChangedElements(): {
+        cells: GridPosition[],
+        rowHeaders: HeaderPosition[],
+        colHeaders: HeaderPosition[]
+    } {
+        const changedCells: Set<GridPosition> = new Set();
+        const changedRowHeaders: Set<HeaderPosition> = new Set();
+        const changedColHeaders: Set<HeaderPosition> = new Set();
+
+        // Only consider changeSets that are currently applied (0 to currentIndex)
+        for (let i = 0; i <= this.currentIndex; i++) {
+            const changeSet = this.history[i];
+            if (changeSet) {
+                if (changeSet.isCellOnlyEdit()) {
+                    for (const change of changeSet.changes as CellChange[]) {
+                        changedCells.add(change.position);
+                    }
+                } else if (changeSet.isHeaderOnlyEdit()) {
+                    for (const change of changeSet.changes as HeaderChange[]) {
+                        if (change.position.headerType === 'row') {
+                            changedRowHeaders.add(change.position);
+                        } else if (change.position.headerType === 'col') {
+                            changedColHeaders.add(change.position);
+                        }
+                    }
+                }
+            }
+        }
+
+        return {
+            cells: Array.from(changedCells),
+            rowHeaders: Array.from(changedRowHeaders),
+            colHeaders: Array.from(changedColHeaders)
+        };
     }
 
 }

@@ -2,7 +2,7 @@
     import type {
         GridPosition,
         CellValue,
-        NumberFormatOptions,
+        NumberDisplayOptions,
     } from './types';
 
     // Props from parent
@@ -12,7 +12,7 @@
     export let tailwindStyling: string = '';
     export let instanceId: string;
     export let textOverflowMode: 'full' | 'truncated' = 'truncated';
-    export let numberFormat: NumberFormatOptions = { decimalPlaces: 3 };
+    export let numberDisplayOptions: NumberDisplayOptions = { decimalPlaces: 3 };
     /*
         'full' mode: text wraps and shows all content, expanding cell height as needed
         'truncated' mode: text is truncated with ellipsis if it overflows cell width, single line only
@@ -22,7 +22,7 @@
     */
 
     // Helper function to format numbers according to the configuration
-    function formatNumber(value: CellValue, options: NumberFormatOptions): string {
+    function formatNumber(value: CellValue, options: NumberDisplayOptions): string {
         // If value is not a number, return as string
         if (typeof value !== 'number') {
             return value?.toString() ?? '';
@@ -72,6 +72,6 @@
         class:overflow-hidden={textOverflowMode === 'truncated'}
         class:whitespace-pre-line={textOverflowMode === 'full'}
     >
-        {formatNumber(value, numberFormat)}
+        {formatNumber(value, numberDisplayOptions)}
     </span>
 </div>

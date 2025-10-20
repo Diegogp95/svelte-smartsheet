@@ -79,13 +79,6 @@ export interface NavigationAnchorsAndPointers {
 export type CellValue = string | number | boolean | null;
 export type HeaderValue = string;
 
-// Number formatting configuration
-export interface NumberFormatOptions {
-    decimalPlaces?: number;          // Número de decimales a mostrar (ej: 2)
-    thousandsSeparator?: boolean;    // Usar separador de miles (ej: 1,000)
-    locale?: string;                 // Locale para formateo (ej: 'es-ES', 'en-US')
-}
-
 // Flash color options
 export type FlashColor = 'blue'
     | 'green'
@@ -272,3 +265,12 @@ export interface ProcessingState {
     operation?: string; // Optional: type of operation
     source?: 'internal' | 'external'; // Track the origin of the processing state
 }
+
+// Number formatting configuration
+export interface NumberDisplayOptions {
+    decimalPlaces?: number;          // Número de decimales a mostrar (ej: 2)
+    thousandsSeparator?: boolean;    // Usar separador de miles (ej: 1,000)
+    locale?: string;                 // Locale para formato (ej: 'en-US', 'es-ES')
+}
+
+export type NumberFormat = 'latin' | 'anglo';
