@@ -28,7 +28,7 @@ import type { PointerPositionCallback, AutoScrollSelectionCallback } from './Nav
 import type { EditingStateCallback, ImputedElementsCallback } from './DataHandler';
 import ColorHandler from './ColorHandler';
 import VirtualizeHandler from './VirtualizeHandler';
-import type { VisibleComponentsCallback, RenderAreaCallback } from './VirtualizeHandler';
+import type { VisibleComponentsCallback, RenderAreaCallback, ScaleChangeCallback } from './VirtualizeHandler';
 
 
 // Callback type for processing state changes (using any to avoid circular dependency)
@@ -96,6 +96,7 @@ export default class SmartSheetController<TExtraProps = undefined,
         pointerPositionCallback?: PointerPositionCallback,
         onDeselectionsChanged?: SelectionChangedCallback,
         onVisibleComponentsChanged?: VisibleComponentsCallback<TExtraProps, TRowHeaderProps, TColHeaderProps>,
+        onScaleChanged?: ScaleChangeCallback<TExtraProps, TRowHeaderProps, TColHeaderProps>,
         onRenderAreaChanged?: RenderAreaCallback<TExtraProps, TRowHeaderProps, TColHeaderProps>,
         onEditingStateChanged?: EditingStateCallback<TExtraProps, TRowHeaderProps, TColHeaderProps>,
         onProcessingStateChanged?: ProcessingStateCallback<TExtraProps, TRowHeaderProps, TColHeaderProps>,
@@ -173,6 +174,7 @@ export default class SmartSheetController<TExtraProps = undefined,
             this.colHeaderComponents,
             this.cornerHeaderComponent,
             onVisibleComponentsChanged,
+            onScaleChanged,
             onRenderAreaChanged,
         );
 
@@ -976,6 +978,11 @@ export default class SmartSheetController<TExtraProps = undefined,
         this.virtualizeHandler.handleScroll();
     }
 
+    // Handle scale change events for visualization scaling
+    handleScaleChange(wheelDeltaY: number): void {
+        this.virtualizeHandler.scaleVisualization(wheelDeltaY);
+    }
+
     // Get current render area
     getRenderArea() {
         return this.virtualizeHandler.getRenderArea();
@@ -1118,7 +1125,7 @@ export default class SmartSheetController<TExtraProps = undefined,
     // ===================== NAVIGATION APIs =====================
 
     navigateToPosition(position: GridPosition): boolean {
-        const result = this.navigationHandler.movePointer(position);
+        const result = this.navigationHandler.movePointer(position, 'instant', 'initial');
         return result !== null;
     }
 

@@ -10,7 +10,7 @@
     import { Selection, HeaderSelection } from './SelectionHandler';
     import type { SelectionChangedCallback } from './SelectionHandler';
     import type { PointerPositionCallback } from './NavigationHandler';
-    import type { VisibleComponentsCallback } from './VirtualizeHandler';
+    import type { VisibleComponentsCallback, ScaleChangeCallback } from './VirtualizeHandler';
     import type { EditingStateCallback } from './DataHandler';
     import type { ProcessingStateCallback } from './SmartSheetController';
     import type { ImputedElementsCallback } from './DataHandler';
@@ -60,12 +60,14 @@
     export let styleMode: 'style' | 'tailwind' = 'style'; // Choose between inline styles or Tailwind CSS classes
     export let numberDisplayOptions: NumberDisplayOptions = { decimalPlaces: 3 }; // Number formatting configuration
     export let numberFormat: NumberFormat = 'anglo'; // 'latin' or 'anglo' number format
+    export let initialPointerPosition: GridPosition | undefined = undefined;
 
     // Scan phase
     let gridDimensions: GridDimensions = { maxRow: gridData.length - 1, maxCol: (gridData[0]?.length || 1) - 1 };
     let scanning: boolean = true;
     let rowHeights: number[] = [];
     let colWidths: number[] = [];
+    let scaledFontSize: string = fontSize;
 
     /**
      * ============================================================================================
@@ -156,6 +158,14 @@
         imputedColHeaders = handler.getImputedColHeaders();
     };
 
+    const subscribeToScaleChange: ScaleChangeCallback<TExtraProps, TRowHeaderProps, TColHeaderProps> = (handler) => {
+        // Force Svelte reactivity by reassigning the shared arrays
+        // The arrays have already been modified in-place by VirtualizeHandler
+        rowHeights = handler.getRowHeights();
+        colWidths = handler.getColWidths();
+        scaledFontSize = handler.getScaledFontSize(fontSize);
+    }
+
     /**
      * Controller instance for managing SmartSheet interactions
      * This instance is responsible for handling user inputs, managing states,
@@ -169,8 +179,8 @@
         }, gridData as CellValue[][], rowHeaders, columnHeaders, rowsTitle,
         extraPropsMatrix, rowHeaderExtraProps, colHeaderExtraProps, styleMode, headersReadOnly,
         numberFormat, subscribeToSelections, subscribeToPointerPosition, subscribeToDeselection,
-        subscribeToVisibleComponents, undefined, subscribeToEditingState, subscribeToProcessingState,
-        subscribeToImputedElements,
+        subscribeToVisibleComponents, subscribeToScaleChange, undefined, subscribeToEditingState,
+        subscribeToProcessingState, subscribeToImputedElements,
     );
 
     let tableContainer: HTMLDivElement;
@@ -221,9 +231,25 @@
         }
     }
 
+    // Handle wheel events for scaling
+    function handleWheelEvent(event: WheelEvent) {
+        // Only process if Ctrl is pressed
+        if (!event.ctrlKey) return;
+
+        // Prevent browser zoom
+        event.preventDefault();
+        console.log('Wheel event for scaling detected, deltaY:', event.deltaY);
+        // Delegate to controller with raw deltaY
+        controller.handleScaleChange(event.deltaY);
+    }
+
     // =============================================================================================
     // ===================== PUBLIC API - Methods exposed for external control =====================
     // =============================================================================================
+
+    export function getPointerPosition(): GridPosition {
+        return controller.getCurrentPosition();
+    }
 
     export function selectPositions(positions: GridPosition[]) {
         controller.selectPositions(positions);
@@ -484,6 +510,11 @@
                 controller.setColumnsHeaderContainer(columnsHeaderContainer);
                 controller.setRowsHeaderContainer(rowsHeaderContainer);
                 controller.setMainGridContainer(mainGridContainer);
+
+                // Once all virtualization setup is complete, navigate to initial position if provided
+                if (initialPointerPosition) {
+                    controller.navigateToPosition(initialPointerPosition as GridPosition);
+                }
             }
         });
     }
@@ -528,7 +559,8 @@
         on:focusout={handleFocusOut}
         on:keydown={(e) => controller.handleKeyDown(e)}
         on:scroll={(e) => controller.handleVirtualizationScroll()}
-        style="font-size: {fontSize}; overflow-anchor: none;"
+        on:wheel={handleWheelEvent}
+        style="font-size: {scaledFontSize}; overflow-anchor: none;"
     >
         <!-- Parent grid with subgrid support -->
         <div

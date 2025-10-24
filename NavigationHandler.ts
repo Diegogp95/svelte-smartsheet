@@ -121,7 +121,8 @@ export default class NavigationHandler<TExtraProps = undefined, TRowHeaderProps 
     }
 
     // Move pointer to specific position
-    movePointer(position: GridPosition): GridPosition {
+    movePointer(position: GridPosition, behavior: 'smooth' | 'instant' = 'instant',
+        mode: 'minimal' | 'initial' | 'final' = 'minimal'): GridPosition {
         const { maxRow, maxCol } = this.gridDimensions;
 
         if (position.row >= 0 && position.row <= maxRow &&
@@ -130,7 +131,7 @@ export default class NavigationHandler<TExtraProps = undefined, TRowHeaderProps 
 
             // Auto-scroll if container is available
             if (this.tableContainer) {
-                this.scrollToPosition(position);
+                this.scrollToPosition(position, behavior, mode);
             }
         }
 
@@ -290,9 +291,9 @@ export default class NavigationHandler<TExtraProps = undefined, TRowHeaderProps 
                 } else if (navigationType === 'boundary' && direction) {
                     newCellPos = this.findDataBoundary(cellPointer.row, cellPointer.col, direction as 'up' | 'down' | 'left' | 'right');
                     this.movePointer(newCellPos);
-                } else if (navigationType === 'page' && direction) {
+                    } else if (navigationType === 'page' && direction) {
                     newCellPos = this.advancePage(direction);
-                    this.movePointer(newCellPos);
+                    this.movePointer(newCellPos, 'instant', direction === 'page-up' || direction === 'page-left' ? 'initial' : 'final');
                 } else {
                     // Fallback: no navigation
                     newCellPos = cellPointer;
@@ -308,6 +309,7 @@ export default class NavigationHandler<TExtraProps = undefined, TRowHeaderProps 
                     const headerType = activeSelectionType === 'header-row' ? 'row' : 'col';
                     const currentHeaderIndex = headerType === 'row' ? this.getHeaderPointerRow() : this.getHeaderPointerCol();
                     let newHeaderIndex: number;
+                    let cellForHeader: GridPosition;
 
                     if (navigationType === 'single' && direction) {
                         newHeaderIndex = this.singleHeaderStep(currentHeaderIndex, direction as 'up' | 'down' | 'left' | 'right', headerType);
@@ -325,12 +327,15 @@ export default class NavigationHandler<TExtraProps = undefined, TRowHeaderProps 
                     if (headerType === 'row') {
                         this.setHeaderPointerRow(newHeaderIndex);
                         // Update cell pointer to reflect header selection (similar to processMouseNavigation)
-                        const cellForHeader = visibleArea ? { row: newHeaderIndex, col: visibleArea.startCol } : { row: newHeaderIndex, col: 0 };
-                        this.movePointer(cellForHeader);
+                        cellForHeader = visibleArea ? { row: newHeaderIndex, col: visibleArea.startCol } : { row: newHeaderIndex, col: 0 };                        this.movePointer(cellForHeader);
                     } else {
                         this.setHeaderPointerCol(newHeaderIndex);
                         // Update cell pointer to reflect header selection (similar to processMouseNavigation)
-                        const cellForHeader = visibleArea ? { row: visibleArea.startRow, col: newHeaderIndex } : { row: 0, col: newHeaderIndex };
+                        cellForHeader = visibleArea ? { row: visibleArea.startRow, col: newHeaderIndex } : { row: 0, col: newHeaderIndex };
+                    }
+                    if (navigationType === 'page' && direction) {
+                        this.movePointer(cellForHeader, 'instant', direction === 'page-up' || direction === 'page-left' ? 'initial' : 'final');
+                    } else if (navigationType !== 'page' && direction) {
                         this.movePointer(cellForHeader);
                     }
 
@@ -678,7 +683,7 @@ export default class NavigationHandler<TExtraProps = undefined, TRowHeaderProps 
     }
 
     // Automatic scroll to keep pointer visible
-    private scrollToPosition(position: GridPosition): void {
+    private scrollToPosition(position: GridPosition, behavior: 'smooth' | 'instant' = 'instant', mode: 'minimal' | 'initial' | 'final' = 'minimal'): void {
         if (!this.tableContainer) return;
 
         // Container dimensions and scroll positions
@@ -704,19 +709,64 @@ export default class NavigationHandler<TExtraProps = undefined, TRowHeaderProps 
 
         let newScrollTop = scrollTop;
         let newScrollLeft = scrollLeft;
-        if (cellTop < scrollTop) {
-            // Cell is above the visible area, scroll up
-            newScrollTop = cellTop;
-        } else if (cellBottom > scrollTop + effectiveContainerHeight) {
-            // Cell is below the visible area, scroll down
-            newScrollTop = cellBottom - effectiveContainerHeight;
-        }
-        if (cellLeft < scrollLeft) {
-            // Cell is left of the visible area, scroll left
-            newScrollLeft = cellLeft;
-        } else if (cellRight > scrollLeft + effectiveContainerWidth) {
-            // Cell is right of the visible area, scroll right
-            newScrollLeft = cellRight - effectiveContainerWidth;
+
+        if (mode === 'minimal') {
+            // MINIMAL MODE: Only scroll if cell is not visible (current behavior)
+            if (cellTop < scrollTop) {
+                // Cell is above the visible area, scroll up
+                newScrollTop = cellTop;
+            } else if (cellBottom > scrollTop + effectiveContainerHeight) {
+                // Cell is below the visible area, scroll down
+                newScrollTop = cellBottom - effectiveContainerHeight;
+            }
+
+            if (cellLeft < scrollLeft) {
+                // Cell is left of the visible area, scroll left
+                newScrollLeft = cellLeft;
+            } else if (cellRight > scrollLeft + effectiveContainerWidth) {
+                // Cell is right of the visible area, scroll right
+                newScrollLeft = cellRight - effectiveContainerWidth;
+            }
+        } else if (mode === 'initial') {
+            // INITIAL MODE: Position cell at top-left if not completely visible
+
+            // Check if row is completely visible
+            const isRowCompletelyVisible = (cellTop >= scrollTop) &&
+                                         (cellBottom <= scrollTop + effectiveContainerHeight);
+
+            if (!isRowCompletelyVisible) {
+                // Row not completely visible → position at top of visible area
+                newScrollTop = cellTop;
+            }
+
+            // Check if column is completely visible
+            const isColCompletelyVisible = (cellLeft >= scrollLeft) &&
+                                         (cellRight <= scrollLeft + effectiveContainerWidth);
+
+            if (!isColCompletelyVisible) {
+                // Column not completely visible → position at left of visible area
+                newScrollLeft = cellLeft;
+            }
+        } else if (mode === 'final') {
+            // FINAL MODE: Position cell at bottom-right if not completely visible
+
+            // Check if row is completely visible
+            const isRowCompletelyVisible = (cellTop >= scrollTop) &&
+                                         (cellBottom <= scrollTop + effectiveContainerHeight);
+
+            if (!isRowCompletelyVisible) {
+                // Row not completely visible → position at bottom of visible area
+                newScrollTop = cellBottom - effectiveContainerHeight;
+            }
+
+            // Check if column is completely visible
+            const isColCompletelyVisible = (cellLeft >= scrollLeft) &&
+                                         (cellRight <= scrollLeft + effectiveContainerWidth);
+
+            if (!isColCompletelyVisible) {
+                // Column not completely visible → position at right of visible area
+                newScrollLeft = cellRight - effectiveContainerWidth;
+            }
         }
 
         // Apply smooth scroll if there are changes
@@ -724,7 +774,7 @@ export default class NavigationHandler<TExtraProps = undefined, TRowHeaderProps 
             container.scrollTo({
                 top: Math.max(0, newScrollTop), // Ensure we don't scroll to negative values
                 left: Math.max(0, newScrollLeft),
-                behavior: 'smooth'
+                behavior: behavior
             });
         }
     }
