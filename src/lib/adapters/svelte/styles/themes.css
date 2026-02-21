@@ -1,0 +1,244 @@
+/* ============================================================
+   SmartSheet — CSS Custom Properties & Themes
+   ------------------------------------------------------------
+   Import this file once at your app entry point.
+   Apply a theme by adding the corresponding class to the
+   SmartSheet wrapper element or any ancestor:
+
+       <div class="ss-theme-dark">  ← dark theme subtree
+
+   Default (no class / :root) = light theme.
+   ============================================================ */
+
+/* ── Light (default) ─────────────────────────────────────── */
+:root,
+.ss-theme-light {
+    /* Structural */
+    --ss-font-family:           ui-sans-serif, system-ui, sans-serif;
+    --ss-border-color:          #d1d5db;
+
+    /* Grid / Sheet background */
+    --ss-grid-bg:               #ffffff;
+
+	/* Grid / Container Shadow — navigation active indicator */
+	--ss-grid-shadow:           rgba(124, 58, 237, 0.9);  /* violet — contrasts with blue pointer */
+
+    /* Cell */
+    --ss-cell-bg:               #ffffff;
+    --ss-cell-text:             #111827;
+
+    /* Header */
+    --ss-header-bg:             #f3f4f6;
+    --ss-header-text:           #374151;
+    --ss-header-font-weight:    600;
+    --ss-header-hover-bg:       rgba(14, 165, 233, 0.45);
+    --ss-corner-icon-color:     #9ca3af;
+
+    /* Input cell */
+    --ss-input-text:            #111827;
+
+    /* Selection overlay */
+    --ss-selection-border:      rgb(0, 145, 88);
+    --ss-selection-bg:          rgba(207, 162, 111, 0.4);
+
+    /* Deselection overlay */
+    --ss-deselection-border:    rgb(130, 0, 12);
+    --ss-deselection-bg:        rgba(130, 0, 12, 0.3);
+
+    /* Header selection overlay */
+    --ss-header-sel-bg:         rgba(134, 239, 172, 0.4);
+    --ss-header-sel-border:     #14532d;
+
+    /* Processing overlay */
+    --ss-processing-bg:         rgba(0, 0, 0, 0.25);
+    --ss-processing-spinner:    #ffffff;
+
+    /* Cell pointer */
+    --ss-pointer-border:        #2563eb;
+    --ss-pointer-bg:            rgba(30, 64, 175, 0.15);
+
+    /* Imputed layer */
+    --ss-imputed-stripe-a:      rgba(30, 64, 175, 0.25);
+    --ss-imputed-stripe-b:      rgba(37, 99, 235, 0.35);
+    --ss-imputed-border:        rgba(30, 64, 175, 0.4);
+
+    /* Navigation overlay */
+    --ss-nav-overlay-bg:        #111827;
+    --ss-nav-overlay-text:      #ffffff;
+}
+
+/* ── Dark ─────────────────────────────────────────────────── */
+.ss-theme-dark {
+    --ss-border-color:          #374151;
+    --ss-grid-bg:               #1f2937;
+
+    --ss-cell-bg:               #1f2937;
+    --ss-cell-text:             #f9fafb;
+
+    --ss-header-bg:             #111827;
+    --ss-header-text:           #d1d5db;
+    --ss-header-hover-bg:       rgba(14, 165, 233, 0.35);
+    --ss-corner-icon-color:     #6b7280;
+
+    --ss-input-text:            #f9fafb;
+
+    --ss-selection-border:      rgb(0, 200, 120);
+    --ss-selection-bg:          rgba(0, 200, 120, 0.15);
+
+    --ss-deselection-border:    rgb(220, 38, 38);
+    --ss-deselection-bg:        rgba(220, 38, 38, 0.2);
+
+    --ss-header-sel-bg:         rgba(52, 211, 153, 0.25);
+    --ss-header-sel-border:     #065f46;
+
+    --ss-processing-bg:         rgba(0, 0, 0, 0.5);
+    --ss-processing-spinner:    #60a5fa;
+
+    /* Cell pointer */
+    --ss-pointer-border:        #3b82f6;
+    --ss-pointer-bg:            rgba(51, 65, 85, 0.5);
+
+    /* Grid shadow — navigation active */
+    --ss-grid-shadow:           rgba(245, 158, 11, 0.9);  /* amber — contrasts with blue pointer */
+
+    /* Imputed layer */
+    --ss-imputed-stripe-a:      rgba(59, 130, 246, 0.2);
+    --ss-imputed-stripe-b:      rgba(96, 165, 250, 0.3);
+    --ss-imputed-border:        rgba(59, 130, 246, 0.35);
+
+    /* Navigation overlay */
+    --ss-nav-overlay-bg:        #f9fafb;
+    --ss-nav-overlay-text:      #1f2937;
+}
+
+/* ── Tech (GitHub-dark-inspired) ─────────────────────────── */
+.ss-theme-tech {
+    --ss-border-color:          #21262d;
+    --ss-grid-bg:               #0d1117;
+
+    --ss-cell-bg:               #0d1117;
+    --ss-cell-text:             #c9d1d9;
+
+    --ss-header-bg:             #161b22;
+    --ss-header-text:           #58a6ff;
+    --ss-header-hover-bg:       rgba(88, 166, 255, 0.2);
+    --ss-corner-icon-color:     #58a6ff;
+
+    --ss-input-text:            #c9d1d9;
+
+    --ss-selection-border:      #58a6ff;
+    --ss-selection-bg:          rgba(88, 166, 255, 0.1);
+
+    --ss-deselection-border:    #f78166;
+    --ss-deselection-bg:        rgba(247, 129, 102, 0.15);
+
+    --ss-header-sel-bg:         rgba(88, 166, 255, 0.15);
+    --ss-header-sel-border:     #388bfd;
+
+    --ss-processing-bg:         rgba(0, 0, 0, 0.6);
+    --ss-processing-spinner:    #58a6ff;
+
+    /* Cell pointer */
+    --ss-pointer-border:        #58a6ff;
+    --ss-pointer-bg:            rgba(88, 166, 255, 0.1);
+
+    /* Grid shadow — navigation active */
+    --ss-grid-shadow:           rgba(245, 158, 11, 0.9);  /* amber — contrasts with blue pointer on dark bg */
+
+    /* Imputed layer */
+    --ss-imputed-stripe-a:      rgba(88, 166, 255, 0.15);
+    --ss-imputed-stripe-b:      rgba(56, 139, 253, 0.25);
+    --ss-imputed-border:        rgba(88, 166, 255, 0.3);
+
+    /* Navigation overlay */
+    --ss-nav-overlay-bg:        #c9d1d9;
+    --ss-nav-overlay-text:      #0d1117;
+}
+
+/* ── Glow (deep space / aurora) ──────────────────────────── */
+.ss-theme-glow {
+    --ss-border-color:          #1a1a3e;
+    --ss-grid-bg:               #050510;
+
+    --ss-cell-bg:               #050510;
+    --ss-cell-text:             #e0e0ff;
+
+    --ss-header-bg:             #0a0a2e;
+    --ss-header-text:           #7dd3fc;
+    --ss-header-hover-bg:       rgba(125, 211, 252, 0.2);
+    --ss-corner-icon-color:     #7dd3fc;
+
+    --ss-input-text:            #e0e0ff;
+
+    --ss-selection-border:      rgba(0, 255, 200, 0.9);
+    --ss-selection-bg:          rgba(0, 255, 200, 0.08);
+
+    --ss-deselection-border:    rgba(255, 80, 80, 0.9);
+    --ss-deselection-bg:        rgba(255, 80, 80, 0.1);
+
+    --ss-header-sel-bg:         rgba(0, 255, 200, 0.1);
+    --ss-header-sel-border:     rgba(0, 255, 200, 0.6);
+
+    --ss-processing-bg:         rgba(5, 5, 16, 0.75);
+    --ss-processing-spinner:    rgba(0, 255, 200, 0.9);
+
+    /* Cell pointer */
+    --ss-pointer-border:        rgba(0, 255, 200, 0.9);
+    --ss-pointer-bg:            rgba(0, 255, 200, 0.06);
+
+    /* Grid shadow — navigation active */
+    --ss-grid-shadow:           rgba(236, 72, 153, 0.9);  /* magenta — contrasts with cyan pointer */
+
+    /* Imputed layer */
+    --ss-imputed-stripe-a:      rgba(0, 255, 200, 0.1);
+    --ss-imputed-stripe-b:      rgba(0, 255, 200, 0.2);
+    --ss-imputed-border:        rgba(0, 255, 200, 0.3);
+
+    /* Navigation overlay */
+    --ss-nav-overlay-bg:        #e0e0ff;
+    --ss-nav-overlay-text:      #050510;
+}
+
+/* ── Neon (cyberpunk) ────────────────────────────────────── */
+.ss-theme-neon {
+    --ss-border-color:          #2d0060;
+    --ss-grid-bg:               #000000;
+
+    --ss-cell-bg:               #000000;
+    --ss-cell-text:             #f0f0f0;
+
+    --ss-header-bg:             #0d0020;
+    --ss-header-text:           #e040fb;
+    --ss-header-hover-bg:       rgba(224, 64, 251, 0.25);
+    --ss-corner-icon-color:     #e040fb;
+
+    --ss-input-text:            #f0f0f0;
+
+    --ss-selection-border:      #00e5ff;
+    --ss-selection-bg:          rgba(0, 229, 255, 0.1);
+
+    --ss-deselection-border:    #ff1744;
+    --ss-deselection-bg:        rgba(255, 23, 68, 0.1);
+
+    --ss-header-sel-bg:         rgba(224, 64, 251, 0.15);
+    --ss-header-sel-border:     #ad1fd6;
+
+    --ss-processing-bg:         rgba(0, 0, 0, 0.7);
+    --ss-processing-spinner:    #e040fb;
+
+    /* Cell pointer */
+    --ss-pointer-border:        #00e5ff;
+    --ss-pointer-bg:            rgba(0, 229, 255, 0.07);
+
+    /* Grid shadow — navigation active */
+    --ss-grid-shadow:           rgba(57, 255, 20, 0.9);   /* electric green — contrasts with cyan pointer */
+
+    /* Imputed layer */
+    --ss-imputed-stripe-a:      rgba(224, 64, 251, 0.12);
+    --ss-imputed-stripe-b:      rgba(224, 64, 251, 0.22);
+    --ss-imputed-border:        rgba(224, 64, 251, 0.35);
+
+    /* Navigation overlay */
+    --ss-nav-overlay-bg:        #f0f0f0;
+    --ss-nav-overlay-text:      #000000;
+}

@@ -8,8 +8,8 @@
     // Props from parent
     export let position: GridPosition;
     export let value: CellValue;
-    export let styling: string = '';
-    export let tailwindStyling: string = '';
+    export let styling: string = '';        // inline style string for dynamic bg/color from ColorHandler
+    export let cssClass: string = '';       // extra CSS class(es) injected by the consumer (replaces tailwindStyling)
     export let instanceId: string;
     export let textOverflowMode: 'full' | 'truncated' = 'truncated';
     export let numberDisplayOptions: NumberDisplayOptions = { decimalPlaces: 3 };
@@ -54,24 +54,58 @@
 </script>
 
 <div
-    style=" grid-row: {position.row + 1}; grid-column: {position.col + 1};"
-    class="px-2 py-1 select-none transition-colors
-        duration-200 w-full h-full flex items-center relative"
+    style="grid-row: {position.row + 1}; grid-column: {position.col + 1};"
+    class="ss-cell"
     data-row={position.row}
     data-col={position.col}
     data-instance={instanceId}
 >
     <div id="cell-background-{instanceId}"
-        class="absolute inset-0 w-full h-full z-[1] {tailwindStyling}"
+        class="ss-layer {cssClass}"
         style={styling}
-    />
-    <span class="z-[5]"
-        class:h-full={textOverflowMode === 'truncated'}
-        class:w-full={textOverflowMode === 'truncated'}
-        class:text-ellipsis={textOverflowMode === 'truncated'}
-        class:overflow-hidden={textOverflowMode === 'truncated'}
-        class:whitespace-pre-line={textOverflowMode === 'full'}
+    ></div>
+    <span
+        class="ss-cell-text"
+        class:ss-cell-text--truncated={textOverflowMode === 'truncated'}
+        class:ss-cell-text--full={textOverflowMode === 'full'}
     >
         {formatNumber(value, numberDisplayOptions)}
     </span>
 </div>
+
+<style>
+    .ss-cell {
+        width: 100%;
+        height: 100%;
+        display: flex;
+        align-items: center;
+        position: relative;
+        padding: 0.25rem 0.5rem;
+        user-select: none;
+        transition: background-color 200ms;
+        background-color: var(--ss-cell-bg, #ffffff);
+        color: var(--ss-cell-text, #111827);
+        font-family: var(--ss-font-family, ui-sans-serif, system-ui, sans-serif);
+    }
+
+    /* .ss-layer positioning is defined globally in base.css; z-index is added here */
+    .ss-cell :global(.ss-layer) {
+        z-index: 1;
+    }
+
+    .ss-cell-text {
+        z-index: 5;
+    }
+
+    .ss-cell-text--truncated {
+        height: 100%;
+        width: 100%;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .ss-cell-text--full {
+        white-space: pre-line;
+    }
+</style>

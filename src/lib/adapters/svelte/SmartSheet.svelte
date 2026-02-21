@@ -1,4 +1,7 @@
 <script lang="ts" generics="TExtraProps = undefined, TRowHeaderProps = undefined, TColHeaderProps = undefined">
+    import './styles/base.css';
+    import './styles/themes.css';
+
     import Cell from './components/Cell.svelte';
     import InputCell from './components/InputCell.svelte';
     import InputHeader from './components/InputHeader.svelte';
@@ -58,6 +61,7 @@
     export let minCellWidth: string = '6rem'; // Minimum cell width (px or rem)
     export let minCellHeight: string = '3rem'; // Minimum cell height (px or rem)
     export let styleMode: 'style' | 'tailwind' = 'style'; // Choose between inline styles or Tailwind CSS classes
+    export let theme: 'light' | 'dark' | 'tech' | 'glow' | 'neon' = 'tech'; // Visual theme
     export let numberDisplayOptions: NumberDisplayOptions = { decimalPlaces: 3 }; // Number formatting configuration
     export let numberFormat: NumberFormat = 'anglo'; // 'latin' or 'anglo' number format
     export let initialPointerPosition: GridPosition | undefined = undefined;
@@ -522,10 +526,71 @@
 </script>
 
 <style>
-    .active-state {
-        box-shadow:
-            0 0 0 3px rgba(59, 130, 246, 0.9),   /* borde sólido */
-            0 0 10px 4px rgba(59, 130, 246, 0.25); /* halo más claro */
+    .ss-sheet {
+        position: relative;
+        max-height: 100%;
+        max-width: 100%;
+        border: 1px solid var(--ss-border-color, #d1d5db);
+        background-color: var(--ss-grid-bg, #ffffff);
+        color: var(--ss-cell-text, #111827);
+        outline: none;
+        overflow: auto;
+        overscroll-behavior: contain;
+    }
+
+    .ss-sheet--active {
+        /* outline on the element itself is never clipped by any overflow in the tree    */
+        /* inset box-shadow renders inside the viewport, immune to parent overflow clips */
+        outline: 2px solid var(--ss-grid-shadow);
+        outline-offset: -2px;
+        box-shadow: inset 0 0 18px 4px var(--ss-grid-shadow);
+    }
+
+    .ss-sheet__corner {
+        position: sticky;
+        top: 0;
+        left: 0;
+        z-index: 10;
+        background-color: var(--ss-header-bg, #f3f4f6);
+        cursor: pointer;
+        display: grid;
+        grid-template-columns: subgrid;
+    }
+
+    .ss-sheet__col-headers {
+        position: sticky;
+        top: 0;
+        z-index: 6;
+        background-color: var(--ss-header-bg, #f3f4f6);
+        cursor: pointer;
+        display: grid;
+        grid-template-columns: subgrid;
+    }
+
+    .ss-sheet__row-headers {
+        text-align: center;
+        position: sticky;
+        left: 0;
+        z-index: 6;
+        background-color: var(--ss-header-bg, #f3f4f6);
+        cursor: pointer;
+        display: grid;
+        grid-template-rows: subgrid;
+    }
+
+    .ss-sheet__main-grid {
+        cursor: cell;
+        display: grid;
+        grid-template-columns: subgrid;
+        grid-template-rows: subgrid;
+        gap: 0;
+    }
+
+    .ss-smartsheet {
+        height: 100%;
+        width: 100%;
+        max-height: 100%;
+        position: relative;
     }
 </style>
 
@@ -547,15 +612,15 @@
     />
 {:else}
 
-<div class="h-full w-full max-h-full relative">
+<div class="ss-smartsheet ss-theme-{theme}">
     <!-- Scroll container for large tables -->
     <div
         bind:this={tableContainer}
-        class="relative max-h-full max-w-full border border-tertiaryOnBg
-            bg-tertiaryBg outline-none text-tertiaryOnBg
-            overflow-auto overscroll-contain"
+        class="ss-sheet"
         tabindex="-1"
-        class:active-state={navigationMode}
+        role="grid"
+        aria-label="SmartSheet grid"
+        class:ss-sheet--active={navigationMode}
         on:focusout={handleFocusOut}
         on:keydown={(e) => controller.handleKeyDown(e)}
         on:scroll={(e) => controller.handleVirtualizationScroll()}
@@ -576,13 +641,14 @@
         >
             <!-- Top-Left Corner -->
             <div
-                class="corner-header sticky top-0 left-0 z-10 bg-tertiaryBg cursor-pointer"
+                class="ss-sheet__corner"
                 style="
-                    display: grid;
                     grid-column: 1;
                     grid-row: 1;
-                    grid-template-columns: subgrid;
                 "
+                role="gridcell"
+                aria-label="Corner header"
+                tabindex="-1"
                 on:mousedown={(e) => controller.handleCornerHeaderMouseEvent(e, 'mousedown')}
                 on:contextmenu={(e) => controller.handleCornerHeaderMouseEvent(e, 'contextmenu')}
                 on:auxclick={(e) => e.button === 1 && controller.handleCornerHeaderMouseEvent(e, 'middleclick')}
@@ -592,7 +658,7 @@
                     position={visibleComponents.cornerHeader.position}
                     value={visibleComponents.cornerHeader.value}
                     styling={visibleComponents.cornerHeader.styles.styling}
-                    tailwindStyling={visibleComponents.cornerHeader.styles.tailwindStyling}
+                    cssClass={visibleComponents.cornerHeader.styles.tailwindStyling}
                     instanceId={controller.getInstanceId()}
                 />
             {/if}
@@ -601,13 +667,14 @@
             <!-- Columns Headers -->
             <div
                 bind:this={columnsHeaderContainer}
-                class="columns-headers sticky top-0 z-[6] bg-tertiaryBg cursor-pointer"
+                class="ss-sheet__col-headers"
                 style="
-                    display: grid;
                     grid-column: 2 / -1;
                     grid-row: 1;
-                    grid-template-columns: subgrid;
                 "
+                role="row"
+                aria-label="Columns headers"
+                tabindex="-1"
                 on:mousedown={(e) => controller.handleColHeaderMouseEvent(e, 'mousedown')}
                 on:mouseenter={(e) => controller.handleColHeaderMouseEvent(e, 'mouseenter')}
                 on:mouseup={(e) => controller.handleColHeaderMouseEvent(e, 'mouseup')}
@@ -622,7 +689,7 @@
                     <InputHeader
                         position={currentEditingState.position}
                         styling={currentEditingState.component.styles.styling}
-                        tailwindStyling={currentEditingState.component.styles.tailwindStyling}
+                        cssClass={currentEditingState.component.styles.tailwindStyling}
                         instanceId={controller.getInstanceId()}
                         on:inputBlur={handleInputBlur}
                         on:inputKeyCommit={handleInputKeyCommand}
@@ -640,7 +707,7 @@
                             position={headerComponent.position}
                             value={headerComponent.value}
                             styling={headerComponent.styles.styling}
-                            tailwindStyling={headerComponent.styles.tailwindStyling}
+                            cssClass={headerComponent.styles.tailwindStyling}
                             instanceId={controller.getInstanceId()}
                         />
                     {/if}
@@ -677,13 +744,14 @@
             <!-- Rows Headers -->
             <div
                 bind:this={rowsHeaderContainer}
-                class="rows-headers text-center sticky left-0 z-[6] bg-tertiaryBg cursor-pointer"
+                class="ss-sheet__row-headers"
                 style="
-                    display: grid;
                     grid-column: 1;
                     grid-row: 2 / -1;
-                    grid-template-rows: subgrid;
                 "
+                role="rowheader"
+                aria-label="Row headers"
+                tabindex="-1"
                 on:mousedown={(e) => controller.handleRowHeaderMouseEvent(e, 'mousedown')}
                 on:mouseenter={(e) => controller.handleRowHeaderMouseEvent(e, 'mouseenter')}
                 on:mouseup={(e) => controller.handleRowHeaderMouseEvent(e, 'mouseup')}
@@ -698,7 +766,7 @@
                     <InputHeader
                         position={currentEditingState.position}
                         styling={currentEditingState.component.styles.styling}
-                        tailwindStyling={currentEditingState.component.styles.tailwindStyling}
+                        cssClass={currentEditingState.component.styles.tailwindStyling}
                         instanceId={controller.getInstanceId()}
                         on:inputBlur={handleInputBlur}
                         on:inputKeyCommit={handleInputKeyCommand}
@@ -716,7 +784,7 @@
                             position={headerComponent.position}
                             value={headerComponent.value}
                             styling={headerComponent.styles.styling}
-                            tailwindStyling={headerComponent.styles.tailwindStyling}
+                            cssClass={headerComponent.styles.tailwindStyling}
                             instanceId={controller.getInstanceId()}
                         />
                     {/if}
@@ -750,18 +818,17 @@
 
             </div>
 
-            <!-- Main grid as subgrid (tu grid actual sin cambios) -->
+            <!-- Main grid as subgrid -->
             <div
                 bind:this={mainGridContainer}
-                class="main-grid cursor-cell"
+                class="ss-sheet__main-grid"
                 style="
-                    display: grid;
                     grid-column: 2 / -1;
                     grid-row: 2 / -1;
-                    grid-template-columns: subgrid;
-                    grid-template-rows: subgrid;
-                    gap: 0;
                 "
+                role="grid"
+                aria-label="Main grid"
+                tabindex="0"
                 on:mousedown={(e) => controller.handleMainGridMouseEvent(e, 'mousedown')}
                 on:mouseenter={(e) => controller.handleMainGridMouseEvent(e, 'mouseenter')}
                 on:mouseup={(e) => controller.handleMainGridMouseEvent(e, 'mouseup')}
@@ -776,7 +843,7 @@
                     <InputCell
                         position={currentEditingState.position}
                         styling={currentEditingState.component.styles.styling}
-                        tailwindStyling={currentEditingState.component.styles.tailwindStyling}
+                        cssClass={currentEditingState.component.styles.tailwindStyling}
                         instanceId={controller.getInstanceId()}
                         on:inputBlur={handleInputBlur}
                         on:inputKeyCommit={handleInputKeyCommand}
@@ -794,7 +861,7 @@
                             position={cellComponent.position}
                             value={cellComponent.value}
                             styling={cellComponent.styles.styling}
-                            tailwindStyling={cellComponent.styles.tailwindStyling}
+                            cssClass={cellComponent.styles.tailwindStyling}
                             instanceId={controller.getInstanceId()}
                             numberDisplayOptions={numberDisplayOptions}
                         />

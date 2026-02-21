@@ -9,5 +9,9 @@
 
 
 <div style="width: 100%; height: 400px; border: 1px solid black; overflow: auto;">
-	<SmartSheet gridData={testData} />
+	<SmartSheet
+		gridData={testData}
+		fontSize="0.75rem"
+		theme="dark"
+	/>
 </div>

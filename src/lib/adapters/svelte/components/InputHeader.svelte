@@ -6,8 +6,8 @@
 
     // Props from parent
     export let position: HeaderPosition;
-    export let styling: string = '';
-    export let tailwindStyling: string = '';
+    export let styling: string = '';        // inline style string for dynamic bg/color from DataHandler
+    export let cssClass: string = '';       // extra CSS class(es) injected by the consumer (replaces tailwindStyling)
     export let instanceId: string;
 
     const dispatch = createEventDispatcher();
@@ -31,21 +31,20 @@
 
 <div
     style="grid-row: {position.headerType === 'row' ? position.index + 1 : 1};
-        grid-column: {position.headerType === 'col' ? position.index + 1 : 1};"
-    class="flex items-center {position.headerType === 'col' ? 'justify-center' : ''}
-        px-4 py-2 cursor-pointer select-none relative"
+           grid-column: {position.headerType === 'col' ? position.index + 1 : 1};"
+    class="ss-input-header"
+    class:ss-input-header--col={position.headerType === 'col'}
     data-header-type={position.headerType}
     data-header-index={position.index}
     data-instance={instanceId}
 >
     <div id="header-background-{instanceId}"
-        class="absolute inset-0 w-full h-full z-[1] {tailwindStyling}"
+        class="ss-layer {cssClass}"
         style={styling}
-    />
+    ></div>
     <input
         id="header-input-{instanceId}"
-        class="z-[12] w-full bg-transparent border-none outline-none p-0 m-0 
-               font-semibold text-center"
+        class="ss-input-header__input"
         type="text"
         data-header-type={position.headerType}
         data-header-index={position.index}
@@ -53,3 +52,42 @@
         on:keydown={handleInputKeydown}
     />
 </div>
+
+<style>
+    .ss-input-header {
+        display: flex;
+        align-items: center;
+        padding: 0.5rem 1rem;
+        cursor: pointer;
+        user-select: none;
+        position: relative;
+        width: 100%;
+        height: 100%;
+        background-color: var(--ss-header-bg, #f3f4f6);
+        color: var(--ss-header-text, #374151);
+        font-family: var(--ss-font-family, ui-sans-serif, system-ui, sans-serif);
+    }
+
+    .ss-input-header--col {
+        justify-content: center;
+    }
+
+    .ss-input-header :global(.ss-layer) {
+        z-index: 1;
+    }
+
+    .ss-input-header__input {
+        z-index: 12;
+        width: 100%;
+        background: transparent;
+        border: none;
+        outline: none;
+        padding: 0;
+        margin: 0;
+        font-weight: var(--ss-header-font-weight, 600);
+        text-align: center;
+        color: var(--ss-header-text, #374151);
+        font-size: inherit;
+        font-family: inherit;
+    }
+</style>

@@ -151,8 +151,8 @@
 </script>
 
 <!-- Renders an invisible grid for scanning the dimensions -->
-<div class="h-full w-full relative">
-	<div class="relative overflow-auto max-h-full max-w-full border outline-none overscroll-contain"
+<div class="ss-scanner">
+	<div class="ss-scanner__scroll"
 		tabindex="-1"
         style="font-size: {fontSize};"
 		>
@@ -167,7 +167,7 @@
         >
             <!-- Top-Left Corner -->
             <div
-                class="corner-header sticky top-0 left-0 z-10 bg-tertiaryBg"
+                class="ss-scanner__corner"
                 style="
                     display: grid;
                     grid-column: 1;
@@ -179,7 +179,7 @@
                     position={{ headerType: 'corner', index: 0 }}
                     value={rowsTitle}
                     styling={cornerHeaderComponent.styles.styling}
-                    tailwindStyling={cornerHeaderComponent.styles.tailwindStyling}
+                    cssClass={cornerHeaderComponent.styles.tailwindStyling}
                     instanceId={instanceId}
                     textOverflowMode="full"
                 />
@@ -187,7 +187,7 @@
 
             <!-- Columns Headers -->
             <div
-                class="columns-headers sticky top-0 z-[6] bg-tertiaryBg"
+                class="ss-scanner__col-headers"
                 style="
                     display: grid;
                     grid-column: 2 / -1;
@@ -200,7 +200,7 @@
                         position={header.position}
                         value={header.value}
                         styling={header.styles.styling}
-                        tailwindStyling={header.styles.tailwindStyling}
+                        cssClass={header.styles.tailwindStyling}
                         instanceId={instanceId}
                         textOverflowMode="full"
                     />
@@ -209,7 +209,7 @@
 
             <!-- Rows Headers -->
             <div
-                class="rows-headers text-center sticky left-0 z-[6] bg-tertiaryBg"
+                class="ss-scanner__row-headers"
                 style="
                     display: grid;
                     grid-column: 1;
@@ -221,7 +221,7 @@
                     position={{ headerType: 'row', index: 0 }}
                     value={rowHeaders[rowIndex].value}
                     styling={rowHeaders[rowIndex].styles.styling}
-                    tailwindStyling={rowHeaders[rowIndex].styles.tailwindStyling}
+                    cssClass={rowHeaders[rowIndex].styles.tailwindStyling}
                     instanceId={instanceId}
                     textOverflowMode="full"
                 />
@@ -229,7 +229,7 @@
 
             <!-- Cells -->
             <div
-                class="main-grid text-tertiaryOnBg"
+                class="ss-scanner__cells"
                 style="
                     display: grid;
                     grid-column: 2 / -1;
@@ -244,7 +244,7 @@
                         position={{ row: 0, col: colIndex }}
                         value={cell.value}
                         styling={cell.styles.styling}
-                        tailwindStyling={cell.styles.tailwindStyling}
+                        cssClass={cell.styles.tailwindStyling}
                         instanceId={instanceId}
                         textOverflowMode="full"
                         numberDisplayOptions={numberDisplayOptions}
@@ -255,3 +255,48 @@
 		</div>
 	</div>
 </div>
+
+<style>
+    .ss-scanner {
+        height: 100%;
+        width: 100%;
+        position: relative;
+    }
+
+    .ss-scanner__scroll {
+        position: relative;
+        overflow: auto;
+        max-height: 100%;
+        max-width: 100%;
+        border: 1px solid var(--ss-border-color, #d1d5db);
+        outline: none;
+        overscroll-behavior: contain;
+    }
+
+    .ss-scanner__corner {
+        position: sticky;
+        top: 0;
+        left: 0;
+        z-index: 10;
+        background-color: var(--ss-header-bg, #f3f4f6);
+    }
+
+    .ss-scanner__col-headers {
+        position: sticky;
+        top: 0;
+        z-index: 6;
+        background-color: var(--ss-header-bg, #f3f4f6);
+    }
+
+    .ss-scanner__row-headers {
+        text-align: center;
+        position: sticky;
+        left: 0;
+        z-index: 6;
+        background-color: var(--ss-header-bg, #f3f4f6);
+    }
+
+    .ss-scanner__cells {
+        color: var(--ss-cell-text, #111827);
+    }
+</style>

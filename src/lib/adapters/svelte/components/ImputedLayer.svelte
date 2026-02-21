@@ -26,22 +26,28 @@
 </script>
 
 <div
-	class="w-full h-full pointer-events-none z-[3]"
-	style="
-		background: repeating-linear-gradient(
-  			45deg,
-  			rgba(30, 64, 175, 0.25),
-  			rgba(30, 64, 175, 0.25) 1px,
-  			rgba(37, 99, 235, 0.35) 1px,
-  			rgba(37, 99, 235, 0.35) 2px,
-  			transparent 2px,
-  			transparent 10px
-		);
-		border: 1px solid rgba(30, 64, 175, 0.4);
-		border-radius: 1px;
-		box-shadow: inset 0 0 0 1px rgba(37, 99, 235, 0.2);
-		grid-row: {gridRow};
-		grid-column: {gridCol};
-	"
+    class="ss-imputed"
+    style="grid-row: {gridRow}; grid-column: {gridCol};"
     data-imputed={type}
-/>
+></div>
+
+<style>
+    .ss-imputed {
+        width: 100%;
+        height: 100%;
+        pointer-events: none;
+        z-index: 3;
+        background: repeating-linear-gradient(
+            45deg,
+            var(--ss-imputed-stripe-a, rgba(30, 64, 175, 0.25)),
+            var(--ss-imputed-stripe-a, rgba(30, 64, 175, 0.25)) 1px,
+            var(--ss-imputed-stripe-b, rgba(37, 99, 235, 0.35)) 1px,
+            var(--ss-imputed-stripe-b, rgba(37, 99, 235, 0.35)) 2px,
+            transparent 2px,
+            transparent 10px
+        );
+        border: 1px solid var(--ss-imputed-border, rgba(30, 64, 175, 0.4));
+        border-radius: 1px;
+        box-shadow: inset 0 0 0 1px var(--ss-imputed-stripe-b, rgba(37, 99, 235, 0.2));
+    }
+</style>
