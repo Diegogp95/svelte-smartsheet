@@ -6,7 +6,7 @@ import type {
     HeaderPosition,
 	VisibleComponents,
 	RenderArea,
-} from './types';
+} from '../types/types.ts';
 
 // Callback types for virtualization subscriptions
 export type VisibleComponentsCallback<TExtraProps, TRowHeaderProps, TColHeaderProps> = 

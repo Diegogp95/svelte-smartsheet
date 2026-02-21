@@ -7,7 +7,7 @@ import type {
     NavigationAnchorsAndPointers,
     GridDimensions,
     KeyboardNavigationAnalysis,
-} from './types';
+} from '../types/types.ts';
 
 
 // Callback type for selection changes

@@ -7,8 +7,8 @@ import type {
     HeaderValue,
     EditingState,
     NumberFormat,
-} from './types';
-import { CellChange, HeaderChange, ChangeSet, HistoryManager } from './HistoryManager';
+} from '../types/types.ts';
+import { CellChange, HeaderChange, ChangeSet, HistoryManager } from '../history/HistoryManager.ts';
 import { tick } from 'svelte';
 
 // Callback type for editing state changes

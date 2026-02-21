@@ -2,7 +2,7 @@
     import type {
         HeaderPosition,
         HeaderValue,
-    } from './types';
+    } from '../../../core/types/types.ts';
 
     // Props from parent
     export let value: HeaderValue | undefined = undefined;

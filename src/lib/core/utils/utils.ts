@@ -2,7 +2,7 @@ import type {
     FlashColor,
     GridPosition,
     HeaderPosition,
-} from './types';
+} from '../types/types.ts';
 
 /**
  * Helper function to get flash colors for animations

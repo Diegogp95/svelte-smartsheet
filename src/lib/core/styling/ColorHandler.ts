@@ -9,9 +9,9 @@ import type {
     HeaderComponent,
     VisibleComponents,
     GridDimensions,
-} from './types';
+} from '../types/types.ts';
 import './Styling.css'
-import { getFlashColors } from './utils';
+import { getFlashColors } from '../utils/utils.ts';
 
 /** * Handles color and style management for SmartSheet cells and headers.
  * This module provides functionality to manage cell/header background, text and border colors,

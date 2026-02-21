@@ -2,7 +2,7 @@
     import { createEventDispatcher } from 'svelte';
     import type {
         HeaderPosition,
-    } from './types';
+    } from '../../../core/types/types.ts';
 
     // Props from parent
     export let position: HeaderPosition;

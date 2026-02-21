@@ -15,7 +15,7 @@ import type {
     KeyboardNavigationAnalysis,
     KeyboardNavigationAction,
     NavigationType,
-} from './types';
+} from '../types/types.ts';
 
 export default class InputAnalyzer {
     private modifierState: ModifierState = { shift: false, ctrl: false, alt: false };

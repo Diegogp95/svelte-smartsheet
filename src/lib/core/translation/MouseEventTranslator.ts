@@ -5,7 +5,7 @@ import type {
     HeaderMouseEvent,
     GridMouseInteractionType,
     GridDimensions,
-} from './types';
+} from '../types/types.ts';
 
 export default class MouseEventTranslator {
     private gridDimensions: GridDimensions;

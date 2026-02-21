@@ -1,5 +1,5 @@
 <script lang="ts">
-	import type { GridPosition, HeaderPosition } from './types';
+	import type { GridPosition, HeaderPosition } from '../../../core/types/types.ts';
 
     export let position: GridPosition | HeaderPosition;
     // Explicit type parameter

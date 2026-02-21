@@ -11,7 +11,7 @@ import type {
     OutsideScrollAnalysis,
     RenderArea,
     KeyboardNavigationAnalysis,
-} from './types';
+} from '../types/types.ts';
 
 export type PointerPositionCallback = (handler: NavigationHandler<any, any, any>) => void;
 export type DocumentMouseMoveCallback = (event: MouseEvent) => void;

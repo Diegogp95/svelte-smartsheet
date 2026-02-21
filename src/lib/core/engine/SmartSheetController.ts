@@ -17,18 +17,18 @@ import type {
     NavigationAnchorsAndPointers,
     DraggingActionContext,
     NumberFormat,
-} from './types';
-import InputAnalyzer from './InputAnalyzer';
-import MouseEventTranslator from './MouseEventTranslator';
-import NavigationHandler from './NavigationHandler';
-import SelectionHandler from './SelectionHandler';
-import DataHandler from './DataHandler';
-import type { SelectionChangedCallback } from './SelectionHandler';
-import type { PointerPositionCallback, AutoScrollSelectionCallback } from './NavigationHandler';
-import type { EditingStateCallback, ImputedElementsCallback } from './DataHandler';
-import ColorHandler from './ColorHandler';
-import VirtualizeHandler from './VirtualizeHandler';
-import type { VisibleComponentsCallback, RenderAreaCallback, ScaleChangeCallback } from './VirtualizeHandler';
+} from '../types/types.ts';
+import InputAnalyzer from '../input/InputAnalyzer.ts';
+import MouseEventTranslator from '../translation/MouseEventTranslator.ts';
+import NavigationHandler from '../navigation/NavigationHandler.ts';
+import SelectionHandler from '../selection/SelectionHandler.ts';
+import DataHandler from '../data/DataHandler.ts';
+import type { SelectionChangedCallback } from '../selection/SelectionHandler.ts';
+import type { PointerPositionCallback, AutoScrollSelectionCallback } from '../navigation/NavigationHandler.ts';
+import type { EditingStateCallback, ImputedElementsCallback } from '../data/DataHandler.ts';
+import ColorHandler from '../styling/ColorHandler.ts';
+import VirtualizeHandler from '../virtualization/VirtualizeHandler.ts';
+import type { VisibleComponentsCallback, RenderAreaCallback, ScaleChangeCallback } from '../virtualization/VirtualizeHandler.ts';
 
 
 // Callback type for processing state changes (using any to avoid circular dependency)

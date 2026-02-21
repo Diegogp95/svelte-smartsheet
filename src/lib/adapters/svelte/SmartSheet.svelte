@@ -1,19 +1,19 @@
 <script lang="ts" generics="TExtraProps = undefined, TRowHeaderProps = undefined, TColHeaderProps = undefined">
-    import Cell from './Cell.svelte';
-    import InputCell from './InputCell.svelte';
-    import InputHeader from './InputHeader.svelte';
-    import CellPointer from './CellPointer.svelte';
-    import Header from './Header.svelte';
-    import NavigationOverlay from './NavigationOverlay.svelte';
-    import ProcessingOverlay from './ProcessingOverlay.svelte';
-    import SmartSheetController from './SmartSheetController';
-    import { Selection, HeaderSelection } from './SelectionHandler';
-    import type { SelectionChangedCallback } from './SelectionHandler';
-    import type { PointerPositionCallback } from './NavigationHandler';
-    import type { VisibleComponentsCallback, ScaleChangeCallback } from './VirtualizeHandler';
-    import type { EditingStateCallback } from './DataHandler';
-    import type { ProcessingStateCallback } from './SmartSheetController';
-    import type { ImputedElementsCallback } from './DataHandler';
+    import Cell from './components/Cell.svelte';
+    import InputCell from './components/InputCell.svelte';
+    import InputHeader from './components/InputHeader.svelte';
+    import CellPointer from './components/CellPointer.svelte';
+    import Header from './components/Header.svelte';
+    import NavigationOverlay from './overlays/NavigationOverlay.svelte';
+    import ProcessingOverlay from './overlays/ProcessingOverlay.svelte';
+    import SmartSheetController from '../../core/engine/SmartSheetController.ts';
+    import { Selection, HeaderSelection } from '../../core/selection/SelectionHandler.ts';
+    import type { SelectionChangedCallback } from '../../core/selection/SelectionHandler.ts';
+    import type { PointerPositionCallback } from '../../core/navigation/NavigationHandler.ts';
+    import type { VisibleComponentsCallback, ScaleChangeCallback } from '../../core/virtualization/VirtualizeHandler.ts';
+    import type { EditingStateCallback } from '../../core/data/DataHandler.ts';
+    import type { ProcessingStateCallback } from '../../core/engine/SmartSheetController.ts';
+    import type { ImputedElementsCallback } from '../../core/data/DataHandler.ts';
     import type {
         GridDimensions,
         GridPosition,
@@ -32,14 +32,14 @@
         ProcessingState,
         NumberDisplayOptions,
         NumberFormat,
-    } from './types';
-    import SelectionRect from './SelectionRect.svelte';
-    import DeselectionRect from './DeselectionRect.svelte';
+    } from '../../core/types/types.ts';
+    import SelectionRect from './overlays/SelectionRect.svelte';
+    import DeselectionRect from './overlays/DeselectionRect.svelte';
     import { tick } from 'svelte';
-    import DimensionScanner from './DimensionScanner.svelte';
-    import HeaderSelectionRect from './HeaderSelectionRect.svelte';
-    import HeaderDeselectionRect from './HeaderDeselectionRect.svelte';
-    import ImputedLayer from './ImputedLayer.svelte';
+    import DimensionScanner from './lifecycle/DimensionScanner.svelte';
+    import HeaderSelectionRect from './overlays/HeaderSelectionRect.svelte';
+    import HeaderDeselectionRect from './overlays/HeaderDeselectionRect.svelte';
+    import ImputedLayer from './components/ImputedLayer.svelte';
 
     // Data
     export let gridData: (CellValue | undefined)[][];

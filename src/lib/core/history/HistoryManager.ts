@@ -3,7 +3,7 @@ import type {
     CellValue,
     HeaderPosition,
     HeaderValue,
-} from './types';
+} from '../types/types.ts';
 
 // ==================== CELL CHANGE CLASS ====================
 

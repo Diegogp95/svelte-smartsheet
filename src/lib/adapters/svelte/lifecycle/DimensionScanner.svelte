@@ -7,9 +7,9 @@
         CellComponent,
         HeaderComponent,
         NumberDisplayOptions,
-  	} from './types';
-  	import Cell from './Cell.svelte';
-  	import Header from './Header.svelte';
+  	} from '../../../core/types/types.ts';
+  	import Cell from '../components/Cell.svelte';
+  	import Header from '../components/Header.svelte';
     import { tick } from 'svelte';
 
 
