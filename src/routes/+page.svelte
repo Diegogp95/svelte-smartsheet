@@ -3,9 +3,9 @@
 	import { testData } from "./testdata.ts";
 
 </script>
-<h1>Welcome to your library project</h1>
-<p>Create your package using @sveltejs/package and preview/showcase your work with SvelteKit</p>
-<p>Visit <a href="https://svelte.dev/docs/kit">svelte.dev/docs/kit</a> to read the documentation</p>
+
+<h1>SmartSheet Demo</h1>
+<h2>Simple show and play with demo</h2>
 
 
 <div style="width: 100%; height: 400px; border: 1px solid black; overflow: auto;">
