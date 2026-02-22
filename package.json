@@ -1,5 +1,5 @@
 {
-	"name": "app",
+	"name": "svelte-smartsheet",
 	"version": "0.0.1",
 	"scripts": {
 		"dev": "vite dev",
@@ -61,5 +61,8 @@
 	},
 	"keywords": [
 		"svelte"
-	]
+	],
+	"dependencies": {
+		"@sveltejs/adapter-vercel": "^6.3.2"
+	}
 }
