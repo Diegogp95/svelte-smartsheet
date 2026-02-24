@@ -1,4 +1,5 @@
 <script lang="ts">
+    import { onMount } from 'svelte';
     import { page } from '$app/stores';
     import { isActive } from '../utils/nav';
 
@@ -23,10 +24,30 @@
         },
     ];
 
-    let open = true;
+    let open = false;
+    let isMobile = false;
+
+    onMount(() => {
+        const mq = window.matchMedia('(max-width: 768px)');
+        const update = (e: MediaQueryListEvent | MediaQueryList) => {
+            isMobile = e.matches;
+            open = !e.matches; // open by default on desktop, closed on mobile
+        };
+        update(mq);
+        mq.addEventListener('change', update);
+        return () => mq.removeEventListener('change', update);
+    });
+
+    function close() { open = false; }
 </script>
 
-<aside class="sidebar" class:sidebar--closed={!open}>
+<!-- Mobile backdrop -->
+{#if isMobile && open}
+    <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
+    <div class="sidebar-backdrop" on:click={close}></div>
+{/if}
+
+<aside class="sidebar" class:sidebar--closed={!open} class:sidebar--mobile={isMobile}>
     <nav class="sidebar__nav">
         {#each nav as item}
             {@const active = isActive($page.url.pathname, item.href)}
@@ -35,6 +56,7 @@
                     href={item.href}
                     class="sidebar__item"
                     class:sidebar__item--active={active}
+                    on:click={() => isMobile && close()}
                 >
                     {item.label}
                 </a>
@@ -46,6 +68,7 @@
                                     href={child.href}
                                     class="sidebar__child"
                                     class:sidebar__child--active={isActive($page.url.pathname, child.href)}
+                                    on:click={() => isMobile && close()}
                                 >
                                     {child.label}
                                 </a>
@@ -60,7 +83,7 @@
         <button
             class="toggle-btn"
             aria-label="Collapse sidebar"
-            on:click={() => (open = false)}
+            on:click={close}
         >‹ collapse</button>
         <span>v0.0.1-unstable</span>
     </div>
@@ -75,6 +98,15 @@
 {/if}
 
 <style>
+    /* ── Backdrop (mobile only) ─────────────────────────── */
+    .sidebar-backdrop {
+        position: fixed;
+        inset: 0;
+        z-index: 29;
+        background: rgba(0, 0, 0, 0.55);
+    }
+
+    /* ── Sidebar ────────────────────────────────────────── */
     .sidebar {
         width: var(--layout-sidebar-w);
         flex-shrink: 0;
@@ -84,11 +116,31 @@
         flex-direction: column;
         overflow-y: auto;
         overflow-x: hidden;
-        transition: width 0.2s ease, opacity 0.2s ease;
+        transition: width 0.2s ease, opacity 0.2s ease, transform 0.22s ease;
     }
 
     .sidebar--closed {
         width: 0;
+        opacity: 0;
+        pointer-events: none;
+    }
+
+    /* On mobile the sidebar is a fixed overlay drawer */
+    .sidebar--mobile {
+        position: fixed;
+        top: var(--layout-navbar-h);
+        left: 0;
+        height: calc(100vh - var(--layout-navbar-h));
+        z-index: 30;
+        width: var(--layout-sidebar-w);
+        transform: translateX(0);
+        box-shadow: 4px 0 24px rgba(0, 0, 0, 0.5);
+        opacity: 1;
+    }
+
+    .sidebar--mobile.sidebar--closed {
+        transform: translateX(-100%);
+        width: var(--layout-sidebar-w); /* keep width so animation looks right */
         opacity: 0;
         pointer-events: none;
     }
@@ -195,5 +247,13 @@
     .expand-btn:hover {
         color: var(--layout-accent);
         background: var(--layout-accent-glow);
+    }
+
+    @media (max-width: 768px) {
+        /* On mobile, expand-btn is still absolute within docs-shell, but no extra navbar offset needed */
+        .expand-btn {
+            top: 0.75rem;
+            z-index: 31; /* above sidebar backdrop */
+        }
     }
 </style>

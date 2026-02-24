@@ -199,46 +199,46 @@
     --ss-nav-overlay-text:      #050510;
 }
 
-/* ── Neon (cyberpunk) ────────────────────────────────────── */
+/* ── Neon (orange / black) ───────────────────────────────── */
 .ss-theme-neon {
-    --ss-border-color:          #2d0060;
+    --ss-border-color:          #3d1a00;
     --ss-grid-bg:               #000000;
 
     --ss-cell-bg:               #000000;
-    --ss-cell-text:             #f0f0f0;
+    --ss-cell-text:             #f0e0cc;
 
-    --ss-header-bg:             #0d0020;
-    --ss-header-text:           #e040fb;
-    --ss-header-hover-bg:       rgba(224, 64, 251, 0.25);
-    --ss-corner-icon-color:     #e040fb;
+    --ss-header-bg:             #100800;
+    --ss-header-text:           #ff6d00;
+    --ss-header-hover-bg:       rgba(255, 109, 0, 0.25);
+    --ss-corner-icon-color:     #ff6d00;
 
-    --ss-input-text:            #f0f0f0;
+    --ss-input-text:            #f0e0cc;
 
-    --ss-selection-border:      #00e5ff;
-    --ss-selection-bg:          rgba(0, 229, 255, 0.1);
+    --ss-selection-border:      #ffab00;
+    --ss-selection-bg:          rgba(255, 171, 0, 0.1);
 
     --ss-deselection-border:    #ff1744;
     --ss-deselection-bg:        rgba(255, 23, 68, 0.1);
 
-    --ss-header-sel-bg:         rgba(224, 64, 251, 0.15);
-    --ss-header-sel-border:     #ad1fd6;
+    --ss-header-sel-bg:         rgba(255, 109, 0, 0.15);
+    --ss-header-sel-border:     #e65100;
 
     --ss-processing-bg:         rgba(0, 0, 0, 0.7);
-    --ss-processing-spinner:    #e040fb;
+    --ss-processing-spinner:    #ff6d00;
 
     /* Cell pointer */
-    --ss-pointer-border:        #00e5ff;
-    --ss-pointer-bg:            rgba(0, 229, 255, 0.07);
+    --ss-pointer-border:        #ff6d00;
+    --ss-pointer-bg:            rgba(255, 109, 0, 0.08);
 
     /* Grid shadow — navigation active */
-    --ss-grid-shadow:           rgba(57, 255, 20, 0.9);   /* electric green — contrasts with cyan pointer */
+    --ss-grid-shadow:           rgba(0, 229, 255, 0.9);   /* cyan — contrasts with orange pointer */
 
     /* Imputed layer */
-    --ss-imputed-stripe-a:      rgba(224, 64, 251, 0.12);
-    --ss-imputed-stripe-b:      rgba(224, 64, 251, 0.22);
-    --ss-imputed-border:        rgba(224, 64, 251, 0.35);
+    --ss-imputed-stripe-a:      rgba(255, 109, 0, 0.12);
+    --ss-imputed-stripe-b:      rgba(255, 109, 0, 0.22);
+    --ss-imputed-border:        rgba(255, 109, 0, 0.35);
 
     /* Navigation overlay */
-    --ss-nav-overlay-bg:        #f0f0f0;
+    --ss-nav-overlay-bg:        #f0e0cc;
     --ss-nav-overlay-text:      #000000;
 }

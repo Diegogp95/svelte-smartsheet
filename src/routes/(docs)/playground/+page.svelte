@@ -188,5 +188,6 @@
     .playground__sheet {
         flex: 1;
         min-height: 350px;
+        padding-bottom: 1.5rem;
     }
 </style>
