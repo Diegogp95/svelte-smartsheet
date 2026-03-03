@@ -528,6 +528,7 @@
 <style>
     .ss-sheet {
         position: relative;
+        min-height: 100%;
         max-height: 100%;
         max-width: 100%;
         border: 1px solid var(--ss-border-color, #d1d5db);
@@ -539,11 +540,10 @@
     }
 
     .ss-sheet--active {
-        /* outline on the element itself is never clipped by any overflow in the tree    */
-        /* inset box-shadow renders inside the viewport, immune to parent overflow clips */
-        outline: 2px solid var(--ss-grid-shadow);
-        outline-offset: -2px;
-        box-shadow: inset 0 0 18px 4px var(--ss-grid-shadow);
+        /* this effect is clipped if any parent has overflow:hidden, will explore outline alternatives if that becomes an issue */
+        box-shadow:
+            0 0 0 2px var(--ss-grid-shadow),
+            0 0 10px 2px var(--ss-grid-shadow-outline);
     }
 
     .ss-sheet__corner {

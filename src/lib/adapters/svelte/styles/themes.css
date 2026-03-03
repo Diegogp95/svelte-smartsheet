@@ -22,6 +22,7 @@
 
 	/* Grid / Container Shadow — navigation active indicator */
 	--ss-grid-shadow:           rgba(124, 58, 237, 0.9);  /* violet — contrasts with blue pointer */
+    --ss-grid-shadow-outline:   rgba(124, 58, 237, 0.25);  /* lighter violet for outer halo */
 
     /* Cell */
     --ss-cell-bg:               #ffffff;
@@ -100,6 +101,7 @@
 
     /* Grid shadow — navigation active */
     --ss-grid-shadow:           rgba(245, 158, 11, 0.9);  /* amber — contrasts with blue pointer */
+    --ss-grid-shadow-outline:   rgba(245, 158, 11, 0.25);  /* lighter amber for outer halo */
 
     /* Imputed layer */
     --ss-imputed-stripe-a:      rgba(59, 130, 246, 0.2);
@@ -144,6 +146,7 @@
 
     /* Grid shadow — navigation active */
     --ss-grid-shadow:           rgba(245, 158, 11, 0.9);  /* amber — contrasts with blue pointer on dark bg */
+    --ss-grid-shadow-outline:   rgba(245, 158, 11, 0.25);  /* lighter amber for outer halo */
 
     /* Imputed layer */
     --ss-imputed-stripe-a:      rgba(88, 166, 255, 0.15);
@@ -188,6 +191,7 @@
 
     /* Grid shadow — navigation active */
     --ss-grid-shadow:           rgba(236, 72, 153, 0.9);  /* magenta — contrasts with cyan pointer */
+    --ss-grid-shadow-outline:   rgba(236, 72, 153, 0.25);  /* lighter magenta for outer halo */
 
     /* Imputed layer */
     --ss-imputed-stripe-a:      rgba(0, 255, 200, 0.1);
@@ -232,6 +236,7 @@
 
     /* Grid shadow — navigation active */
     --ss-grid-shadow:           rgba(0, 229, 255, 0.9);   /* cyan — contrasts with orange pointer */
+    --ss-grid-shadow-outline:   rgba(0, 229, 255, 0.25);  /* lighter cyan for outer halo */
 
     /* Imputed layer */
     --ss-imputed-stripe-a:      rgba(255, 109, 0, 0.12);

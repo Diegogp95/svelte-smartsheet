@@ -233,10 +233,6 @@
         width: 100%;
         height: 360px;
         position: relative;  /* establishes a containing block for the grid's absolute children */
-        overflow: hidden;    /* prevents the virtualizer from expanding the container */
-        border-radius: 8px;
-        border: 1px solid var(--layout-border);
-        box-shadow: 0 4px 24px rgba(0,0,0,0.4);
     }
 
     /* ── Features ────────────────────────────────────────── */

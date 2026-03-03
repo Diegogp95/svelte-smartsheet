@@ -65,11 +65,14 @@
 
     .ss-nav-overlay__text {
         color: var(--ss-nav-overlay-text, #ffffff);
-        font-size: 4.5rem;
+        font-size: clamp(1.25rem, 8cqw, 4.5rem);
         font-weight: 700;
         pointer-events: none;
         user-select: none;
         font-family: serif;
         letter-spacing: 0.1em;
+        text-align: center;
+        max-width: 90%;
+        word-break: break-word;
     }
 </style>
