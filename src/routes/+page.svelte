@@ -10,7 +10,7 @@
         { icon: '🎨', title: 'Styling API',           desc: 'Colorize cells programmatically. Build heatmaps, highlights.' },
         { icon: '🔢', title: 'TypeScript Generics',   desc: 'Fully typed extraProps on cells and headers for your metadata.' },
         { icon: '📋', title: 'Clipboard Support',     desc: 'Copy and paste with your own spreadsheet or browser clipboard.' },
-        { icon: '🎁', title: '5 Built-in Themes',     desc: 'light, dark, tech, glow, neon — all in CSS custom properties.' },
+        { icon: '📤', title: 'Export Data',           desc: 'Export your spreadsheet data for backend integration.' },
     ];
 
     const columnHeaders: HeaderValue[] = ['Q1-1', 'Q1-2', 'Q1-3', 'Q1-24', 'Q2-1', 'Q2-2', 'Q2-3', 'Q2-4'];
@@ -40,7 +40,7 @@
             <p class="hero__desc">
                 SmartSheet is a virtualized, Excel-like spreadsheet component for Svelte.
                 Built with a framework-agnostic engine, a powerful TypeScript API, and five
-                ready-to-use themes — no Tailwind required.
+                ready-to-use themes.
             </p>
             <div class="hero__ctas">
                 <a href="/playground" class="cta cta--primary">Try the Playground →</a>
@@ -95,15 +95,24 @@
 >&lt;script lang="ts"&gt;
   import &#123; SmartSheet &#125; from 'svelte-smartsheet';
 
+  const colHeaders = ['Score', 'Status'];
+  const rowHeaders = ['Alice', 'Bob'];
+  const cornerHeader = 'Players';
+
   const data = [
-    ['Name',  'Score', 'Status'],
-    ['Alice',  94,     'active'],
-    ['Bob',    72,  'inactive'],
+    [85, 'Active'],
+    [72, 'Inactive'],
   ];
 &lt;/script&gt;
 
 &lt;div style="width:100%; height:400px;"&gt;
-  &lt;SmartSheet gridData=&#123;data&#125; theme="tech" /&gt;
+  &lt;SmartSheet
+    gridData=&#123;data&#125;
+    columnHeaders=&#123;colHeaders&#125;
+    rowHeaders=&#123;rowHeaders&#125;
+    rowsTitle=&#123;cornerHeader&#125;
+    theme="tech"
+  /&gt;
 &lt;/div&gt;</code></pre>
     </section>
 
@@ -287,6 +296,7 @@
         font-size: 0.78rem;
         color: var(--layout-text-muted);
         line-height: 1.45;
+        word-break: break-word;
     }
 
     /* ── Quick start ─────────────────────────────────────── */
