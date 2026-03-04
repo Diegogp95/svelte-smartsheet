@@ -271,6 +271,11 @@
     }
 
     // Selection APIs that take functions aware of cell structure
+
+    export function getSelectedCells(): Set<string> {
+        return controller.getSelectedCells();
+    }
+
     export function applySelections(selectionGenerator: (cells: Map<string, CellComponent<TExtraProps>>) => GridPosition[]) {
         controller.applySelections(selectionGenerator);
     }
