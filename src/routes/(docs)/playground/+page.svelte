@@ -1,19 +1,14 @@
 <script lang="ts">
     import SmartSheet from '$lib/adapters/svelte/SmartSheet.svelte';
     import type { HeaderValue } from '$lib/core/types/types';
+    import ApiControls from './ApiControls.svelte';
 
     type Theme = 'light' | 'dark' | 'tech' | 'glow' | 'neon';
     let theme: Theme = 'tech';
 
     const themes: Theme[] = ['light', 'dark', 'tech', 'glow', 'neon'];
 
-    const fontSizes = [
-        { label: 'XS', value: '0.7rem' },
-        { label: 'S',  value: '0.8rem' },
-        { label: 'M',  value: '0.9rem' },
-        { label: 'L',  value: '1rem'   },
-    ];
-    let fontSize = '0.85rem';
+    let sheet: SmartSheet;
 
     const columnHeaders: HeaderValue[] = [
         'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
@@ -41,7 +36,7 @@
     <div class="playground__header">
         <div class="playground__title">
             <h1>Playground</h1>
-            <p>Live demo — interact with the grid, switch themes, and try keyboard navigation.</p>
+            <p>Live demo — interact with the grid, switch themes, and try the API controls below.</p>
         </div>
         <div class="playground__controls">
             <div class="control-group">
@@ -56,37 +51,33 @@
                     {/each}
                 </div>
             </div>
-            <div class="control-group">
-                <span class="control-label">Font size</span>
-                <div class="button-row">
-                    {#each fontSizes as fs}
-                        <button
-                            class="pill"
-                            class:pill--active={fontSize === fs.value}
-                            on:click={() => (fontSize = fs.value)}
-                        >{fs.label}</button>
-                    {/each}
-                </div>
-            </div>
         </div>
     </div>
 
     <div class="playground__hints">
-        <span class="hint">Click to select</span>
-        <span class="hint">Double-click to edit</span>
-        <span class="hint">Click header to select row/col</span>
-        <span class="hint">Click grid then use arrow keys</span>
+        <span class="hint">Click and drag to select</span>
+        <span class="hint">Dclick/Enter/Type to edit</span>
+        <span class="hint">Click and drag header to select row/col</span>
+        <span class="hint">Arrow keys to navigate</span>
+        <span class="hint">Ctrl+Arrow keys to jump</span>
+        <span class="hint">Shift+Arrow keys to select</span>
+        <span class="hint">Supr to delete</span>
+        <span class="hint">Ctrl+Z/Ctrl+Y to undo/redo</span>
         <span class="hint">Ctrl+scroll to zoom</span>
     </div>
 
+    <!-- API Controls -->
+    <ApiControls {sheet} />
+
     <div class="playground__sheet">
         <SmartSheet
+            bind:this={sheet}
             {gridData}
             {columnHeaders}
             {rowHeaders}
             rowsTitle="Region"
             {theme}
-            {fontSize}
+            fontSize="0.85rem"
             minCellWidth="5.5rem"
         />
     </div>
@@ -97,7 +88,6 @@
         display: flex;
         flex-direction: column;
         gap: 1.25rem;
-        height: 100%;
     }
 
     .playground__header {
@@ -187,7 +177,8 @@
 
     .playground__sheet {
         flex: 1;
-        min-height: 350px;
+        height: 500px;
         padding-bottom: 1.5rem;
     }
+
 </style>
