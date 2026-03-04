@@ -64,7 +64,7 @@ All theme tokens are CSS custom properties (`--ss-*`), so you can override any o
 In the meantime, clone the repo and reference it locally:
 
 ```bash
-git clone https://github.com/Diegogp95/smart-sheet-dev.git
+git clone https://github.com/Diegogp95/svelte-smartsheet.git
 ```
 
 ---
@@ -73,18 +73,26 @@ git clone https://github.com/Diegogp95/smart-sheet-dev.git
 
 ```svelte
 <script lang="ts">
-  import { SmartSheet } from 'smart-sheet';
+  import { SmartSheet } from 'svelte-smartsheet';
 
+  const colHeaders = ['Score', 'Status'];
+  const rowHeaders = ['Alice', 'Bob'];
+  const cornerHeader = 'Players';
   const data = [
-    ['Name',  'Score', 'Status'],
-    ['Alice', 94,      'active'],
-    ['Bob',   72,      'inactive'],
+    [85, 'active'],
+    [72, 'inactive'],
   ];
 </script>
 
 <!-- The spreadsheet takes the full dimensions of your container -->
 <div style="width: 100%; height: 400px;">
-  <SmartSheet gridData={data} theme="tech" />
+  <SmartSheet
+  	gridData={data}
+  	columnHeaders={colHeaders}
+  	rowHeaders={rowHeaders}
+  	cornerHeader={cornerHeader}
+  	theme="tech"
+  />
 </div>
 ```
 
