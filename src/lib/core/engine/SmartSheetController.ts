@@ -6,7 +6,6 @@ import type {
     CellMouseEvent,
     CellValue,
     BackgroundProperties,
-    TailwindProperties,
     HeaderPosition,
     HeaderComponent,
     HeaderMouseEvent,
@@ -67,8 +66,6 @@ export default class SmartSheetController<TExtraProps = undefined,
     private copyListener: ((event: ClipboardEvent) => void) | null = null;
     private cutListener: ((event: ClipboardEvent) => void) | null = null;
     // Separate header components by type for different extraProps handling
-    // Style
-    private styleMode: 'style' | 'tailwind'; // Default to inline styles0
     // ExtraProps schema registry for homogeneous structures
     private extraPropsSchema = {
         cellProperties: new Set<keyof TExtraProps>(),
@@ -94,7 +91,6 @@ export default class SmartSheetController<TExtraProps = undefined,
         cellsExtraProps: TExtraProps[][] | undefined,
         rowHeaderProps: TRowHeaderProps[] | undefined,
         colHeaderProps: TColHeaderProps[] | undefined,
-        styleMode: 'style' | 'tailwind',
         headersReadOnly: boolean,
         numberFormat: NumberFormat,
         onSelectionsChanged?: SelectionChangedCallback,
@@ -108,7 +104,6 @@ export default class SmartSheetController<TExtraProps = undefined,
         onImputedElementsChanged?: ImputedElementsCallback<TExtraProps, TRowHeaderProps, TColHeaderProps>,
     ) {
         this.gridDimensions = initialDimensions;
-        this.styleMode = styleMode;
         this.headersReadOnly = headersReadOnly;
         this.onProcessingStateChanged = onProcessingStateChanged;
 
@@ -125,7 +120,6 @@ export default class SmartSheetController<TExtraProps = undefined,
             extraProps: undefined,
             styles: {
                 styling: '',
-                tailwindStyling: '',
             },
         };
 
@@ -164,7 +158,6 @@ export default class SmartSheetController<TExtraProps = undefined,
         );
         this.colorHandler = new ColorHandler<TExtraProps, TRowHeaderProps, TColHeaderProps>(
             this.gridDimensions,
-            this.styleMode,
             this.cellComponents,
             this.rowHeaderComponents,
             this.colHeaderComponents,
@@ -204,7 +197,6 @@ export default class SmartSheetController<TExtraProps = undefined,
                     extraProps: cellsExtraProps?.[row]?.[col] as TExtraProps,
                     styles: {
                         styling: '',
-                        tailwindStyling: '',
                     }
                 };
                 cellMap.set(key, cellComponent);
@@ -236,7 +228,6 @@ export default class SmartSheetController<TExtraProps = undefined,
                 extraProps: rowHeaderProps?.[index] as TRowHeaderProps,
                 styles: {
                     styling: '',
-                    tailwindStyling: ''
                 }
             };
             headerMap.set(key, headerComponent);
@@ -267,7 +258,6 @@ export default class SmartSheetController<TExtraProps = undefined,
                 extraProps: colHeaderProps?.[index] as TColHeaderProps,
                 styles: {
                     styling: '',
-                    tailwindStyling: ''
                 }
             };
             headerMap.set(key, headerComponent);
@@ -357,70 +347,38 @@ export default class SmartSheetController<TExtraProps = undefined,
 
         // Row headers: Remove right borders from headers no longer affected (restore defaults)
         toRemoveRowReflections.forEach(rowIndex => {
-            if (this.styleMode === 'style') {
-                this.colorHandler.setHeaderStyling('row', rowIndex, {
-                    'border-right-color': this.colorHandler.defaultHeaderBackgroundProperties['border-right-color'],
-                    'border-right-width': this.colorHandler.defaultHeaderBackgroundProperties['border-right-width'],
-                    'border-right-style': this.colorHandler.defaultHeaderBackgroundProperties['border-right-style']
-                });
-            } else {
-                this.colorHandler.setHeaderTailwindStyling('row', rowIndex, {
-                    'border-right-color': this.colorHandler.defaultHeaderTailwindProperties['border-right-color'],
-                    'border-right-width': this.colorHandler.defaultHeaderTailwindProperties['border-right-width'],
-                    'border-right-style': this.colorHandler.defaultHeaderTailwindProperties['border-right-style']
-                });
-            }
+            this.colorHandler.setHeaderStyling('row', rowIndex, {
+                'border-right-color': this.colorHandler.defaultHeaderBackgroundProperties['border-right-color'],
+                'border-right-width': this.colorHandler.defaultHeaderBackgroundProperties['border-right-width'],
+                'border-right-style': this.colorHandler.defaultHeaderBackgroundProperties['border-right-style']
+            });
         });
 
         // Column headers: Remove bottom borders from headers no longer affected (restore defaults)
         toRemoveColReflections.forEach(colIndex => {
-            if (this.styleMode === 'style') {
-                this.colorHandler.setHeaderStyling('col', colIndex, {
-                    'border-bottom-color': this.colorHandler.defaultHeaderBackgroundProperties['border-bottom-color'],
-                    'border-bottom-width': this.colorHandler.defaultHeaderBackgroundProperties['border-bottom-width'],
-                    'border-bottom-style': this.colorHandler.defaultHeaderBackgroundProperties['border-bottom-style']
-                });
-            } else {
-                this.colorHandler.setHeaderTailwindStyling('col', colIndex, {
-                    'border-bottom-color': this.colorHandler.defaultHeaderTailwindProperties['border-bottom-color'],
-                    'border-bottom-width': this.colorHandler.defaultHeaderTailwindProperties['border-bottom-width'],
-                    'border-bottom-style': this.colorHandler.defaultHeaderTailwindProperties['border-bottom-style']
-                });
-            }
+            this.colorHandler.setHeaderStyling('col', colIndex, {
+                'border-bottom-color': this.colorHandler.defaultHeaderBackgroundProperties['border-bottom-color'],
+                'border-bottom-width': this.colorHandler.defaultHeaderBackgroundProperties['border-bottom-width'],
+                'border-bottom-style': this.colorHandler.defaultHeaderBackgroundProperties['border-bottom-style']
+            });
         });
 
         // Row headers: Add right borders to newly affected headers
         toAddRowReflections.forEach(rowIndex => {
-            if (this.styleMode === 'style') {
-                this.colorHandler.setHeaderStyling('row', rowIndex, {
-                    'border-right-color': reflectionColor,
-                    'border-right-width': reflectionWidth,
-                    'border-right-style': 'solid'
-                });
-            } else {
-                this.colorHandler.setHeaderTailwindStyling('row', rowIndex, {
-                    'border-right-color': 'blue-500',
-                    'border-right-width': '3',
-                    'border-right-style': 'solid'
-                });
-            }
+            this.colorHandler.setHeaderStyling('row', rowIndex, {
+                'border-right-color': reflectionColor,
+                'border-right-width': reflectionWidth,
+                'border-right-style': 'solid'
+            });
         });
 
         // Column headers: Add bottom borders to newly affected headers
         toAddColReflections.forEach(colIndex => {
-            if (this.styleMode === 'style') {
-                this.colorHandler.setHeaderStyling('col', colIndex, {
-                    'border-bottom-color': reflectionColor,
-                    'border-bottom-width': reflectionWidth,
-                    'border-bottom-style': 'solid'
-                });
-            } else {
-                this.colorHandler.setHeaderTailwindStyling('col', colIndex, {
-                    'border-bottom-color': 'blue-500',
-                    'border-bottom-width': '3',
-                    'border-bottom-style': 'solid'
-                });
-            }
+            this.colorHandler.setHeaderStyling('col', colIndex, {
+                'border-bottom-color': reflectionColor,
+                'border-bottom-width': reflectionWidth,
+                'border-bottom-style': 'solid'
+            });
         });
 
         // Invalidate virtualization to re-render affected headers
@@ -1236,14 +1194,6 @@ export default class SmartSheetController<TExtraProps = undefined,
         this._applyCellStyleArgs(arg1, arg2, this.colorHandler.changeCellBackgroundColor.bind(this.colorHandler), 'setCellBackgroundColor');
     }
 
-    // setCellTailwindBackgroundColor
-    setCellTailwindBackgroundColor(
-        arg1: GridPosition | GridPosition[] | [GridPosition, string][],
-        arg2?: string
-    ): void {
-        this._applyCellStyleArgs(arg1, arg2, this.colorHandler.changeCellTailwindBackgroundColor.bind(this.colorHandler), 'setCellTailwindBackgroundColor');
-    }
-
     // setCellStyle for styling
     setCellStyle(
         arg1: GridPosition | GridPosition[] | [GridPosition, BackgroundProperties][],
@@ -1252,35 +1202,12 @@ export default class SmartSheetController<TExtraProps = undefined,
         this._applyCellStyleArgs(arg1, arg2, this.colorHandler.setCellStyling.bind(this.colorHandler), 'setCellStyle');
     }
 
-    // setTailwindProperties
-    setTailwindProperties(
-        arg1: GridPosition | GridPosition[] | [GridPosition, TailwindProperties][],
-        arg2?: TailwindProperties
-    ): void {
-        this._applyCellStyleArgs(arg1, arg2, this.colorHandler.setCellTailwindStyling.bind(this.colorHandler), 'setTailwindProperties');
-    }
-
     // Batch background styles via generator
     applyBackgroundStyles(styleGenerator: (cells: Map<string, CellComponent<TExtraProps>>) => [GridPosition, BackgroundProperties][]): void {
         this.setProcessing('Applying background styles...', 'background-styles');
 
         try {
             this.colorHandler.applyBackgroundStyles(styleGenerator);
-            // Update the visible components
-            this.virtualizeHandler.onVisibleComponentsChanged?.(this.virtualizeHandler);
-            this.clearProcessing();
-        } catch (error) {
-            this.clearProcessing();
-            throw error;
-        }
-    }
-
-    // Batch tailwind styles via generator
-    applyTailwindStyles(styleGenerator: (cells: Map<string, CellComponent<TExtraProps>>) => [GridPosition, TailwindProperties][]): void {
-        this.setProcessing('Applying tailwind styles...', 'tailwind-styles');
-
-        try {
-            this.colorHandler.applyTailwindStyles(styleGenerator);
             // Update the visible components
             this.virtualizeHandler.onVisibleComponentsChanged?.(this.virtualizeHandler);
             this.clearProcessing();
@@ -1415,14 +1342,6 @@ export default class SmartSheetController<TExtraProps = undefined,
         this._applyHeaderStyleArgs(type, arg1, arg2, this.colorHandler.setHeaderStyling.bind(this.colorHandler), 'setHeaderStyle');
     }
 
-    setHeaderTailwindStyle(
-        type: 'row' | 'col' | 'corner',
-        arg1: number | number[] | [number, TailwindProperties][],
-        arg2?: TailwindProperties
-    ): void {
-        this._applyHeaderStyleArgs(type, arg1, arg2, this.colorHandler.setHeaderTailwindStyling.bind(this.colorHandler), 'setHeaderTailwindStyle');
-    }
-
     // Batch header styles via generators
     applyRowHeaderBackgroundStyles(
         styleGenerator: (headers: Map<string, HeaderComponent<TRowHeaderProps>>) => [number, BackgroundProperties][]
@@ -1447,38 +1366,6 @@ export default class SmartSheetController<TExtraProps = undefined,
 
         try {
             this.colorHandler.applyColHeaderBackgroundStyles(styleGenerator);
-            // Update the visible components
-            this.virtualizeHandler.onVisibleComponentsChanged?.(this.virtualizeHandler);
-            this.clearProcessing();
-        } catch (error) {
-            this.clearProcessing();
-            throw error;
-        }
-    }
-
-    applyRowHeaderTailwindStyles(
-        styleGenerator: (headers: Map<string, HeaderComponent<TRowHeaderProps>>) => [number, TailwindProperties][]
-    ): void {
-        this.setProcessing('Applying row header tailwind styles...', 'row-header-tailwind-styles');
-
-        try {
-            this.colorHandler.applyRowHeaderTailwindStyles(styleGenerator);
-            // Update the visible components
-            this.virtualizeHandler.onVisibleComponentsChanged?.(this.virtualizeHandler);
-            this.clearProcessing();
-        } catch (error) {
-            this.clearProcessing();
-            throw error;
-        }
-    }
-
-    applyColHeaderTailwindStyles(
-        styleGenerator: (headers: Map<string, HeaderComponent<TColHeaderProps>>) => [number, TailwindProperties][]
-    ): void {
-        this.setProcessing('Applying column header tailwind styles...', 'col-header-tailwind-styles');
-
-        try {
-            this.colorHandler.applyColHeaderTailwindStyles(styleGenerator);
             // Update the visible components
             this.virtualizeHandler.onVisibleComponentsChanged?.(this.virtualizeHandler);
             this.clearProcessing();
@@ -1569,24 +1456,6 @@ export default class SmartSheetController<TExtraProps = undefined,
         this._applyHeaderAndCellsStyleArgs(false, arg1, arg2, arg3, this.colorHandler.styleColHeaderAndCells.bind(this.colorHandler), 'styleColHeaderAndCells');
     }
 
-    // Style row header and all cells in that row with Tailwind classes (supports single or batch via tuple arrays)
-    styleRowHeaderAndCellsTailwind(
-        arg1: number | number[] | [number, TailwindProperties, TailwindProperties][],
-        arg2?: TailwindProperties,
-        arg3?: TailwindProperties
-    ): void {
-        this._applyHeaderAndCellsStyleArgs(true, arg1, arg2, arg3, this.colorHandler.styleRowHeaderAndCellsTailwind.bind(this.colorHandler), 'styleRowHeaderAndCellsTailwind');
-    }
-
-    // Style column header and all cells in that column with Tailwind classes (supports single or batch via tuple arrays)
-    styleColHeaderAndCellsTailwind(
-        arg1: number | number[] | [number, TailwindProperties, TailwindProperties][],
-        arg2?: TailwindProperties,
-        arg3?: TailwindProperties
-    ): void {
-        this._applyHeaderAndCellsStyleArgs(false, arg1, arg2, arg3, this.colorHandler.styleColHeaderAndCellsTailwind.bind(this.colorHandler), 'styleColHeaderAndCellsTailwind');
-    }
-
     // Batch header + cells styles via generators
     applyRowHeaderAndCellsBackgroundStyles(
         styleGenerator: (headers: Map<string, HeaderComponent<TRowHeaderProps>>) => [number, BackgroundProperties, BackgroundProperties][]
@@ -1611,38 +1480,6 @@ export default class SmartSheetController<TExtraProps = undefined,
 
         try {
             this.colorHandler.applyColHeaderAndCellsBackgroundStyles(styleGenerator);
-            // Update the visible components
-            this.virtualizeHandler.onVisibleComponentsChanged?.(this.virtualizeHandler);
-            this.clearProcessing();
-        } catch (error) {
-            this.clearProcessing();
-            throw error;
-        }
-    }
-
-    applyRowHeaderAndCellsTailwindStyles(
-        styleGenerator: (headers: Map<string, HeaderComponent<TRowHeaderProps>>) => [number, TailwindProperties, TailwindProperties][]
-    ): void {
-        this.setProcessing('Applying row header and cells tailwind styles...', 'row-header-cells-tailwind-styles');
-
-        try {
-            this.colorHandler.applyRowHeaderAndCellsTailwindStyles(styleGenerator);
-            // Update the visible components
-            this.virtualizeHandler.onVisibleComponentsChanged?.(this.virtualizeHandler);
-            this.clearProcessing();
-        } catch (error) {
-            this.clearProcessing();
-            throw error;
-        }
-    }
-
-    applyColHeaderAndCellsTailwindStyles(
-        styleGenerator: (headers: Map<string, HeaderComponent<TColHeaderProps>>) => [number, TailwindProperties, TailwindProperties][]
-    ): void {
-        this.setProcessing('Applying column header and cells tailwind styles...', 'col-header-cells-tailwind-styles');
-
-        try {
-            this.colorHandler.applyColHeaderAndCellsTailwindStyles(styleGenerator);
             // Update the visible components
             this.virtualizeHandler.onVisibleComponentsChanged?.(this.virtualizeHandler);
             this.clearProcessing();

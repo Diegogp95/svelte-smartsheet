@@ -104,7 +104,6 @@ export interface CellComponent<T = undefined> {
     extraProps: T;
     styles: {
         styling: string;
-        tailwindStyling: string;
     };
 }
 
@@ -116,7 +115,6 @@ export interface HeaderComponent<T = undefined> {
     extraProps: T;
     styles: {
         styling: string;
-        tailwindStyling: string;
     };
 }
 
@@ -139,26 +137,6 @@ export interface BackgroundProperties {
     'text-color'?: string;
     'opacity'?: number;
 }
-export interface TailwindProperties {
-    'bg-color'?: string;
-    'bg-opacity'?: number;
-    'border-radius'?: string;
-    'border-top-color'?: string;
-    'border-top-width'?: string;
-    'border-top-style'?: string;
-    'border-right-color'?: string;
-    'border-right-width'?: string;
-    'border-right-style'?: string;
-    'border-bottom-color'?: string;
-    'border-bottom-width'?: string;
-    'border-bottom-style'?: string;
-    'border-left-color'?: string;
-    'border-left-width'?: string;
-    'border-left-style'?: string;
-    'text-color'?: string;
-    'opacity'?: number;
-}
-
 // Keyboard event analysis types
 export type KeyCategory =
     'navigation' |

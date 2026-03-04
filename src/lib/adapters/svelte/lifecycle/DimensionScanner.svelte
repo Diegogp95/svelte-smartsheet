@@ -179,7 +179,6 @@
                     position={{ headerType: 'corner', index: 0 }}
                     value={rowsTitle}
                     styling={cornerHeaderComponent.styles.styling}
-                    cssClass={cornerHeaderComponent.styles.tailwindStyling}
                     instanceId={instanceId}
                     textOverflowMode="full"
                 />
@@ -200,7 +199,6 @@
                         position={header.position}
                         value={header.value}
                         styling={header.styles.styling}
-                        cssClass={header.styles.tailwindStyling}
                         instanceId={instanceId}
                         textOverflowMode="full"
                     />
@@ -221,7 +219,6 @@
                     position={{ headerType: 'row', index: 0 }}
                     value={rowHeaders[rowIndex].value}
                     styling={rowHeaders[rowIndex].styles.styling}
-                    cssClass={rowHeaders[rowIndex].styles.tailwindStyling}
                     instanceId={instanceId}
                     textOverflowMode="full"
                 />
@@ -244,7 +241,6 @@
                         position={{ row: 0, col: colIndex }}
                         value={cell.value}
                         styling={cell.styles.styling}
-                        cssClass={cell.styles.tailwindStyling}
                         instanceId={instanceId}
                         textOverflowMode="full"
                         numberDisplayOptions={numberDisplayOptions}

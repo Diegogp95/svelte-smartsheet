@@ -34,7 +34,6 @@
         VisibleComponents,
         FlashOptions,
         BackgroundProperties,
-        TailwindProperties,
         EditingState,
         ProcessingState,
         NumberDisplayOptions,
@@ -64,7 +63,6 @@
     export let fontSize: string = '1rem'; // Default font size for cells and headers
     export let minCellWidth: string = '6rem'; // Minimum cell width (px or rem)
     export let minCellHeight: string = '3rem'; // Minimum cell height (px or rem)
-    export let styleMode: 'style' | 'tailwind' = 'style'; // Choose between inline styles or Tailwind CSS classes
     export let theme: 'light' | 'dark' | 'tech' | 'glow' | 'neon' = 'tech'; // Visual theme
     export let numberDisplayOptions: NumberDisplayOptions = { decimalPlaces: 3 }; // Number formatting configuration
     export let numberFormat: NumberFormat = 'anglo'; // 'latin' or 'anglo' number format
@@ -185,7 +183,7 @@
             maxRow: gridData.length - 1,
             maxCol: (gridData[0]?.length || 1) - 1
         }, gridData as CellValue[][], rowHeaders, columnHeaders, rowsTitle,
-        extraPropsMatrix, rowHeaderExtraProps, colHeaderExtraProps, styleMode, headersReadOnly,
+        extraPropsMatrix, rowHeaderExtraProps, colHeaderExtraProps, headersReadOnly,
         numberFormat, subscribeToSelections, subscribeToPointerPosition, subscribeToDeselection,
         subscribeToVisibleComponents, subscribeToScaleChange, undefined, subscribeToEditingState,
         subscribeToProcessingState, subscribeToImputedElements,
@@ -319,17 +317,9 @@
         controller.setCellBackgroundColor(position, color);
     }
 
-    export function colorizeCellTailwind(position: GridPosition, bg: string) {
-        controller.setCellTailwindBackgroundColor(position, bg);
-    }
-
     // Batch styling helpers exposed
     export function applyBackgroundStyles(styleGenerator: (cells: Map<string, CellComponent<TExtraProps>>) => [GridPosition, BackgroundProperties][]) {
         controller.applyBackgroundStyles(styleGenerator);
-    }
-
-    export function applyTailwindStyles(styleGenerator: (cells: Map<string, CellComponent<TExtraProps>>) => [GridPosition, TailwindProperties][]) {
-        controller.applyTailwindStyles(styleGenerator);
     }
 
     // Headers styling APIs
@@ -364,14 +354,6 @@
         controller.styleColHeaderAndCells(col, headerProps, cellProps);
     }
 
-    export function styleRowHeaderAndCellsTailwind(row: number, headerProps: any, cellProps: any): void {
-        controller.styleRowHeaderAndCellsTailwind(row, headerProps, cellProps);
-    }
-
-    export function styleColHeaderAndCellsTailwind(col: number, headerProps: any, cellProps: any): void {
-        controller.styleColHeaderAndCellsTailwind(col, headerProps, cellProps);
-    }
-
     // Batch header + cells styling APIs
     export function applyRowHeaderAndCellsBackgroundStyles(styleGenerator: (headers: Map<string,
     HeaderComponent<TRowHeaderProps>>) => [number, BackgroundProperties, BackgroundProperties][]): void {
@@ -381,16 +363,6 @@
     export function applyColHeaderAndCellsBackgroundStyles(styleGenerator: (headers: Map<string,
     HeaderComponent<TColHeaderProps>>) => [number, BackgroundProperties, BackgroundProperties][]): void {
         controller.applyColHeaderAndCellsBackgroundStyles(styleGenerator);
-    }
-
-    export function applyRowHeaderAndCellsTailwindStyles(styleGenerator: (headers: Map<string,
-    HeaderComponent<TRowHeaderProps>>) => [number, TailwindProperties, TailwindProperties][]): void {
-        controller.applyRowHeaderAndCellsTailwindStyles(styleGenerator);
-    }
-
-    export function applyColHeaderAndCellsTailwindStyles(styleGenerator: (headers: Map<string,
-    HeaderComponent<TColHeaderProps>>) => [number, TailwindProperties, TailwindProperties][]): void {
-        controller.applyColHeaderAndCellsTailwindStyles(styleGenerator);
     }
 
     // Flash effect APIs
@@ -668,7 +640,6 @@
                     position={visibleComponents.cornerHeader.position}
                     value={visibleComponents.cornerHeader.value}
                     styling={visibleComponents.cornerHeader.styles.styling}
-                    cssClass={visibleComponents.cornerHeader.styles.tailwindStyling}
                     instanceId={controller.getInstanceId()}
                 />
             {/if}
@@ -699,7 +670,6 @@
                     <InputHeader
                         position={currentEditingState.position}
                         styling={currentEditingState.component.styles.styling}
-                        cssClass={currentEditingState.component.styles.tailwindStyling}
                         instanceId={controller.getInstanceId()}
                         on:inputBlur={handleInputBlur}
                         on:inputKeyCommit={handleInputKeyCommand}
@@ -717,7 +687,6 @@
                             position={headerComponent.position}
                             value={headerComponent.value}
                             styling={headerComponent.styles.styling}
-                            cssClass={headerComponent.styles.tailwindStyling}
                             instanceId={controller.getInstanceId()}
                         />
                     {/if}
@@ -776,7 +745,6 @@
                     <InputHeader
                         position={currentEditingState.position}
                         styling={currentEditingState.component.styles.styling}
-                        cssClass={currentEditingState.component.styles.tailwindStyling}
                         instanceId={controller.getInstanceId()}
                         on:inputBlur={handleInputBlur}
                         on:inputKeyCommit={handleInputKeyCommand}
@@ -794,7 +762,6 @@
                             position={headerComponent.position}
                             value={headerComponent.value}
                             styling={headerComponent.styles.styling}
-                            cssClass={headerComponent.styles.tailwindStyling}
                             instanceId={controller.getInstanceId()}
                         />
                     {/if}
@@ -853,7 +820,6 @@
                     <InputCell
                         position={currentEditingState.position}
                         styling={currentEditingState.component.styles.styling}
-                        cssClass={currentEditingState.component.styles.tailwindStyling}
                         instanceId={controller.getInstanceId()}
                         on:inputBlur={handleInputBlur}
                         on:inputKeyCommit={handleInputKeyCommand}
@@ -871,7 +837,6 @@
                             position={cellComponent.position}
                             value={cellComponent.value}
                             styling={cellComponent.styles.styling}
-                            cssClass={cellComponent.styles.tailwindStyling}
                             instanceId={controller.getInstanceId()}
                             numberDisplayOptions={numberDisplayOptions}
                         />

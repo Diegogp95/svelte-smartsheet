@@ -4,7 +4,6 @@ import type {
     CellValue,
     CellComponent,
     BackgroundProperties,
-    TailwindProperties,
     FlashOptions,
     HeaderComponent,
     VisibleComponents,
@@ -25,25 +24,20 @@ export default class ColorHandler<TExtraProps = undefined, TRowHeaderProps = und
     private rowHeaderComponents: Map<string, HeaderComponent<TRowHeaderProps>>;
     private colHeaderComponents: Map<string, HeaderComponent<TColHeaderProps>>;
     private cornerHeaderComponent: HeaderComponent;
-    private styleMode: 'style' | 'tailwind';
     private flashEffectPort?: FlashEffectPort;
 
     // Pre-calculated default style strings for performance optimization
     private readonly DEFAULT_CELL_STYLE_STRING: string;
-    private readonly DEFAULT_CELL_TAILWIND_STRING: string;
     private readonly DEFAULT_HEADER_STYLE_STRING: string;
-    private readonly DEFAULT_HEADER_TAILWIND_STRING: string;
 
     constructor(
         gridDimensions: GridDimensions,
-        styleMode: 'style' | 'tailwind',
         cellComponents: Map<string, CellComponent<TExtraProps>>,
         rowHeaderComponents: Map<string, HeaderComponent<TRowHeaderProps>>,
         colHeaderComponents: Map<string, HeaderComponent<TColHeaderProps>>,
         cornerHeaderComponent: HeaderComponent,
     ) {
         this.gridDimensions = gridDimensions;
-        this.styleMode = styleMode;
         this.cellComponents = cellComponents;
         this.rowHeaderComponents = rowHeaderComponents;
         this.colHeaderComponents = colHeaderComponents;
@@ -51,9 +45,7 @@ export default class ColorHandler<TExtraProps = undefined, TRowHeaderProps = und
 
         // Pre-calculate default style strings for performance optimization
         this.DEFAULT_CELL_STYLE_STRING = this.bgPropertiesToString(this.defaultCellBackgroundProperties);
-        this.DEFAULT_CELL_TAILWIND_STRING = this.tailwindPropertiesToString(this.defaultCellTailwindProperties);
         this.DEFAULT_HEADER_STYLE_STRING = this.bgPropertiesToString(this.defaultHeaderBackgroundProperties);
-        this.DEFAULT_HEADER_TAILWIND_STRING = this.tailwindPropertiesToString(this.defaultHeaderTailwindProperties);
 
         // Apply defaults styles to cell and header components
         this.resetAllStyles();
@@ -77,24 +69,6 @@ export default class ColorHandler<TExtraProps = undefined, TRowHeaderProps = und
         'text-color': 'inherit',
     };
 
-    defaultCellTailwindProperties: TailwindProperties = {
-        'bg-color': 'transparent',
-        'border-top-color': 'electric-blue/15',
-        'border-top-width': '1',
-        'border-top-style': 'solid',
-        'border-right-color': 'electric-blue/15',
-        'border-right-width': '1',
-        'border-right-style': 'solid',
-        'border-bottom-color': 'electric-blue/15',
-        'border-bottom-width': '1',
-        'border-bottom-style': 'solid',
-        'border-left-color': 'electric-blue/15',
-        'border-left-width': '1',
-        'border-left-style': 'solid',
-        'text-color': 'inherit',
-        'opacity': 1,
-    };
-
     defaultHeaderBackgroundProperties: BackgroundProperties = {
         'background-color': 'rgba(0, 120, 200, 0.3)',
         'border-right-color': 'rgba(0, 100, 200, 0.15)',
@@ -113,24 +87,6 @@ export default class ColorHandler<TExtraProps = undefined, TRowHeaderProps = und
         'text-color': 'inherit',
     };
 
-    defaultHeaderTailwindProperties: TailwindProperties = {
-        'bg-color': 'electric-blue/30',
-        'border-top-color': 'electric-blue/15',
-        'border-top-width': '1',
-        'border-top-style': 'solid',
-        'border-right-color': 'electric-blue/15',
-        'border-right-width': '1',
-        'border-right-style': 'solid',
-        'border-bottom-color': 'electric-blue/15',
-        'border-bottom-width': '1',
-        'border-bottom-style': 'solid',
-        'border-left-color': 'electric-blue/15',
-        'border-left-width': '1',
-        'border-left-style': 'solid',
-        'text-color': 'inherit',
-        'opacity': 1,
-    };
-
     /**
      * Apply default styles to the specified type of component.
      * Optimized version using pre-calculated default strings
@@ -138,34 +94,18 @@ export default class ColorHandler<TExtraProps = undefined, TRowHeaderProps = und
     applyDefaultStyles(type: 'cell' | 'row' | 'col' | 'corner'): void {
         if (type === 'cell') {
             this.cellComponents.forEach(cell => {
-                if (this.styleMode === 'style') {
-                    cell.styles.styling = this.DEFAULT_CELL_STYLE_STRING;
-                } else {
-                    cell.styles.tailwindStyling = this.DEFAULT_CELL_TAILWIND_STRING;
-                }
+                cell.styles.styling = this.DEFAULT_CELL_STYLE_STRING;
             });
         } else if (type === 'row') {
             this.rowHeaderComponents.forEach(header => {
-                if (this.styleMode === 'style') {
-                    header.styles.styling = this.DEFAULT_HEADER_STYLE_STRING;
-                } else {
-                    header.styles.tailwindStyling = this.DEFAULT_HEADER_TAILWIND_STRING;
-                }
+                header.styles.styling = this.DEFAULT_HEADER_STYLE_STRING;
             });
         } else if (type === 'col') {
             this.colHeaderComponents.forEach(header => {
-                if (this.styleMode === 'style') {
-                    header.styles.styling = this.DEFAULT_HEADER_STYLE_STRING;
-                } else {
-                    header.styles.tailwindStyling = this.DEFAULT_HEADER_TAILWIND_STRING;
-                }
+                header.styles.styling = this.DEFAULT_HEADER_STYLE_STRING;
             });
         } else if (type === 'corner') {
-            if (this.styleMode === 'style') {
-                this.cornerHeaderComponent.styles.styling = this.DEFAULT_HEADER_STYLE_STRING;
-            } else {
-                this.cornerHeaderComponent.styles.tailwindStyling = this.DEFAULT_HEADER_TAILWIND_STRING;
-            }
+            this.cornerHeaderComponent.styles.styling = this.DEFAULT_HEADER_STYLE_STRING;
         }
     }
 
@@ -184,64 +124,6 @@ export default class ColorHandler<TExtraProps = undefined, TRowHeaderProps = und
             .map(([key, value]) => `${key}: ${value};`)
             .join(' ');
     };
-
-    tailwindPropertiesToString(properties: TailwindProperties): string {
-        let tailwindClasses = []
-        for (const [key, value] of Object.entries(properties)) {
-            switch (key) {
-                case 'bg-color':
-                    tailwindClasses.push(`bg-${value}`);
-                    break;
-                case 'border-radius':
-                    tailwindClasses.push(`rounded-${value}`);
-                    break;
-                // Directional borders - granular control
-                case 'border-top-color':
-                    tailwindClasses.push(`border-t-${value}`);
-                    break;
-                case 'border-top-width':
-                    tailwindClasses.push(`border-t-${value}`);
-                    break;
-                case 'border-top-style':
-                    tailwindClasses.push(`border-t-${value}`);
-                    break;
-                case 'border-right-color':
-                    tailwindClasses.push(`border-r-${value}`);
-                    break;
-                case 'border-right-width':
-                    tailwindClasses.push(`border-r-${value}`);
-                    break;
-                case 'border-right-style':
-                    tailwindClasses.push(`border-r-${value}`);
-                    break;
-                case 'border-bottom-color':
-                    tailwindClasses.push(`border-b-${value}`);
-                    break;
-                case 'border-bottom-width':
-                    tailwindClasses.push(`border-b-${value}`);
-                    break;
-                case 'border-bottom-style':
-                    tailwindClasses.push(`border-b-${value}`);
-                    break;
-                case 'border-left-color':
-                    tailwindClasses.push(`border-l-${value}`);
-                    break;
-                case 'border-left-width':
-                    tailwindClasses.push(`border-l-${value}`);
-                    break;
-                case 'border-left-style':
-                    tailwindClasses.push(`border-l-${value}`);
-                    break;
-                case 'text-color':
-                    tailwindClasses.push(`text-${value}`);
-                    break;
-                case 'opacity':
-                    tailwindClasses.push(`opacity-${value}`);
-                    break;
-            }
-        }
-        return tailwindClasses.join(' ');
-    }
 
     /**
      * Parse CSS style string back to BackgroundProperties object
@@ -273,71 +155,7 @@ export default class ColorHandler<TExtraProps = undefined, TRowHeaderProps = und
         return properties;
     }
 
-    /**
-     * Parse Tailwind class string back to TailwindProperties object
-     */
-    parseTailwindString(tailwindString: string): TailwindProperties {
-        const properties: TailwindProperties = {};
-        if (!tailwindString) return properties;
-
-        const classes = tailwindString.split(' ').filter(cls => cls.trim());
-
-        for (const cls of classes) {
-            // Background color: bg-{value}
-            if (cls.startsWith('bg-') && !cls.startsWith('bg-opacity-')) {
-                properties['bg-color'] = cls.substring(3);
-            }
-            // Border radius: rounded-{value}
-            else if (cls.startsWith('rounded-')) {
-                properties['border-radius'] = cls.substring(8);
-            }
-            // Border top color: border-t-{value}
-            else if (cls.startsWith('border-t-') && !cls.match(/border-t-\d+$/)) {
-                properties['border-top-color'] = cls.substring(9);
-            }
-            // Border top width: border-t-{number}
-            else if (cls.match(/^border-t-\d+$/)) {
-                properties['border-top-width'] = cls.substring(9);
-            }
-            // Border right color: border-r-{value}
-            else if (cls.startsWith('border-r-') && !cls.match(/border-r-\d+$/)) {
-                properties['border-right-color'] = cls.substring(9);
-            }
-            // Border right width: border-r-{number}
-            else if (cls.match(/^border-r-\d+$/)) {
-                properties['border-right-width'] = cls.substring(9);
-            }
-            // Border bottom color: border-b-{value}
-            else if (cls.startsWith('border-b-') && !cls.match(/border-b-\d+$/)) {
-                properties['border-bottom-color'] = cls.substring(9);
-            }
-            // Border bottom width: border-b-{number}
-            else if (cls.match(/^border-b-\d+$/)) {
-                properties['border-bottom-width'] = cls.substring(9);
-            }
-            // Border left color: border-l-{value}
-            else if (cls.startsWith('border-l-') && !cls.match(/border-l-\d+$/)) {
-                properties['border-left-color'] = cls.substring(9);
-            }
-            // Border left width: border-l-{number}
-            else if (cls.match(/^border-l-\d+$/)) {
-                properties['border-left-width'] = cls.substring(9);
-            }
-            // Text color: text-{value}
-            else if (cls.startsWith('text-')) {
-                properties['text-color'] = cls.substring(5);
-            }
-            // Opacity: opacity-{value}
-            else if (cls.startsWith('opacity-')) {
-                properties['opacity'] = parseFloat(cls.substring(8)) || 1;
-            }
-        }
-
-        return properties;
-    }
-
     setCellStyling(position: GridPosition, properties: BackgroundProperties): void {
-        if (this.styleMode !== 'style') return
         const cell = this.cellComponents.get(`${position.row}-${position.col}`);
         if (cell) {
             // Parse current styles to preserve existing properties
@@ -353,72 +171,8 @@ export default class ColorHandler<TExtraProps = undefined, TRowHeaderProps = und
         }
     }
 
-    setCellTailwindStyling(position: GridPosition, properties: TailwindProperties): void {
-        if (this.styleMode !== 'tailwind') return
-        const cell = this.cellComponents.get(`${position.row}-${position.col}`);
-        if (cell) {
-            // Parse current Tailwind classes to preserve existing properties
-            const currentProperties = this.parseTailwindString(cell.styles.tailwindStyling);
-
-            // Merge current properties with new ones (new properties override existing ones)
-            cell.styles.tailwindStyling = this.tailwindPropertiesToString(
-                {
-                    ...currentProperties,
-                    ...properties
-                }
-            );
-        }
-    }
-
     changeCellBackgroundColor(position: GridPosition, color: string): void {
         this.setCellStyling(position, { 'background-color': color });
-    }
-
-    changeCellBorderColor(position: GridPosition, color: string): void {
-        this.setCellStyling(position, {
-            'border-top-color': color,
-            'border-right-color': color,
-            'border-bottom-color': color,
-            'border-left-color': color
-        });
-    }
-
-    changeCellOpacity(position: GridPosition, value: number): void {
-        this.setCellStyling(position, { 'opacity': value });
-    }
-
-    changeCellTextColor(position: GridPosition, color: string): void {
-        this.setCellStyling(position, { 'text-color': color });
-    }
-
-    changeBorderStyle(position: GridPosition, style: string): void {
-        this.setCellStyling(position, {
-            'border-top-style': style,
-            'border-right-style': style,
-            'border-bottom-style': style,
-            'border-left-style': style
-        });
-    }
-
-    changeCellTailwindBackgroundColor(position: GridPosition, color: string): void {
-        this.setCellTailwindStyling(position, { 'bg-color': color });
-    }
-
-    changeCellTailwindText(position: GridPosition, color: string): void {
-        this.setCellTailwindStyling(position, { 'text-color': color });
-    }
-
-    changeCellTailwindBorder(position: GridPosition, color: string): void {
-        this.setCellTailwindStyling(position, {
-            'border-top-color': color,
-            'border-right-color': color,
-            'border-bottom-color': color,
-            'border-left-color': color
-        });
-    }
-
-    changeCellTailwindOpacity(position: GridPosition, opacity: number): void {
-        this.setCellTailwindStyling(position, { 'opacity': opacity });
     }
 
     // ==================== HEADER STYLING METHODS ====================
@@ -427,7 +181,6 @@ export default class ColorHandler<TExtraProps = undefined, TRowHeaderProps = und
      * Set header background properties for a header
     */
     setHeaderStyling(type: 'row' | 'col' | 'corner', index: number, properties: BackgroundProperties): void {
-        if (this.styleMode !== 'style') return
         let header: HeaderComponent<TRowHeaderProps> | HeaderComponent<TColHeaderProps> | HeaderComponent<undefined> | undefined;
         if (type === 'row') {
             header = this.rowHeaderComponents.get(`row-${index}`);
@@ -442,33 +195,6 @@ export default class ColorHandler<TExtraProps = undefined, TRowHeaderProps = und
 
             // Merge current properties with new ones (new properties override existing ones)
             header.styles.styling = this.bgPropertiesToString(
-                {
-                    ...currentProperties,
-                    ...properties
-                }
-            );
-        }
-    }
-
-    /**
-     * Set tailwind properties for header
-    */
-    setHeaderTailwindStyling(type: 'row' | 'col' | 'corner', index: number, properties: TailwindProperties): void {
-        if (this.styleMode !== 'tailwind') return
-        let header: HeaderComponent<TRowHeaderProps> | HeaderComponent<TColHeaderProps> | HeaderComponent<undefined> | undefined;
-        if (type === 'row') {
-            header = this.rowHeaderComponents.get(`row-${index}`);
-        } else if (type === 'col') {
-            header = this.colHeaderComponents.get(`col-${index}`);
-        } else {
-            header = this.cornerHeaderComponent;
-        }
-        if (header) {
-            // Parse current Tailwind classes to preserve existing properties
-            const currentProperties = this.parseTailwindString(header.styles.tailwindStyling);
-
-            // Merge current properties with new ones (new properties override existing ones)
-            header.styles.tailwindStyling = this.tailwindPropertiesToString(
                 {
                     ...currentProperties,
                     ...properties
@@ -506,25 +232,6 @@ export default class ColorHandler<TExtraProps = undefined, TRowHeaderProps = und
         }
     }
 
-    /**
-     * Apply header tailwind styles using generator functions
-    */
-   public applyRowHeaderTailwindStyles(
-       styleGenerator: (headers: Map<string, HeaderComponent<TRowHeaderProps>>) => [number, TailwindProperties][]
-    ): void {
-        for (const [row, props] of styleGenerator(this.rowHeaderComponents)) {
-            this.setHeaderTailwindStyling('row', row, props);
-        }
-    }
-
-    public applyColHeaderTailwindStyles(
-        styleGenerator: (headers: Map<string, HeaderComponent<TColHeaderProps>>) => [number, TailwindProperties][]
-    ): void {
-        for (const [col, props] of styleGenerator(this.colHeaderComponents)) {
-            this.setHeaderTailwindStyling('col', col, props);
-        }
-    }
-
     /*
      ** =============================================================================================================
      ** Public APIs that take a function, and knows the structure of Cell's extraProps by a ts generic
@@ -537,14 +244,6 @@ export default class ColorHandler<TExtraProps = undefined, TRowHeaderProps = und
     ): void {
         for (const [position, props] of styleGenerator(this.cellComponents)) {
             this.setCellStyling(position, props);
-        }
-    }
-
-    public applyTailwindStyles(
-        styleGenerator: (cells: Map<string, CellComponent<TExtraProps>>) => [GridPosition, TailwindProperties][]
-    ): void {
-        for (const [position, props] of styleGenerator(this.cellComponents)) {
-            this.setCellTailwindStyling(position, props);
         }
     }
 
@@ -752,40 +451,6 @@ export default class ColorHandler<TExtraProps = undefined, TRowHeaderProps = und
     }
 
     /**
-     * Style row header and all cells in that row with Tailwind classes
-     */
-    styleRowHeaderAndCellsTailwind(row: number, headerProps: TailwindProperties, cellProps: TailwindProperties): void {
-        // Style the row header
-        this.setHeaderTailwindStyling('row', row, headerProps);
-
-        // Directly construct keys for the row using grid dimensions
-        for (let col = 0; col <= this.gridDimensions.maxCol; col++) {
-            const key = `${row}-${col}`;
-            if (this.cellComponents.has(key)) {
-                const position = { row, col };
-                this.setCellTailwindStyling(position, cellProps);
-            }
-        }
-    }
-
-    /**
-     * Style column header and all cells in that column with Tailwind classes
-     */
-    styleColHeaderAndCellsTailwind(col: number, headerProps: TailwindProperties, cellProps: TailwindProperties): void {
-        // Style the column header
-        this.setHeaderTailwindStyling('col', col, headerProps);
-
-        // Directly construct keys for the column using grid dimensions
-        for (let row = 0; row <= this.gridDimensions.maxRow; row++) {
-            const key = `${row}-${col}`;
-            if (this.cellComponents.has(key)) {
-                const position = { row, col };
-                this.setCellTailwindStyling(position, cellProps);
-            }
-        }
-    }
-
-    /**
      * Apply row header + cells styling using generator functions
      */
     public applyRowHeaderAndCellsBackgroundStyles(
@@ -804,28 +469,6 @@ export default class ColorHandler<TExtraProps = undefined, TRowHeaderProps = und
     ): void {
         for (const [col, headerProps, cellProps] of styleGenerator(this.colHeaderComponents)) {
             this.styleColHeaderAndCells(col, headerProps, cellProps);
-        }
-    }
-
-    /**
-     * Apply row header + cells Tailwind styling using generator functions
-     */
-    public applyRowHeaderAndCellsTailwindStyles(
-        styleGenerator: (headers: Map<string, HeaderComponent<TRowHeaderProps>>) => [number, TailwindProperties, TailwindProperties][]
-    ): void {
-        for (const [row, headerProps, cellProps] of styleGenerator(this.rowHeaderComponents)) {
-            this.styleRowHeaderAndCellsTailwind(row, headerProps, cellProps);
-        }
-    }
-
-    /**
-     * Apply column header + cells Tailwind styling using generator functions
-     */
-    public applyColHeaderAndCellsTailwindStyles(
-        styleGenerator: (headers: Map<string, HeaderComponent<TColHeaderProps>>) => [number, TailwindProperties, TailwindProperties][]
-    ): void {
-        for (const [col, headerProps, cellProps] of styleGenerator(this.colHeaderComponents)) {
-            this.styleColHeaderAndCellsTailwind(col, headerProps, cellProps);
         }
     }
 
