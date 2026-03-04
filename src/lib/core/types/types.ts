@@ -134,7 +134,7 @@ export interface BackgroundProperties {
     'border-left-color'?: string;
     'border-left-width'?: string;
     'border-left-style'?: string;
-    'text-color'?: string;
+    'color'?: string;
     'opacity'?: number;
 }
 // Keyboard event analysis types

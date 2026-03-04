@@ -332,8 +332,9 @@ export default class SmartSheetController<TExtraProps = undefined,
     }
 
     /**
-     * Header reflection callback - handles adding/removing borders to headers
-     * based on cell selection changes (Excel-like behavior)
+     * Header reflection callback — orchestrates which headers gain/lose the
+     * selection-reflection border. Presentation details (color, width, which
+     * border side) live entirely in ColorHandler.
      */
     private handleHeaderReflectionChanges = (
         toAddRowReflections: Set<number>,
@@ -341,47 +342,11 @@ export default class SmartSheetController<TExtraProps = undefined,
         toAddColReflections: Set<number>,
         toRemoveColReflections: Set<number>
     ): void => {
-        // Define reflection colors and styles
-        const reflectionColor = 'rgba(59, 130, 246, 1.0)'; // Blue color for reflections
-        const reflectionWidth = '4px';
+        toRemoveRowReflections.forEach(i => this.colorHandler.clearHeaderReflection('row', i));
+        toRemoveColReflections.forEach(i => this.colorHandler.clearHeaderReflection('col', i));
+        toAddRowReflections.forEach(i => this.colorHandler.applyHeaderReflection('row', i));
+        toAddColReflections.forEach(i => this.colorHandler.applyHeaderReflection('col', i));
 
-        // Row headers: Remove right borders from headers no longer affected (restore defaults)
-        toRemoveRowReflections.forEach(rowIndex => {
-            this.colorHandler.setHeaderStyling('row', rowIndex, {
-                'border-right-color': this.colorHandler.defaultHeaderBackgroundProperties['border-right-color'],
-                'border-right-width': this.colorHandler.defaultHeaderBackgroundProperties['border-right-width'],
-                'border-right-style': this.colorHandler.defaultHeaderBackgroundProperties['border-right-style']
-            });
-        });
-
-        // Column headers: Remove bottom borders from headers no longer affected (restore defaults)
-        toRemoveColReflections.forEach(colIndex => {
-            this.colorHandler.setHeaderStyling('col', colIndex, {
-                'border-bottom-color': this.colorHandler.defaultHeaderBackgroundProperties['border-bottom-color'],
-                'border-bottom-width': this.colorHandler.defaultHeaderBackgroundProperties['border-bottom-width'],
-                'border-bottom-style': this.colorHandler.defaultHeaderBackgroundProperties['border-bottom-style']
-            });
-        });
-
-        // Row headers: Add right borders to newly affected headers
-        toAddRowReflections.forEach(rowIndex => {
-            this.colorHandler.setHeaderStyling('row', rowIndex, {
-                'border-right-color': reflectionColor,
-                'border-right-width': reflectionWidth,
-                'border-right-style': 'solid'
-            });
-        });
-
-        // Column headers: Add bottom borders to newly affected headers
-        toAddColReflections.forEach(colIndex => {
-            this.colorHandler.setHeaderStyling('col', colIndex, {
-                'border-bottom-color': reflectionColor,
-                'border-bottom-width': reflectionWidth,
-                'border-bottom-style': 'solid'
-            });
-        });
-
-        // Invalidate virtualization to re-render affected headers
         if (toAddRowReflections.size > 0 || toRemoveRowReflections.size > 0 ||
             toAddColReflections.size > 0 || toRemoveColReflections.size > 0) {
             this.virtualizeHandler.onVisibleComponentsChanged?.(this.virtualizeHandler);

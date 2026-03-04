@@ -9,8 +9,6 @@ import type {
     VisibleComponents,
     GridDimensions,
 } from '../types/types.ts';
-import './Styling.css'
-import { getFlashColors } from '../utils/utils.ts';
 import type { FlashEffectPort } from '../ports/FlashEffectPort.ts';
 
 /** * Handles color and style management for SmartSheet cells and headers.
@@ -52,39 +50,39 @@ export default class ColorHandler<TExtraProps = undefined, TRowHeaderProps = und
     }
 
     defaultCellBackgroundProperties: BackgroundProperties = {
-        'background-color': 'transparent',
-        'border-top-color': 'rgba(0, 100, 200, 0.15)',
-        'border-top-width': '1px',
-        'border-top-style': 'solid',
-        'border-right-color': 'rgba(0, 100, 200, 0.15)',
-        'border-right-width': '1px',
-        'border-right-style': 'solid',
-        'border-bottom-color': 'rgba(0, 100, 200, 0.15)',
+        'background-color':    'transparent',
+        'border-top-color':    'var(--ss-border-color)',
+        'border-top-width':    '1px',
+        'border-top-style':    'solid',
+        'border-right-color':  'var(--ss-border-color)',
+        'border-right-width':  '1px',
+        'border-right-style':  'solid',
+        'border-bottom-color': 'var(--ss-border-color)',
         'border-bottom-width': '1px',
         'border-bottom-style': 'solid',
-        'border-left-color': 'rgba(0, 100, 200, 0.15)',
-        'border-left-width': '1px',
-        'border-left-style': 'solid',
+        'border-left-color':   'var(--ss-border-color)',
+        'border-left-width':   '1px',
+        'border-left-style':   'solid',
         'opacity': 1,
-        'text-color': 'inherit',
+        'color': 'inherit',
     };
 
     defaultHeaderBackgroundProperties: BackgroundProperties = {
-        'background-color': 'rgba(0, 120, 200, 0.3)',
-        'border-right-color': 'rgba(0, 100, 200, 0.15)',
-        'border-right-width': '1px',
-        'border-right-style': 'solid',
-        'border-bottom-color': 'rgba(0, 100, 200, 0.15)',
+        'background-color':    'var(--ss-header-bg)',
+        'border-right-color':  'var(--ss-border-color)',
+        'border-right-width':  '1px',
+        'border-right-style':  'solid',
+        'border-bottom-color': 'var(--ss-border-color)',
         'border-bottom-width': '1px',
         'border-bottom-style': 'solid',
-        'border-left-color': 'rgba(0, 100, 200, 0.15)',
-        'border-left-width': '1px',
-        'border-left-style': 'solid',
-        'border-top-color': 'rgba(0, 100, 200, 0.15)',
-        'border-top-width': '1px',
-        'border-top-style': 'solid',
+        'border-left-color':   'var(--ss-border-color)',
+        'border-left-width':   '1px',
+        'border-left-style':   'solid',
+        'border-top-color':    'var(--ss-border-color)',
+        'border-top-width':    '1px',
+        'border-top-style':    'solid',
         'opacity': 1,
-        'text-color': 'inherit',
+        'color': 'inherit',
     };
 
     /**
@@ -210,7 +208,36 @@ export default class ColorHandler<TExtraProps = undefined, TRowHeaderProps = und
     }
 
     changeHeaderTextColor(type: 'row' | 'col' | 'corner', index: number, color: string): void {
-        this.setHeaderStyling(type, index, { 'text-color': color });
+        this.setHeaderStyling(type, index, { 'color': color });
+    }
+
+    /**
+     * Apply an Excel-like selection-reflection border to a row or column header.
+     * The reflection color tracks the theme via var(--ss-selection-border) so it
+     * is never hardcoded in the core.
+     *  - Row headers get a thicker right border (facing the selected cells)
+     *  - Col headers get a thicker bottom border
+     */
+    public applyHeaderReflection(type: 'row' | 'col', index: number): void {
+        const borderSide = type === 'row' ? 'border-right' : 'border-bottom';
+        this.setHeaderStyling(type, index, {
+            [`${borderSide}-color`]: 'var(--ss-selection-border)',
+            [`${borderSide}-width`]: '3px',
+            [`${borderSide}-style`]: 'solid',
+        } as BackgroundProperties);
+    }
+
+    /**
+     * Remove the reflection border from a row or column header, restoring defaults.
+     */
+    public clearHeaderReflection(type: 'row' | 'col', index: number): void {
+        const borderSide = type === 'row' ? 'border-right' : 'border-bottom';
+        const d = this.defaultHeaderBackgroundProperties;
+        this.setHeaderStyling(type, index, {
+            [`${borderSide}-color`]: d[`${borderSide}-color` as keyof BackgroundProperties] as string,
+            [`${borderSide}-width`]: d[`${borderSide}-width` as keyof BackgroundProperties] as string,
+            [`${borderSide}-style`]: d[`${borderSide}-style` as keyof BackgroundProperties] as string,
+        } as BackgroundProperties);
     }
 
     /**
@@ -257,12 +284,11 @@ export default class ColorHandler<TExtraProps = undefined, TRowHeaderProps = und
      * Trigger flash effect on a single cell
      */
     public flashCell(cell: CellComponent<TExtraProps>, options?: FlashOptions): void {
-        const color = options?.color || 'blue';
-        const duration = options?.duration || 600;
-        const colors = getFlashColors(color);
+        const color = options?.color ?? 'blue';
+        const duration = options?.duration ?? 600;
         this.flashEffectPort?.flash(
             { type: 'cell', row: cell.position.row, col: cell.position.col },
-            { primaryColor: colors.primary, secondaryColor: colors.secondary, duration }
+            { color, duration }
         );
     }
 
@@ -270,12 +296,11 @@ export default class ColorHandler<TExtraProps = undefined, TRowHeaderProps = und
      * Trigger flash effect on a single header (row, col, or corner)
      */
     public flashHeader(header: HeaderComponent<TColHeaderProps | TRowHeaderProps>, options?: FlashOptions): void {
-        const color = options?.color || 'blue';
-        const duration = options?.duration || 600;
-        const colors = getFlashColors(color);
+        const color = options?.color ?? 'blue';
+        const duration = options?.duration ?? 600;
         this.flashEffectPort?.flash(
             { type: 'header', headerType: header.position.headerType, index: header.position.index },
-            { primaryColor: colors.primary, secondaryColor: colors.secondary, duration }
+            { color, duration }
         );
     }
 

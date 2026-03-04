@@ -18,12 +18,14 @@ export type FlashTarget =
     | { type: 'cell'; row: number; col: number }
     | { type: 'header'; headerType: 'row' | 'col' | 'corner'; index: number };
 
-export interface ResolvedFlashOptions {
-    /** CSS color value for the primary flash color */
-    primaryColor: string;
-    /** CSS color value for the secondary flash color */
-    secondaryColor: string;
-    /** Duration in milliseconds */
+/**
+ * Options passed from the core to the adapter when triggering a flash.
+ * The adapter is responsible for resolving `color` into concrete CSS values.
+ */
+export interface FlashCallOptions {
+    /** Conceptual color name or raw CSS color string (hex, rgb, rgba). */
+    color: string;
+    /** Duration in milliseconds. */
     duration: number;
 }
 
@@ -32,5 +34,5 @@ export interface FlashEffectPort {
      * Trigger a flash animation on the rendered element corresponding to `target`.
      * No-op if the element is not currently in the DOM (e.g. scrolled out of view).
      */
-    flash(target: FlashTarget, options: ResolvedFlashOptions): void;
+    flash(target: FlashTarget, options: FlashCallOptions): void;
 }

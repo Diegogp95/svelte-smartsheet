@@ -1,4 +1,5 @@
-import type { FlashEffectPort, FlashTarget, ResolvedFlashOptions } from '../../../core/ports/FlashEffectPort.ts';
+import type { FlashEffectPort, FlashTarget, FlashCallOptions } from '../../../core/ports/FlashEffectPort.ts';
+import { getFlashColors } from '../utils/flashColors.ts';
 
 /**
  * Svelte implementation of FlashEffectPort.
@@ -13,7 +14,9 @@ import type { FlashEffectPort, FlashTarget, ResolvedFlashOptions } from '../../.
 export class SvelteFlashEffect implements FlashEffectPort {
     constructor(private readonly instanceId: string) {}
 
-    flash(target: FlashTarget, options: ResolvedFlashOptions): void {
+    flash(target: FlashTarget, options: FlashCallOptions): void {
+        const { primary, secondary } = getFlashColors(options.color);
+
         let containerSelector: string;
         let backgroundId: string;
 
@@ -30,8 +33,8 @@ export class SvelteFlashEffect implements FlashEffectPort {
 
         if (!backgroundElement) return;
 
-        backgroundElement.style.setProperty('--flash-primary-color', options.primaryColor);
-        backgroundElement.style.setProperty('--flash-secondary-color', options.secondaryColor);
+        backgroundElement.style.setProperty('--flash-primary-color', primary);
+        backgroundElement.style.setProperty('--flash-secondary-color', secondary);
         backgroundElement.style.setProperty('--flash-duration', `${options.duration}ms`);
         backgroundElement.classList.add('flash');
         setTimeout(() => {
