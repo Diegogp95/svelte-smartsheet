@@ -12,6 +12,7 @@ import type {
 } from '../types/types.ts';
 import './Styling.css'
 import { getFlashColors } from '../utils/utils.ts';
+import type { FlashEffectPort } from '../ports/FlashEffectPort.ts';
 
 /** * Handles color and style management for SmartSheet cells and headers.
  * This module provides functionality to manage cell/header background, text and border colors,
@@ -25,7 +26,7 @@ export default class ColorHandler<TExtraProps = undefined, TRowHeaderProps = und
     private colHeaderComponents: Map<string, HeaderComponent<TColHeaderProps>>;
     private cornerHeaderComponent: HeaderComponent;
     private styleMode: 'style' | 'tailwind';
-    private instanceId: string;
+    private flashEffectPort?: FlashEffectPort;
 
     // Pre-calculated default style strings for performance optimization
     private readonly DEFAULT_CELL_STYLE_STRING: string;
@@ -40,11 +41,9 @@ export default class ColorHandler<TExtraProps = undefined, TRowHeaderProps = und
         rowHeaderComponents: Map<string, HeaderComponent<TRowHeaderProps>>,
         colHeaderComponents: Map<string, HeaderComponent<TColHeaderProps>>,
         cornerHeaderComponent: HeaderComponent,
-        instanceId: string,
     ) {
         this.gridDimensions = gridDimensions;
         this.styleMode = styleMode;
-        this.instanceId = instanceId;
         this.cellComponents = cellComponents;
         this.rowHeaderComponents = rowHeaderComponents;
         this.colHeaderComponents = colHeaderComponents;
@@ -549,6 +548,10 @@ export default class ColorHandler<TExtraProps = undefined, TRowHeaderProps = und
         }
     }
 
+    public setFlashEffectPort(port: FlashEffectPort): void {
+        this.flashEffectPort = port;
+    }
+
     // ==================== FLASH EFFECTS ====================
 
     /**
@@ -557,18 +560,11 @@ export default class ColorHandler<TExtraProps = undefined, TRowHeaderProps = und
     public flashCell(cell: CellComponent<TExtraProps>, options?: FlashOptions): void {
         const color = options?.color || 'blue';
         const duration = options?.duration || 600;
-        const renderedCell = document.querySelector(`div[data-row='${cell.position.row}'][data-col='${cell.position.col}'][data-instance='${this.instanceId}']`);
-        const backgroundElement = renderedCell?.querySelector(`#cell-background-${this.instanceId}`) as HTMLElement | null;
-        if (backgroundElement) {
-            const colors = getFlashColors(color);
-            backgroundElement.style.setProperty('--flash-primary-color', colors.primary);
-            backgroundElement.style.setProperty('--flash-secondary-color', colors.secondary);
-            backgroundElement.style.setProperty('--flash-duration', `${duration}ms`);
-            backgroundElement.classList.add('flash');
-            setTimeout(() => {
-                backgroundElement.classList.remove('flash');
-            }, duration);
-        }
+        const colors = getFlashColors(color);
+        this.flashEffectPort?.flash(
+            { type: 'cell', row: cell.position.row, col: cell.position.col },
+            { primaryColor: colors.primary, secondaryColor: colors.secondary, duration }
+        );
     }
 
     /**
@@ -577,20 +573,11 @@ export default class ColorHandler<TExtraProps = undefined, TRowHeaderProps = und
     public flashHeader(header: HeaderComponent<TColHeaderProps | TRowHeaderProps>, options?: FlashOptions): void {
         const color = options?.color || 'blue';
         const duration = options?.duration || 600;
-        const renderedHeader = document.querySelector(
-            `div[data-header-type='${header.position.headerType}'][data-header-index='${header.position.index}'][data-instance='${this.instanceId}']`
+        const colors = getFlashColors(color);
+        this.flashEffectPort?.flash(
+            { type: 'header', headerType: header.position.headerType, index: header.position.index },
+            { primaryColor: colors.primary, secondaryColor: colors.secondary, duration }
         );
-        const backgroundElement = renderedHeader?.querySelector(`#header-background-${this.instanceId}`) as HTMLElement | null;
-        if (backgroundElement) {
-            const colors = getFlashColors(color);
-            backgroundElement.style.setProperty('--flash-primary-color', colors.primary);
-            backgroundElement.style.setProperty('--flash-secondary-color', colors.secondary);
-            backgroundElement.style.setProperty('--flash-duration', `${duration}ms`);
-            backgroundElement.classList.add('flash');
-            setTimeout(() => {
-                backgroundElement.classList.remove('flash');
-            }, duration);
-        }
     }
 
     /**

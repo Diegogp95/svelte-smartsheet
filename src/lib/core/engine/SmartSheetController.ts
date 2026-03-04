@@ -29,6 +29,7 @@ import type { EditingStateCallback, ImputedElementsCallback } from '../data/Data
 import type { InputActivationPort } from '../ports/InputActivationPort.ts';
 import type { ExternalEventPort } from '../ports/ExternalEventPort.ts';
 import type { ViewportPort } from '../ports/ViewportPort.ts';
+import type { FlashEffectPort } from '../ports/FlashEffectPort.ts';
 import ColorHandler from '../styling/ColorHandler.ts';
 import VirtualizeHandler from '../virtualization/VirtualizeHandler.ts';
 import type { VisibleComponentsCallback, RenderAreaCallback, ScaleChangeCallback } from '../virtualization/VirtualizeHandler.ts';
@@ -168,7 +169,6 @@ export default class SmartSheetController<TExtraProps = undefined,
             this.rowHeaderComponents,
             this.colHeaderComponents,
             this.cornerHeaderComponent,
-            this.instanceId,
         );
         this.virtualizeHandler = new VirtualizeHandler<TExtraProps, TRowHeaderProps, TColHeaderProps>(
             this.gridDimensions,
@@ -933,6 +933,11 @@ export default class SmartSheetController<TExtraProps = undefined,
     // Get instance ID for unique element identification
     getInstanceId(): string {
         return this.instanceId;
+    }
+
+    // Wire the adapter's FlashEffectPort so ColorHandler can trigger DOM flash animations
+    setFlashEffectPort(port: FlashEffectPort): void {
+        this.colorHandler.setFlashEffectPort(port);
     }
 
     // Wire the adapter's InputActivationPort so DataHandler can delegate DOM interaction
