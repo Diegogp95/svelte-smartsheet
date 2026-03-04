@@ -9,7 +9,7 @@ import type {
     NumberFormat,
 } from '../types/types.ts';
 import { CellChange, HeaderChange, ChangeSet, HistoryManager } from '../history/HistoryManager.ts';
-import { tick } from 'svelte';
+import type { InputActivationPort } from '../ports/InputActivationPort.ts';
 
 // Callback type for editing state changes
 export type EditingStateCallback<TExtraProps, TRowHeaderProps, TColHeaderProps> =
@@ -413,7 +413,7 @@ export default class DataHandler<TExtraProps = undefined, TRowHeaderProps = unde
     private rowHeaderComponents: Map<string, HeaderComponent<TRowHeaderProps>>;
     private colHeaderComponents: Map<string, HeaderComponent<TColHeaderProps>>;
     private cornerHeaderComponent: HeaderComponent | null;
-    private instanceId: string;
+    private inputActivationPort?: InputActivationPort;
     private numberFormat: NumberFormat = 'anglo'; // Default number format
 
     // Centralized editing state
@@ -433,7 +433,6 @@ export default class DataHandler<TExtraProps = undefined, TRowHeaderProps = unde
         rowHeaderComponents: Map<string, HeaderComponent<TRowHeaderProps>>,
         colHeaderComponents: Map<string, HeaderComponent<TColHeaderProps>>,
         cornerHeaderComponent: HeaderComponent | null,
-        instanceId: string,
         numberFormat: NumberFormat = 'anglo',
         editingStateCallback?: EditingStateCallback<TExtraProps, TRowHeaderProps, TColHeaderProps>,
         imputedElementsCallback?: ImputedElementsCallback<TExtraProps, TRowHeaderProps, TColHeaderProps>,
@@ -442,7 +441,6 @@ export default class DataHandler<TExtraProps = undefined, TRowHeaderProps = unde
         this.rowHeaderComponents = rowHeaderComponents;
         this.colHeaderComponents = colHeaderComponents;
         this.cornerHeaderComponent = cornerHeaderComponent;
-        this.instanceId = instanceId;
         this.numberFormat = numberFormat;
         this.validator = new ValueValidator(numberFormat);
         this.historyManager = new HistoryManager();
@@ -482,8 +480,8 @@ export default class DataHandler<TExtraProps = undefined, TRowHeaderProps = unde
         return this.editingState?.component as CellComponent<TExtraProps> | null;
     }
 
-    getCurrentInputHTMLElement(): HTMLInputElement | null {
-        return this.editingState?.inputElement ?? null;
+    setInputActivationPort(port: InputActivationPort): void {
+        this.inputActivationPort = port;
     }
 
     private notifyEditingStateChange(): void {
@@ -513,25 +511,12 @@ export default class DataHandler<TExtraProps = undefined, TRowHeaderProps = unde
                 type: componentType,
                 position: position,
                 component: component,
-                inputElement: null
             };
-            // Wait for the DOM to update
-            tick().then(() => {
-                // Use the appropriate ID based on component type
-                const inputSelector = componentType === 'cell'
-                    ? `#cell-input-${this.instanceId}`
-                    : `#header-input-${this.instanceId}`;
-
-                const inputElement = document.querySelector(inputSelector);
-                if (inputElement instanceof HTMLInputElement) {
-                    this.editingState!.inputElement = inputElement;
-                    this.editingState!.inputElement.value = startKey ?
-                        (startKey === 'Backspace' ? '' : startKey) :
-                        String(component.value ?? '');
-                    this.editingState!.inputElement.focus();
-                    this.editingState!.inputElement.select();
-                }
-            });
+            // Delegate DOM activation (timing, focus, value) to the adapter via the port
+            const initialValue = startKey
+                ? (startKey === 'Backspace' ? '' : startKey)
+                : String(component.value ?? '');
+            this.inputActivationPort?.activateInput(componentType, initialValue);
             // Notify state change
             this.notifyEditingStateChange();
         }
@@ -540,6 +525,7 @@ export default class DataHandler<TExtraProps = undefined, TRowHeaderProps = unde
     endEditingComponent() {
         // Clear centralized editing state regardless of position validation
         this.editingState = null;
+        this.inputActivationPort?.deactivateInput();
 
         // Notify state change
         this.notifyEditingStateChange();
@@ -844,14 +830,15 @@ export default class DataHandler<TExtraProps = undefined, TRowHeaderProps = unde
                 this.endEditingComponent();
                 return true;
 
-            case 'commit':
+            case 'commit': {
                 // Force commit - only if there are changes, keep in editing if validation fails
-                if (this.editingState && this.editingState.inputElement) {
-                    if (this.editingState.inputElement.value === String(this.editingState.component.value ?? '')) {
+                const commitInputValue = this.inputActivationPort?.getInputValue() ?? null;
+                if (this.editingState && commitInputValue !== null) {
+                    if (commitInputValue === String(this.editingState.component.value ?? '')) {
                         this.endEditingComponent();
                         return true;
                     }
-                    inputValue = this.editingState.inputElement.value;
+                    inputValue = commitInputValue;
 
                     // Use unified method for both cell and header
                     const changesToCommit = [{
@@ -864,15 +851,17 @@ export default class DataHandler<TExtraProps = undefined, TRowHeaderProps = unde
                     return commitSuccess;
                 }
                 return false;
+            }
 
-            case 'blur':
+            case 'blur': {
                 // Exit editing regardless, but only commit if validation passes and there are changes
-                if (this.editingState && this.editingState.inputElement) {
-                    if (this.editingState.inputElement.value === String(this.editingState.component.value ?? '')) {
+                const blurInputValue = this.inputActivationPort?.getInputValue() ?? null;
+                if (this.editingState && blurInputValue !== null) {
+                    if (blurInputValue === String(this.editingState.component.value ?? '')) {
                         this.endEditingComponent();
                         return true;
                     }
-                    inputValue = this.editingState.inputElement.value;
+                    inputValue = blurInputValue;
 
                     // Use unified method for both cell and header
                     const blurChangesToCommit = [{
@@ -886,6 +875,7 @@ export default class DataHandler<TExtraProps = undefined, TRowHeaderProps = unde
                 }
                 this.endEditingComponent();
                 return true;
+            }
 
             default:
                 return false;

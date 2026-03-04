@@ -10,6 +10,7 @@
     import NavigationOverlay from './overlays/NavigationOverlay.svelte';
     import ProcessingOverlay from './overlays/ProcessingOverlay.svelte';
     import SmartSheetController from '../../core/engine/SmartSheetController.ts';
+    import { SvelteInputActivation } from './ports/SvelteInputActivation.ts';
     import { Selection, HeaderSelection } from '../../core/selection/SelectionHandler.ts';
     import type { SelectionChangedCallback } from '../../core/selection/SelectionHandler.ts';
     import type { PointerPositionCallback } from '../../core/navigation/NavigationHandler.ts';
@@ -186,6 +187,7 @@
         subscribeToVisibleComponents, subscribeToScaleChange, undefined, subscribeToEditingState,
         subscribeToProcessingState, subscribeToImputedElements,
     );
+    controller.setInputActivationPort(new SvelteInputActivation(controller.getInstanceId()));
 
     let tableContainer: HTMLDivElement;
     let columnsHeaderContainer: HTMLDivElement;

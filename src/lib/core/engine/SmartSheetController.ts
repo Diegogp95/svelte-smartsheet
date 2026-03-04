@@ -26,6 +26,7 @@ import DataHandler from '../data/DataHandler.ts';
 import type { SelectionChangedCallback } from '../selection/SelectionHandler.ts';
 import type { PointerPositionCallback, AutoScrollSelectionCallback } from '../navigation/NavigationHandler.ts';
 import type { EditingStateCallback, ImputedElementsCallback } from '../data/DataHandler.ts';
+import type { InputActivationPort } from '../ports/InputActivationPort.ts';
 import ColorHandler from '../styling/ColorHandler.ts';
 import VirtualizeHandler from '../virtualization/VirtualizeHandler.ts';
 import type { VisibleComponentsCallback, RenderAreaCallback, ScaleChangeCallback } from '../virtualization/VirtualizeHandler.ts';
@@ -153,7 +154,6 @@ export default class SmartSheetController<TExtraProps = undefined,
             this.rowHeaderComponents,
             this.colHeaderComponents,
             this.cornerHeaderComponent,
-            this.instanceId,
             numberFormat,
             onEditingStateChanged,
             onImputedElementsChanged,
@@ -951,6 +951,11 @@ export default class SmartSheetController<TExtraProps = undefined,
     // Get instance ID for unique element identification
     getInstanceId(): string {
         return this.instanceId;
+    }
+
+    // Wire the adapter's InputActivationPort so DataHandler can delegate DOM interaction
+    setInputActivationPort(port: InputActivationPort): void {
+        this.dataHandler.setInputActivationPort(port);
     }
 
     // Get current cell value (from the cell component itself)
