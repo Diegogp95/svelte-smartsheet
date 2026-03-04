@@ -6,15 +6,13 @@ import type {
     GridMouseInteractionType,
     GridDimensions,
 } from '../types/types.ts';
+import type { ViewportPort } from '../ports/ViewportPort.ts';
 
 export default class MouseEventTranslator {
     private gridDimensions: GridDimensions;
     private rowHeights: number[] = [];
     private colWidths: number[] = [];
-    private tableContainer: HTMLDivElement | null = null;
-    private mainGridContainer: HTMLDivElement | null = null;
-    private rowHeadersContainer: HTMLDivElement | null = null;
-    private colHeadersContainer: HTMLDivElement | null = null;
+    private viewportPort?: ViewportPort;
     
     // Position tracking for intelligent mousemove
     private lastKnownMainPosition: GridPosition | null = null;
@@ -25,21 +23,8 @@ export default class MouseEventTranslator {
         this.gridDimensions = gridDimensions;
     }
 
-    // Set up containers and dimensions
-    setTableContainer(container: HTMLDivElement) {
-        this.tableContainer = container;
-    }
-
-    setMainGridContainer(container: HTMLDivElement) {
-        this.mainGridContainer = container;
-    }
-
-    setRowHeadersContainer(container: HTMLDivElement) {
-        this.rowHeadersContainer = container;
-    }
-
-    setColHeadersContainer(container: HTMLDivElement) {
-        this.colHeadersContainer = container;
+    setViewportPort(port: ViewportPort): void {
+        this.viewportPort = port;
     }
 
     setRowHeights(heights: number[]) {
@@ -64,11 +49,12 @@ export default class MouseEventTranslator {
         event: MouseEvent,
         containerType: 'main' | 'rowHeaders' | 'colHeaders' | 'corner'
     ): GridPosition | HeaderPosition | null {
-        if (!this.tableContainer) return null;
+        const containerRect = this.viewportPort?.getTableContainerRect();
+        const scrollState = this.viewportPort?.getScrollState();
+        if (!containerRect || !scrollState) return null;
 
-        const containerRect = this.tableContainer.getBoundingClientRect();
-        const scrollTop = this.tableContainer.scrollTop;
-        const scrollLeft = this.tableContainer.scrollLeft;
+        const scrollTop = scrollState.scrollTop;
+        const scrollLeft = scrollState.scrollLeft;
 
         // Calculate relative position within the table container
         const relativeX = event.clientX - containerRect.left + scrollLeft;

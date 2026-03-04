@@ -345,11 +345,21 @@ export default class InputAnalyzer {
      */
     createOutsideScrollAnalysis(
         mouseEvent: MouseEvent,
-        tableContainer: HTMLDivElement,
+        containerRect: DOMRect | null,
         draggingContext: DraggingActionContext,
         gridDimensions?: { maxRow: number; maxCol: number }
     ): MouseEventAnalysis {
-        const containerRect = tableContainer.getBoundingClientRect();
+        if (!containerRect) {
+            return {
+                type: 'mouseenter',
+                componentType: undefined,
+                position: undefined,
+                navigationAction: 'continue-drag',
+                selectionAction: 'none',
+                draggingContext,
+                outsideScrollAnalysis: undefined
+            };
+        }
         const scrollAnalysis = this.analyzeScrollProximity(
             mouseEvent.clientX,
             mouseEvent.clientY,

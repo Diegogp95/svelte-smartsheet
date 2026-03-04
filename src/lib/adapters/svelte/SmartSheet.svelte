@@ -11,6 +11,8 @@
     import ProcessingOverlay from './overlays/ProcessingOverlay.svelte';
     import SmartSheetController from '../../core/engine/SmartSheetController.ts';
     import { SvelteInputActivation } from './ports/SvelteInputActivation.ts';
+    import { SvelteExternalEvent } from './ports/SvelteExternalEvent.ts';
+    import { SvelteViewport } from './ports/SvelteViewport.ts';
     import { Selection, HeaderSelection } from '../../core/selection/SelectionHandler.ts';
     import type { SelectionChangedCallback } from '../../core/selection/SelectionHandler.ts';
     import type { PointerPositionCallback } from '../../core/navigation/NavigationHandler.ts';
@@ -188,12 +190,15 @@
         subscribeToProcessingState, subscribeToImputedElements,
     );
     controller.setInputActivationPort(new SvelteInputActivation(controller.getInstanceId()));
+    const externalEventPort = new SvelteExternalEvent();
+    controller.setExternalEventPort(externalEventPort);
+    const viewportPort = new SvelteViewport();
+    controller.setViewportPort(viewportPort);
 
     let tableContainer: HTMLDivElement;
     let columnsHeaderContainer: HTMLDivElement;
     let rowsHeaderContainer: HTMLDivElement;
     let mainGridContainer: HTMLDivElement;
-    let Element: HTMLDivElement;
 
     // Reactive states managed by controller
     let navigationMode = false;
@@ -507,15 +512,16 @@
         // We also need to bind the tableContainer and the columns/rows header containers
         tick().then(() => {
             if (tableContainer) {
+                // Wire viewport port before any handler that reads scroll state
+                viewportPort.setTableContainer(tableContainer);
+                viewportPort.setMainGridContainer(mainGridContainer);
                 controller.initializeVirtualization(
-                    tableContainer,
                     rowHeights,
                     colWidths,
                 );
-                controller.setUpNavigator(tableContainer, rowHeights, colWidths);
-                controller.setColumnsHeaderContainer(columnsHeaderContainer);
-                controller.setRowsHeaderContainer(rowsHeaderContainer);
-                controller.setMainGridContainer(mainGridContainer);
+                controller.setUpNavigator(rowHeights, colWidths);
+                // Provide the real DOM container to the port so it can attach listeners
+                externalEventPort.setTableContainer(tableContainer);
 
                 // Once all virtualization setup is complete, navigate to initial position if provided
                 if (initialPointerPosition) {

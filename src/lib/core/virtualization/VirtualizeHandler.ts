@@ -7,6 +7,7 @@ import type {
 	VisibleComponents,
 	RenderArea,
 } from '../types/types.ts';
+import type { ViewportPort } from '../ports/ViewportPort.ts';
 
 // Callback types for virtualization subscriptions
 export type VisibleComponentsCallback<TExtraProps, TRowHeaderProps, TColHeaderProps> = 
@@ -25,7 +26,8 @@ export default class VirtualizeHandler<TExtraProps = undefined, TRowHeaderProps 
     private rowHeaderComponents: Map<string, HeaderComponent<TRowHeaderProps>>;
     private colHeaderComponents: Map<string, HeaderComponent<TColHeaderProps>>;
     private cornerHeaderComponent: HeaderComponent;
-    private tableContainer: HTMLDivElement | null = null;
+    // Viewport port — provides scroll state for render area calculations
+    private viewportPort?: ViewportPort;
 
     // Original arrays (shared references - these get modified by scaling)
     private rowHeights: number[] = [];
@@ -76,8 +78,8 @@ export default class VirtualizeHandler<TExtraProps = undefined, TRowHeaderProps 
         };
     }
 
-    setTableContainer(container: HTMLDivElement) {
-        this.tableContainer = container;
+    setViewportPort(port: ViewportPort): void {
+        this.viewportPort = port;
     }
 
     setRowHeights(heights: number[]) {
@@ -96,11 +98,9 @@ export default class VirtualizeHandler<TExtraProps = undefined, TRowHeaderProps 
 
     // Initialize the handler with container dimensions (called on mount)
     initialize(
-        tableContainer: HTMLDivElement,
         rowHeights: number[],
         colWidths: number[]
     ) {
-        this.setTableContainer(tableContainer);
         this.setRowHeights(rowHeights);
         this.setColWidths(colWidths);
         // Calculate initial render area based on container size
@@ -210,10 +210,11 @@ export default class VirtualizeHandler<TExtraProps = undefined, TRowHeaderProps 
         let startVisibleRow = 0;
         let endVisibleRow = this.gridDimensions.maxRow;
 
-        const scrollTop = this.tableContainer?.scrollTop || 0;
-        const containerHeight = this.tableContainer?.clientHeight || 0;
-        const scrollLeft = this.tableContainer?.scrollLeft || 0;
-        const containerWidth = this.tableContainer?.clientWidth || 0;
+        const state = this.viewportPort?.getScrollState();
+        const scrollTop = state?.scrollTop ?? 0;
+        const containerHeight = state?.viewportHeight ?? 0;
+        const scrollLeft = state?.scrollLeft ?? 0;
+        const containerWidth = state?.viewportWidth ?? 0;
 
         // Find start row
         for (let row = 0; row <= this.gridDimensions.maxRow; row++) {
@@ -273,7 +274,7 @@ export default class VirtualizeHandler<TExtraProps = undefined, TRowHeaderProps 
 
     // Update render area based on scroll and container information
     handleScroll() {
-        if (!this.rowHeights.length || !this.colWidths.length || !this.tableContainer) {
+        if (!this.rowHeights.length || !this.colWidths.length || !this.viewportPort) {
             return;
         }
         const [newRenderArea, newVisibleArea] = this.calculateRenderArea();
@@ -322,7 +323,7 @@ export default class VirtualizeHandler<TExtraProps = undefined, TRowHeaderProps 
         this.updateSharedDimensionsFromBase();
 
         // Recalculate render area with new scaled dimensions
-        if (this.tableContainer && this.rowHeights.length && this.colWidths.length) {
+        if (this.viewportPort && this.rowHeights.length && this.colWidths.length) {
             const [newRenderArea, newVisibleArea] = this.calculateRenderArea();
             this.updateRenderArea(newRenderArea, newVisibleArea);
         }

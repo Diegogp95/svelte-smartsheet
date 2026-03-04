@@ -27,6 +27,8 @@ import type { SelectionChangedCallback } from '../selection/SelectionHandler.ts'
 import type { PointerPositionCallback, AutoScrollSelectionCallback } from '../navigation/NavigationHandler.ts';
 import type { EditingStateCallback, ImputedElementsCallback } from '../data/DataHandler.ts';
 import type { InputActivationPort } from '../ports/InputActivationPort.ts';
+import type { ExternalEventPort } from '../ports/ExternalEventPort.ts';
+import type { ViewportPort } from '../ports/ViewportPort.ts';
 import ColorHandler from '../styling/ColorHandler.ts';
 import VirtualizeHandler from '../virtualization/VirtualizeHandler.ts';
 import type { VisibleComponentsCallback, RenderAreaCallback, ScaleChangeCallback } from '../virtualization/VirtualizeHandler.ts';
@@ -57,6 +59,7 @@ export default class SmartSheetController<TExtraProps = undefined,
     private cornerHeaderComponent: HeaderComponent;
     // Props
     private gridDimensions: GridDimensions;
+    private viewportPort?: ViewportPort;
     private headersReadOnly: boolean;
     // Clipboard event listeners references for cleanup
     private pasteListener: ((event: ClipboardEvent) => void) | null = null;
@@ -301,7 +304,7 @@ export default class SmartSheetController<TExtraProps = undefined,
         const draggingContext = this.navigationHandler.getDraggingActionContext();
         const analysis = this.inputAnalyzer.createOutsideScrollAnalysis(
             event,
-            this.navigationHandler.getTableContainer() as HTMLDivElement,
+            this.viewportPort?.getTableContainerRect() ?? null,
             draggingContext,
         );
 
@@ -554,13 +557,9 @@ export default class SmartSheetController<TExtraProps = undefined,
 
     // Update container reference
 
-    setUpNavigator(tableContainer: HTMLDivElement, rowHeights: number[], colWidths: number[]) {
-        this.navigationHandler.setTableContainer(tableContainer);
+    setUpNavigator(rowHeights: number[], colWidths: number[]) {
         this.navigationHandler.setRowHeights(rowHeights);
         this.navigationHandler.setColWidths(colWidths);
-
-        // Setup mouseEventTranslator with same data
-        this.mouseEventTranslator.setTableContainer(tableContainer);
         this.mouseEventTranslator.setRowHeights(rowHeights);
         this.mouseEventTranslator.setColWidths(colWidths);
     }
@@ -573,23 +572,6 @@ export default class SmartSheetController<TExtraProps = undefined,
     setColWidths(widths: number[]) {
         this.navigationHandler.setColWidths(widths);
         this.mouseEventTranslator.setColWidths(widths);
-    }
-
-    // Update header containers references
-    setColumnsHeaderContainer(container: HTMLDivElement) {
-        this.navigationHandler.setColumnsHeaderContainer(container);
-        this.mouseEventTranslator.setColHeadersContainer(container);
-    }
-
-    setRowsHeaderContainer(container: HTMLDivElement) {
-        this.navigationHandler.setRowsHeaderContainer(container);
-        this.mouseEventTranslator.setRowHeadersContainer(container);
-    }
-
-    // Set main grid container reference
-    setMainGridContainer(container: HTMLDivElement) {
-        this.mouseEventTranslator.setMainGridContainer(container);
-        this.navigationHandler.setMainGridContainer(container);
     }
 
     // Update grid dimensions (when data structure changes)
@@ -958,6 +940,19 @@ export default class SmartSheetController<TExtraProps = undefined,
         this.dataHandler.setInputActivationPort(port);
     }
 
+    // Wire the adapter's ExternalEventPort so NavigationHandler can register outside-drag listeners
+    setExternalEventPort(port: ExternalEventPort): void {
+        this.navigationHandler.setExternalEventPort(port);
+    }
+
+    // Wire the adapter's ViewportPort so NavigationHandler, VirtualizeHandler and MouseEventTranslator can query and command the viewport
+    setViewportPort(port: ViewportPort): void {
+        this.viewportPort = port;
+        this.navigationHandler.setViewportPort(port);
+        this.virtualizeHandler.setViewportPort(port);
+        this.mouseEventTranslator.setViewportPort(port);
+    }
+
     // Get current cell value (from the cell component itself)
     getCurrentCellValue(): CellValue | undefined {
         const position = this.getCurrentPosition();
@@ -969,13 +964,11 @@ export default class SmartSheetController<TExtraProps = undefined,
     // === VIRTUALIZATION METHODS ===
 
     // Initialize virtualization with container dimensions (called on mount)
-    initializeVirtualization(tableContainer: HTMLDivElement,
+    initializeVirtualization(
         rowHeights: number[],
         colWidths: number[]
     ): void {
-        this.virtualizeHandler.initialize(
-            tableContainer, rowHeights, colWidths
-        );
+        this.virtualizeHandler.initialize(rowHeights, colWidths);
     }
 
     // Handle scroll events for virtualization

@@ -12,6 +12,8 @@ import type {
     RenderArea,
     KeyboardNavigationAnalysis,
 } from '../types/types.ts';
+import type { ExternalEventPort } from '../ports/ExternalEventPort.ts';
+import type { ViewportPort } from '../ports/ViewportPort.ts';
 
 export type PointerPositionCallback = (handler: NavigationHandler<any, any, any>) => void;
 export type DocumentMouseMoveCallback = (event: MouseEvent) => void;
@@ -20,12 +22,8 @@ export type AutoScrollSelectionCallback = (position: GridPosition, draggingConte
 export default class NavigationHandler<TExtraProps = undefined, TRowHeaderProps = undefined, TColHeaderProps = undefined> {
     private gridDimensions: GridDimensions;
     private navigationState: NavigationState;
-    // Container references
-    private tableContainer: HTMLDivElement | undefined;
-    private mainGridContainer: HTMLDivElement | undefined;
-
-    private columnsHeaderContainer: HTMLDivElement | undefined;
-    private rowsHeaderContainer: HTMLDivElement | undefined;
+    // Viewport port — abstracts all scroll read/write and focus operations
+    private viewportPort?: ViewportPort;
     private cellComponents: Map<string, CellComponent<TExtraProps>>;
     private pointerPositionCallback?: PointerPositionCallback;
     // Separate header components by type
@@ -37,10 +35,8 @@ export default class NavigationHandler<TExtraProps = undefined, TRowHeaderProps 
     private rowHeights: number[] = [];
     private colWidths: number[] = [];
 
-    // Outside dragging listeners
-    private tableMouseEnterListener?: (event: MouseEvent) => void;
-    private tableMouseLeaveListener?: (event: MouseEvent) => void;
-    private documentMouseMoveListener?: (event: MouseEvent) => void;
+    // Outside dragging listeners — managed via port to stay DOM-agnostic
+    private externalEventPort?: ExternalEventPort;
     private documentMouseMoveCallback?: DocumentMouseMoveCallback;
     private autoScrollSelectionCallback?: AutoScrollSelectionCallback;
 
@@ -80,23 +76,6 @@ export default class NavigationHandler<TExtraProps = undefined, TRowHeaderProps 
         this.autoScrollSelectionCallback = autoScrollSelectionCallback;
     }
 
-    // Update container reference
-    setTableContainer(container: HTMLDivElement) {
-        this.tableContainer = container;
-    }
-
-    setMainGridContainer(container: HTMLDivElement) {
-        this.mainGridContainer = container;
-    }
-
-    getMainGridContainer(): HTMLDivElement | undefined {
-        return this.mainGridContainer;
-    }
-
-    getTableContainer(): HTMLDivElement | undefined {
-        return this.tableContainer;
-    }
-
     // set grid spacing data
     setRowHeights(heights: number[]) {
         this.rowHeights = heights;
@@ -106,13 +85,12 @@ export default class NavigationHandler<TExtraProps = undefined, TRowHeaderProps 
         this.colWidths = widths;
     }
 
-    // Update header containers references
-    setColumnsHeaderContainer(container: HTMLDivElement) {
-        this.columnsHeaderContainer = container;
+    setExternalEventPort(port: ExternalEventPort): void {
+        this.externalEventPort = port;
     }
 
-    setRowsHeaderContainer(container: HTMLDivElement) {
-        this.rowsHeaderContainer = container;
+    setViewportPort(port: ViewportPort): void {
+        this.viewportPort = port;
     }
 
     // Update grid dimensions
@@ -129,8 +107,8 @@ export default class NavigationHandler<TExtraProps = undefined, TRowHeaderProps 
             position.col >= 0 && position.col <= maxCol) {
             this.setPointerPosition(position);
 
-            // Auto-scroll if container is available
-            if (this.tableContainer) {
+            // Auto-scroll if viewport port is available
+            if (this.viewportPort) {
                 this.scrollToPosition(position, behavior, mode);
             }
         }
@@ -684,14 +662,14 @@ export default class NavigationHandler<TExtraProps = undefined, TRowHeaderProps 
 
     // Automatic scroll to keep pointer visible
     private scrollToPosition(position: GridPosition, behavior: 'smooth' | 'instant' = 'instant', mode: 'minimal' | 'initial' | 'final' = 'minimal'): void {
-        if (!this.tableContainer) return;
+        const state = this.viewportPort?.getScrollState();
+        if (!state) return;
 
-        // Container dimensions and scroll positions
-        const container = this.tableContainer;
-        const scrollTop = container.scrollTop;
-        const scrollLeft = container.scrollLeft;
-        const containerHeight = container.clientHeight;
-        const containerWidth = container.clientWidth;
+        // Container dimensions and scroll positions (via viewport port)
+        const scrollTop = state.scrollTop;
+        const scrollLeft = state.scrollLeft;
+        const containerHeight = state.viewportHeight;
+        const containerWidth = state.viewportWidth;
 
         // Calculate the cumulative offsets to the target cell
         // Since rowHeights' and colWidths' first element corresponds to the header row/col dimension,
@@ -771,10 +749,10 @@ export default class NavigationHandler<TExtraProps = undefined, TRowHeaderProps 
 
         // Apply smooth scroll if there are changes
         if (newScrollTop !== scrollTop || newScrollLeft !== scrollLeft) {
-            container.scrollTo({
-                top: Math.max(0, newScrollTop), // Ensure we don't scroll to negative values
-                left: Math.max(0, newScrollLeft),
-                behavior: behavior
+            this.viewportPort!.scrollTo({
+                top: newScrollTop,
+                left: newScrollLeft,
+                behavior: behavior,
             });
         }
     }
@@ -782,9 +760,7 @@ export default class NavigationHandler<TExtraProps = undefined, TRowHeaderProps 
     // Navigation mode control
     activateNavigation(): boolean {
         this.navigationState.navigationMode = true;
-        if (this.tableContainer) {
-            this.tableContainer.focus();
-        }
+        this.viewportPort?.focusContainer();
         return true;
     }
 
@@ -837,20 +813,19 @@ export default class NavigationHandler<TExtraProps = undefined, TRowHeaderProps 
 
     private calculateVerticalPage(currentRow: number, direction: 'up' | 'down'): number {
         const { maxRow } = this.gridDimensions;
-        if (!this.tableContainer || !this.mainGridContainer) {
-            return currentRow;
-        }
+        const state = this.viewportPort?.getScrollState();
+        if (!state) return currentRow;
 
-        const currentScrollTop = this.tableContainer.scrollTop;
-        const effectiveContainerHeight = this.tableContainer.clientHeight - (this.rowHeights[0] || 0);
+        const currentScrollTop = state.scrollTop;
+        const effectiveContainerHeight = state.viewportHeight - (this.rowHeights[0] || 0);
         let newScrollTop: number;
 
         // Calculate new scroll position based on direction
         if (direction === 'up') {
             newScrollTop = Math.max(0, currentScrollTop - effectiveContainerHeight);
         } else {
-            // Optimized max scroll calculation using mainGridContainer
-            const maxScrollTop = Math.max(0, this.mainGridContainer.clientHeight - effectiveContainerHeight);
+            // Optimized max scroll calculation using content dimensions
+            const maxScrollTop = Math.max(0, state.contentHeight - effectiveContainerHeight);
             newScrollTop = Math.min(maxScrollTop, currentScrollTop + effectiveContainerHeight);
         }
 
@@ -891,20 +866,19 @@ export default class NavigationHandler<TExtraProps = undefined, TRowHeaderProps 
      */
     private calculateHorizontalPage(currentCol: number, direction: 'left' | 'right'): number {
         const { maxCol } = this.gridDimensions;
-        if (!this.tableContainer || !this.mainGridContainer) {
-            return currentCol;
-        }
+        const state = this.viewportPort?.getScrollState();
+        if (!state) return currentCol;
 
-        const currentScrollLeft = this.tableContainer.scrollLeft;
-        const effectiveContainerWidth = this.tableContainer.clientWidth - (this.colWidths[0] || 0);
+        const currentScrollLeft = state.scrollLeft;
+        const effectiveContainerWidth = state.viewportWidth - (this.colWidths[0] || 0);
         let newScrollLeft: number;
 
         // Calculate new scroll position based on direction
         if (direction === 'left') {
             newScrollLeft = Math.max(0, currentScrollLeft - effectiveContainerWidth);
         } else {
-            // Optimized max scroll calculation using mainGridContainer
-            const maxScrollLeft = Math.max(0, this.mainGridContainer.clientWidth - effectiveContainerWidth);
+            // Optimized max scroll calculation using content dimensions
+            const maxScrollLeft = Math.max(0, state.contentWidth - effectiveContainerWidth);
             newScrollLeft = Math.min(maxScrollLeft, currentScrollLeft + effectiveContainerWidth);
         }
 
@@ -1482,35 +1456,21 @@ export default class NavigationHandler<TExtraProps = undefined, TRowHeaderProps 
      * Setup listeners for table mouse enter/leave events during drag operations
      */
     private setupTableOutsideListeners(): void {
-        if (!this.tableContainer) {
-            console.warn('[NavigationHandler] No table container available for outside listeners');
+        if (!this.externalEventPort) {
+            console.warn('[NavigationHandler] No ExternalEventPort set — cannot register table listeners');
             return;
         }
-
-        // Create bound handler functions
-        this.tableMouseEnterListener = this.handleTableMouseEnter;
-        this.tableMouseLeaveListener = this.handleTableMouseLeave;
-
-        // Add listeners to table container
-        this.tableContainer.addEventListener('mouseenter', this.tableMouseEnterListener);
-        this.tableContainer.addEventListener('mouseleave', this.tableMouseLeaveListener);
+        this.externalEventPort.registerTableListeners(
+            this.handleTableMouseEnter,
+            this.handleTableMouseLeave,
+        );
     }
 
     /**
      * Remove listeners for table mouse enter/leave events
      */
     private removeTableOutsideListeners(): void {
-        if (!this.tableContainer || !this.tableMouseEnterListener || !this.tableMouseLeaveListener) {
-            return;
-        }
-
-        // Remove listeners from table container
-        this.tableContainer.removeEventListener('mouseenter', this.tableMouseEnterListener);
-        this.tableContainer.removeEventListener('mouseleave', this.tableMouseLeaveListener);
-
-        // Clear references
-        this.tableMouseEnterListener = undefined;
-        this.tableMouseLeaveListener = undefined;
+        this.externalEventPort?.unregisterTableListeners();
     }
 
     /**
@@ -1521,28 +1481,15 @@ export default class NavigationHandler<TExtraProps = undefined, TRowHeaderProps 
             console.warn('[NavigationHandler] No document mouse move callback available');
             return;
         }
-
-        // Create bound listener using stored callback
-        this.documentMouseMoveListener = this.documentMouseMoveCallback;
-
-        // Add listener to document
-        document.addEventListener('mousemove', this.documentMouseMoveListener);
+        this.externalEventPort?.registerDocumentMouseMove(this.documentMouseMoveCallback);
     }
 
     /**
      * Remove document mouse move listener
      */
     private removeDocumentMouseMoveListener(): void {
-        if (!this.documentMouseMoveListener) {
-            return;
-        }
-
-        // Remove listener from document
-        document.removeEventListener('mousemove', this.documentMouseMoveListener);
-
-        // Clear listener reference but KEEP callback reference
-        this.documentMouseMoveListener = undefined;
-        // NOTE: documentMouseMoveCallback is kept for reuse
+        // documentMouseMoveCallback is intentionally kept for reuse in the next drag
+        this.externalEventPort?.unregisterDocumentMouseMove();
     }
 
     /**
