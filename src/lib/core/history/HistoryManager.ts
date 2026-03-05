@@ -1,362 +1,133 @@
-import type {
-    GridPosition,
-    CellValue,
-    HeaderPosition,
-    HeaderValue,
-} from '../types/types.ts';
+import type { GridPosition, HeaderPosition, CellValue, HeaderValue } from '../types/types.ts';
+import { CellChange } from './CellChange.ts';
+import { HeaderChange } from './HeaderChange.ts';
+import { ChangeSet } from './ChangeSet.ts';
+import { HistoryStack } from './HistoryStack.ts';
+import { HistoryQueryReader } from './HistoryQueryReader.ts';
 
-// ==================== CELL CHANGE CLASS ====================
+export type ChangeType = 'single-edit' | 'paste' | 'delete' | 'format' | 'other';
 
-export class CellChange {
-    constructor(
-        public position: GridPosition,
-        public oldValue: CellValue,
-        public newValue: CellValue
-    ) {}
+export type UndoRedoResult =
+    | { type: 'cell';   changes: Array<{ position: GridPosition;   oldValue: CellValue;   newValue: CellValue }> }
+    | { type: 'header'; changes: Array<{ position: HeaderPosition; oldValue: HeaderValue; newValue: HeaderValue }> };
 
-    getType(): 'cell' {
-        return 'cell';
-    }
 
-    getPositionKey(): string {
-        return `cell-${this.position.row}-${this.position.col}`;
-    }
 
-    hasValueChanged(): boolean {
-        return this.oldValue !== this.newValue;
-    }
 
-    toString(): string {
-        return `Cell(${this.position.row},${this.position.col}): ${this.oldValue} → ${this.newValue}`;
-    }
-}
 
-// ==================== HEADER CHANGE CLASS ====================
-
-export class HeaderChange {
-    constructor(
-        public position: HeaderPosition,
-        public oldValue: HeaderValue,
-        public newValue: HeaderValue
-    ) {}
-
-    getType(): 'header' {
-        return 'header';
-    }
-
-    getPositionKey(): string {
-        return `header-${this.position.headerType}-${this.position.index}`;
-    }
-
-    hasValueChanged(): boolean {
-        return this.oldValue !== this.newValue;
-    }
-
-    toString(): string {
-        return `Header(${this.position.headerType}[${this.position.index}]): ${this.oldValue} → ${this.newValue}`;
-    }
-}
-
-// ==================== CHANGE SET CLASS ====================
-
-export class ChangeSet {
-    constructor(
-        public changes: CellChange[] | HeaderChange[],
-        public type: 'single-edit' | 'paste' | 'delete' | 'format' | 'other',
-        public timestamp: number = Date.now()
-    ) {}
-
-    getAffectedPositions(): (GridPosition | HeaderPosition)[] {
-        return this.changes.map(c => c.position);
-    }
-
-    getCellPositions(): GridPosition[] {
-        if (this.isCellOnlyEdit()) {
-            return (this.changes as CellChange[]).map(c => c.position);
-        }
-        return [];
-    }
-
-    getHeaderPositions(): HeaderPosition[] {
-        if (this.isHeaderOnlyEdit()) {
-            return (this.changes as HeaderChange[]).map(c => c.position);
-        }
-        return [];
-    }
-
-    getChangeCount(): number {
-        return this.changes.length;
-    }
-
-    isSingleCellEdit(): boolean {
-        return this.type === 'single-edit' &&
-               this.changes.length === 1 &&
-               this.isCellOnlyEdit();
-    }
-
-    isSingleHeaderEdit(): boolean {
-        return this.type === 'single-edit' &&
-               this.changes.length === 1 &&
-               this.isHeaderOnlyEdit();
-    }
-
-    isCellOnlyEdit(): boolean {
-        return this.changes.length > 0 && this.changes[0] instanceof CellChange;
-    }
-
-    isHeaderOnlyEdit(): boolean {
-        return this.changes.length > 0 && this.changes[0] instanceof HeaderChange;
-    }
-
-    toString(): string {
-        if (this.isCellOnlyEdit()) {
-            return `ChangeSet(${this.type}): ${this.changes.length} cells at ${new Date(this.timestamp)}`;
-        } else if (this.isHeaderOnlyEdit()) {
-            return `ChangeSet(${this.type}): ${this.changes.length} headers at ${new Date(this.timestamp)}`;
-        } else {
-            // Empty changeset
-            return `ChangeSet(${this.type}): 0 changes at ${new Date(this.timestamp)}`;
-        }
-    }
-}
-
-// ==================== HISTORY MANAGER CLASS ====================
-
+/**
+ * HistoryManager — domain façade over HistoryStack<ChangeSet>.
+ *
+ * Responsibilities:
+ *   - Accept raw change data and build domain objects internally.
+ *   - Delegate stack management to HistoryStack.
+ *   - Expose undo/redo as typed DTOs — callers never handle ChangeSet directly.
+ *   - Expose domain-level queries: which cells/headers have been modified.
+ */
 export class HistoryManager {
-    private history: ChangeSet[] = [];
-    private currentIndex: number = -1; // -1 means no history, 0+ means position in history
-    private maxHistorySize: number = 100; // Default limit
+    private readonly stack = new HistoryStack<ChangeSet>();
+    private readonly reader = new HistoryQueryReader(this.stack);
 
-    /**
-     * Add a new change set to history
-     * This clears any "redo" history if we're not at the end
-     */
-    add(changeSet: ChangeSet): void {
-
-        // If we're not at the end of history, remove everything after current position
-        if (this.currentIndex < this.history.length - 1) {
-            this.history = this.history.slice(0, this.currentIndex + 1);
-        }
-
-        // Add the new change set
-        this.history.push(changeSet);
-        this.currentIndex = this.history.length - 1;
-
-        // Enforce max history size
-        this.enforceMaxSize();
+    recordCellChanges(
+        changes: Array<{ position: GridPosition; oldValue: CellValue; newValue: CellValue }>,
+        type: ChangeType
+    ): void {
+        const cellChanges = changes.map(c => new CellChange(c.position, c.oldValue, c.newValue));
+        this.stack.push(new ChangeSet(cellChanges, type));
     }
 
-    /**
-     * Undo the last change
-     * Returns the change set to revert, or null if nothing to undo
-     */
-    undo(): ChangeSet | null {
-        if (!this.canUndo()) {
-            return null;
-        }
-
-        const changeSet = this.history[this.currentIndex];
-        this.currentIndex--;
-
-        return changeSet;
+    recordHeaderChanges(
+        changes: Array<{ position: HeaderPosition; oldValue: HeaderValue; newValue: HeaderValue }>,
+        type: ChangeType
+    ): void {
+        const headerChanges = changes.map(c => new HeaderChange(c.position, c.oldValue, c.newValue));
+        this.stack.push(new ChangeSet(headerChanges, type));
     }
 
-    /**
-     * Redo the next change
-     * Returns the change set to reapply, or null if nothing to redo
-     */
-    redo(): ChangeSet | null {
-        if (!this.canRedo()) {
-            return null;
-        }
-
-        this.currentIndex++;
-        const changeSet = this.history[this.currentIndex];
-
-        return changeSet;
+    undo(): UndoRedoResult | null {
+        const changeSet = this.stack.undo();
+        return changeSet ? this.toResult(changeSet) : null;
     }
 
-    /**
-     * Check if undo is possible
-     */
+    redo(): UndoRedoResult | null {
+        const changeSet = this.stack.redo();
+        return changeSet ? this.toResult(changeSet) : null;
+    }
+
     canUndo(): boolean {
-        return this.currentIndex >= 0;
+        return this.stack.canUndo();
     }
 
-    /**
-     * Check if redo is possible
-     */
     canRedo(): boolean {
-        return this.currentIndex < this.history.length - 1;
+        return this.stack.canRedo();
     }
 
-    /**
-     * Get current position in history
-     */
     getCurrentIndex(): number {
-        return this.currentIndex;
+        return this.stack.getCursor();
     }
 
-    /**
-     * Get total history length
-     */
     getHistoryLength(): number {
-        return this.history.length;
+        return this.stack.getLength();
     }
 
-    /**
-     * Get change set at specific index
-     */
     getChangeAt(index: number): ChangeSet | null {
-        if (index < 0 || index >= this.history.length) {
-            return null;
-        }
-        return this.history[index];
+        return this.stack.getAt(index);
     }
 
-    /**
-     * Clear all history
-     */
     clear(): void {
-        console.log(`[HistoryManager] Clearing all history`);
-        this.history = [];
-        this.currentIndex = -1;
+        this.stack.clear();
     }
 
-    /**
-     * Clear history from a specific point onwards
-     */
     clearFrom(index: number): void {
-        if (index < 0 || index >= this.history.length) {
-            return;
-        }
-
-        this.history = this.history.slice(0, index);
-
-        // Adjust current index if it's beyond the new end
-        if (this.currentIndex >= this.history.length) {
-            this.currentIndex = this.history.length - 1;
-        }
+        this.stack.clearFrom(index);
     }
 
-    /**
-     * Set maximum history size
-     */
     setMaxHistorySize(size: number): void {
-        if (size < 1) {
-            console.warn(`[HistoryManager] Invalid max size: ${size}, keeping current size`);
-            return;
-        }
-
-        this.maxHistorySize = size;
-        this.enforceMaxSize();
+        this.stack.setMaxSize(size);
     }
 
-    /**
-     * Get maximum history size
-     */
     getMaxHistorySize(): number {
-        return this.maxHistorySize;
+        return this.stack.getMaxSize();
     }
 
-    /**
-     * Enforce maximum history size by removing oldest entries
-     */
-    private enforceMaxSize(): void {
-        if (this.history.length <= this.maxHistorySize) {
-            return;
-        }
+    // ==================== DOMAIN QUERIES ====================
 
-        const entriesToRemove = this.history.length - this.maxHistorySize;
-        this.history = this.history.slice(entriesToRemove);
-        this.currentIndex = Math.max(-1, this.currentIndex - entriesToRemove);
-    }
-
-    /**
-     * Get all changed cells across the currently applied history (up to currentIndex)
-     * @returns Array of GridPosition for cells that have been changed and are currently applied
-     */
     getChangedCells(): GridPosition[] {
-        const changedCells: Set<GridPosition> = new Set();
-
-        // Only consider changeSets that are currently applied (0 to currentIndex)
-        for (let i = 0; i <= this.currentIndex; i++) {
-            const changeSet = this.history[i];
-            if (changeSet && changeSet.isCellOnlyEdit()) {
-                for (const change of changeSet.changes as CellChange[]) {
-                    changedCells.add(change.position);
-                }
-            }
-        }
-        return Array.from(changedCells);
+        return this.reader.getChangedCells();
     }
 
-    /**
-     * Get all changed headers across the currently applied history (up to currentIndex), separated by type
-     * @returns Object containing arrays of changed row headers and column headers that are currently applied
-     */
-    getChangedHeaders(): { rows: HeaderPosition[], cols: HeaderPosition[] } {
-        const changedRowHeaders: Set<HeaderPosition> = new Set();
-        const changedColHeaders: Set<HeaderPosition> = new Set();
-
-        // Only consider changeSets that are currently applied (0 to currentIndex)
-        for (let i = 0; i <= this.currentIndex; i++) {
-            const changeSet = this.history[i];
-            if (changeSet && changeSet.isHeaderOnlyEdit()) {
-                for (const change of changeSet.changes as HeaderChange[]) {
-                    if (change.position.headerType === 'row') {
-                        changedRowHeaders.add(change.position);
-                    } else if (change.position.headerType === 'col') {
-                        changedColHeaders.add(change.position);
-                    }
-                }
-            }
-        }
-
-        return {
-            rows: Array.from(changedRowHeaders),
-            cols: Array.from(changedColHeaders)
-        };
+    getChangedHeaders(): { rows: HeaderPosition[]; cols: HeaderPosition[] } {
+        return this.reader.getChangedHeaders();
     }
 
-    /**
-     * Get all changed elements (cells and headers) across the currently applied history (up to currentIndex)
-     * @returns Object containing arrays of changed cells, row headers, and column headers that are currently applied
-     */
     getChangedElements(): {
-        cells: GridPosition[],
-        rowHeaders: HeaderPosition[],
-        colHeaders: HeaderPosition[]
+        cells: GridPosition[];
+        rowHeaders: HeaderPosition[];
+        colHeaders: HeaderPosition[];
     } {
-        const changedCells: Set<GridPosition> = new Set();
-        const changedRowHeaders: Set<HeaderPosition> = new Set();
-        const changedColHeaders: Set<HeaderPosition> = new Set();
-
-        // Only consider changeSets that are currently applied (0 to currentIndex)
-        for (let i = 0; i <= this.currentIndex; i++) {
-            const changeSet = this.history[i];
-            if (changeSet) {
-                if (changeSet.isCellOnlyEdit()) {
-                    for (const change of changeSet.changes as CellChange[]) {
-                        changedCells.add(change.position);
-                    }
-                } else if (changeSet.isHeaderOnlyEdit()) {
-                    for (const change of changeSet.changes as HeaderChange[]) {
-                        if (change.position.headerType === 'row') {
-                            changedRowHeaders.add(change.position);
-                        } else if (change.position.headerType === 'col') {
-                            changedColHeaders.add(change.position);
-                        }
-                    }
-                }
-            }
-        }
-
-        return {
-            cells: Array.from(changedCells),
-            rowHeaders: Array.from(changedRowHeaders),
-            colHeaders: Array.from(changedColHeaders)
-        };
+        return this.reader.getChangedElements();
     }
 
+    // ==================== PRIVATE ====================
+
+    private toResult(changeSet: ChangeSet): UndoRedoResult {
+        if (changeSet.isCellOnlyEdit()) {
+            return {
+                type: 'cell',
+                changes: (changeSet.changes as CellChange[]).map(c => ({
+                    position: c.position,
+                    oldValue: c.oldValue,
+                    newValue: c.newValue,
+                })),
+            };
+        }
+        return {
+            type: 'header',
+            changes: (changeSet.changes as HeaderChange[]).map(c => ({
+                position: c.position,
+                oldValue: c.oldValue,
+                newValue: c.newValue,
+            })),
+        };
+    }
 }

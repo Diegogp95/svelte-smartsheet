@@ -8,7 +8,7 @@ import type {
     EditingState,
     NumberFormat,
 } from '../types/types.ts';
-import { CellChange, HeaderChange, ChangeSet, HistoryManager } from '../history/HistoryManager.ts';
+import { HistoryManager, type ChangeType } from '../history/HistoryManager.ts';
 import type { InputActivationPort } from '../ports/InputActivationPort.ts';
 
 // Callback type for editing state changes
@@ -731,80 +731,40 @@ export default class DataHandler<TExtraProps = undefined, TRowHeaderProps = unde
     >(
         changes: Array<ValidatedComponentChange<T, V>>,
         componentType: 'cell' | 'header',
-        changeType: 'single-edit' | 'paste' | 'delete' | 'format' | 'other'
+        changeType: ChangeType
     ): boolean {
-        // Separate creation based on component type (no mixing allowed)
         if (componentType === 'cell') {
-            const cellChanges: CellChange[] = [];
+            const rawChanges = changes
+                .filter(c => c.component.value !== c.newValue)
+                .map(c => ({
+                    position: c.component.position as GridPosition,
+                    oldValue: c.component.value as CellValue,
+                    newValue: c.newValue as CellValue,
+                }));
 
-            for (const change of changes) {
-                const oldValue = change.component.value;
-                const newValue = change.newValue;
+            if (rawChanges.length === 0) return true;
 
-                // Only create change if value actually changed
-                if (oldValue !== newValue) {
-                    cellChanges.push(new CellChange(
-                        change.component.position as GridPosition,
-                        oldValue as CellValue,
-                        newValue as CellValue
-                    ));
-                }
-            }
-
-            // If no actual changes, return early
-            if (cellChanges.length === 0) {
-                return true;
-            }
-
-            // Create ChangeSet for cells
-            const changeSet = new ChangeSet(cellChanges, changeType);
-
-            // Add to history and apply
-            this.historyManager.add(changeSet);
-            this.applyChangeSet(changeSet, 'cell');
-
-            // Update imputed elements and notify
-            this.updateImputedElements();
-            if (this.imputedElementsCallback) {
-                this.imputedElementsCallback(this);
-            }
-
+            this.historyManager.recordCellChanges(rawChanges, changeType);
+            for (const c of rawChanges) this.applyCellValueDirectly(c.position, c.newValue);
         } else {
-            const headerChanges: HeaderChange[] = [];
+            const rawChanges = changes
+                .filter(c => c.component.value !== c.newValue)
+                .map(c => ({
+                    position: c.component.position as HeaderPosition,
+                    oldValue: c.component.value as HeaderValue,
+                    newValue: c.newValue as HeaderValue,
+                }));
 
-            for (const change of changes) {
-                const oldValue = change.component.value;
-                const newValue = change.newValue;
+            if (rawChanges.length === 0) return true;
 
-                // Only create change if value actually changed
-                if (oldValue !== newValue) {
-                    headerChanges.push(new HeaderChange(
-                        change.component.position as HeaderPosition,
-                        oldValue as HeaderValue,
-                        newValue as HeaderValue
-                    ));
-                }
-            }
-
-            // If no actual changes, return early
-            if (headerChanges.length === 0) {
-                return true;
-            }
-
-            // Create ChangeSet for headers
-            const changeSet = new ChangeSet(headerChanges, changeType);
-
-            // Add to history and apply
-            this.historyManager.add(changeSet);
-            this.applyChangeSet(changeSet, 'header');
-
-            // Update imputed elements and notify
-            this.updateImputedElements();
-            if (this.imputedElementsCallback) {
-                this.imputedElementsCallback(this);
-            }
+            this.historyManager.recordHeaderChanges(rawChanges, changeType);
+            for (const c of rawChanges) this.applyHeaderValueDirectly(c.position, c.newValue);
         }
 
+        this.updateImputedElements();
+        if (this.imputedElementsCallback) {
+            this.imputedElementsCallback(this);
+        }
         return true;
     }
 
@@ -888,58 +848,44 @@ export default class DataHandler<TExtraProps = undefined, TRowHeaderProps = unde
      * Undo the last change
      */
     undo(): [GridPosition[] | HeaderPosition[], 'cell' | 'header'] {
-        const changeSet = this.historyManager.undo();
-        // Detect type of changes (cell or header) based on first change
-        let componentType: 'cell' | 'header';
-        if (changeSet && changeSet.changes.length > 0) {
-            const firstChange = changeSet.changes[0];
-            if (firstChange.position.hasOwnProperty('row') && firstChange.position.hasOwnProperty('col')) {
-                componentType = 'cell';
-            } else { // Assume header if not cell
-                componentType = 'header';
-            }
-            this.revertChangeSet(changeSet, componentType);
+        const result = this.historyManager.undo();
+        if (!result) return [[], 'cell'];
 
-            // Update imputed elements and notify (same as commitChanges)
+        if (result.type === 'cell') {
+            for (let i = result.changes.length - 1; i >= 0; i--) {
+                this.applyCellValueDirectly(result.changes[i].position, result.changes[i].oldValue);
+            }
             this.updateImputedElements();
-            if (this.imputedElementsCallback) {
-                this.imputedElementsCallback(this);
+            if (this.imputedElementsCallback) this.imputedElementsCallback(this);
+            return [result.changes.map(c => c.position), 'cell'];
+        } else {
+            for (let i = result.changes.length - 1; i >= 0; i--) {
+                this.applyHeaderValueDirectly(result.changes[i].position, result.changes[i].oldValue);
             }
-
-            // Return affected positions (we are sure it's one of the two types)
-            return [changeSet.changes.map(change => change.position
-                ) as (GridPosition[] | HeaderPosition[]), componentType]
+            this.updateImputedElements();
+            if (this.imputedElementsCallback) this.imputedElementsCallback(this);
+            return [result.changes.map(c => c.position), 'header'];
         }
-        return [[], 'cell']; // Return empty array and default type if no undo available
     }
 
     /**
      * Redo the next change
      */
     redo(): [GridPosition[] | HeaderPosition[], 'cell' | 'header'] {
-        const changeSet = this.historyManager.redo();
-        //  Detect type of changes (cell or header) based on first change
-        let componentType: 'cell' | 'header';
-        if (changeSet && changeSet.changes.length > 0) {
-            const firstChange = changeSet.changes[0];
-            if (firstChange.position.hasOwnProperty('row') && firstChange.position.hasOwnProperty('col')) {
-                componentType = 'cell';
-            } else {
-                componentType = 'header';
-            }
-            this.applyChangeSet(changeSet, componentType);
+        const result = this.historyManager.redo();
+        if (!result) return [[], 'cell'];
 
-            // Update imputed elements and notify (same as commitChanges)
+        if (result.type === 'cell') {
+            for (const c of result.changes) this.applyCellValueDirectly(c.position, c.newValue);
             this.updateImputedElements();
-            if (this.imputedElementsCallback) {
-                this.imputedElementsCallback(this);
-            }
-
-            // Return affected positions (we are sure it's one of the two types)
-            return [changeSet.changes.map(change => change.position
-                ) as (GridPosition[] | HeaderPosition[]), componentType];
+            if (this.imputedElementsCallback) this.imputedElementsCallback(this);
+            return [result.changes.map(c => c.position), 'cell'];
+        } else {
+            for (const c of result.changes) this.applyHeaderValueDirectly(c.position, c.newValue);
+            this.updateImputedElements();
+            if (this.imputedElementsCallback) this.imputedElementsCallback(this);
+            return [result.changes.map(c => c.position), 'header'];
         }
-        return [[], 'cell']; // Return empty array and default type if no redo available
     }
 
     /**
@@ -961,34 +907,6 @@ export default class DataHandler<TExtraProps = undefined, TRowHeaderProps = unde
      */
     clearHistory(): void {
         this.historyManager.clear();
-    }
-
-    /**
-     * Apply a change set (used for redo)
-     */
-    private applyChangeSet(changeSet: ChangeSet, type?: 'cell' | 'header'): void {
-        for (const change of changeSet.changes) {
-            if (type === 'cell') {
-                this.applyCellValueDirectly(change.position as GridPosition, change.newValue);
-            } else if (type === 'header') {
-                this.applyHeaderValueDirectly(change.position as HeaderPosition, change.newValue as HeaderValue);
-            }
-        }
-    }
-
-    /**
-     * Revert a change set (used for undo)
-     */
-    private revertChangeSet(changeSet: ChangeSet, type?: 'cell' | 'header'): void {
-        // Apply changes in reverse order for complex operations
-        for (let i = changeSet.changes.length - 1; i >= 0; i--) {
-            const change = changeSet.changes[i];
-            if (type === 'cell') {
-                this.applyCellValueDirectly(change.position as GridPosition, change.oldValue);
-            } else if (type === 'header') {
-                this.applyHeaderValueDirectly(change.position as HeaderPosition, change.oldValue as HeaderValue);
-            }
-        }
     }
 
     /**
