@@ -9,7 +9,7 @@ import type {
     NumberFormat,
 } from '../types/types.ts';
 import { HistoryManager, type ChangeOrigin } from '../history/HistoryManager.ts';
-import { ValueValidator, type ValidationResult, type ExpectedType } from './ValueValidator.ts';
+import { ValueValidator, type ExpectedType } from './ValueValidator.ts';
 import { ClipboardParser } from './ClipboardParser.ts';
 import { DataTranslator } from './DataTranslator.ts';
 import { ImputationTracker } from './ImputationTracker.ts';
@@ -140,7 +140,7 @@ export default class DataHandler<TExtraProps = undefined, TRowHeaderProps = unde
         this.editingManager.end();
     }
 
-    deleteCellsValues(positions: GridPosition[]) {
+    deleteCellsValues(positions: GridPosition[]): boolean {
         const changes: Array<{ component: CellComponent<TExtraProps>, inputValue: string }> = [];
         for (const position of positions) {
             const key = `${position.row}-${position.col}`;
@@ -152,6 +152,7 @@ export default class DataHandler<TExtraProps = undefined, TRowHeaderProps = unde
         }
 
         const commitSuccess = this.attemptCommit(changes, 'cell', undefined, 'delete');
+        return commitSuccess;
     }
 
     /**
@@ -294,11 +295,13 @@ export default class DataHandler<TExtraProps = undefined, TRowHeaderProps = unde
             for (const c of rawChanges) this.applyHeaderValueDirectly(c.position, c.newValue);
         }
 
-        this.imputationTracker.sync();
-        if (this.imputedElementsCallback) {
-            this.imputedElementsCallback(this);
-        }
+        this.afterCommit();
         return true;
+    }
+
+    private afterCommit() {
+        this.imputationTracker.sync();
+        if (this.imputedElementsCallback) this.imputedElementsCallback(this);
     }
 
     // ==================== EDIT COMPLETION METHODS ====================
@@ -368,15 +371,13 @@ export default class DataHandler<TExtraProps = undefined, TRowHeaderProps = unde
             for (let i = result.changes.length - 1; i >= 0; i--) {
                 this.applyCellValueDirectly(result.changes[i].position, result.changes[i].oldValue);
             }
-            this.imputationTracker.sync();
-            if (this.imputedElementsCallback) this.imputedElementsCallback(this);
+            this.afterCommit();
             return [result.changes.map(c => c.position), 'cell'];
         } else {
             for (let i = result.changes.length - 1; i >= 0; i--) {
                 this.applyHeaderValueDirectly(result.changes[i].position, result.changes[i].oldValue);
             }
-            this.imputationTracker.sync();
-            if (this.imputedElementsCallback) this.imputedElementsCallback(this);
+            this.afterCommit();
             return [result.changes.map(c => c.position), 'header'];
         }
     }
@@ -390,13 +391,11 @@ export default class DataHandler<TExtraProps = undefined, TRowHeaderProps = unde
 
         if (result.type === 'cell') {
             for (const c of result.changes) this.applyCellValueDirectly(c.position, c.newValue);
-            this.imputationTracker.sync();
-            if (this.imputedElementsCallback) this.imputedElementsCallback(this);
+            this.afterCommit();
             return [result.changes.map(c => c.position), 'cell'];
         } else {
             for (const c of result.changes) this.applyHeaderValueDirectly(c.position, c.newValue);
-            this.imputationTracker.sync();
-            if (this.imputedElementsCallback) this.imputedElementsCallback(this);
+            this.afterCommit();
             return [result.changes.map(c => c.position), 'header'];
         }
     }
@@ -497,28 +496,22 @@ export default class DataHandler<TExtraProps = undefined, TRowHeaderProps = unde
      * @returns boolean indicating success
      */
     imputeValues(imputations: [GridPosition, CellValue][]): GridPosition[] {
-        if (!imputations || imputations.length === 0) {
-            return [];
-        }
+        if (!imputations || imputations.length === 0) return [];
 
         const changes: Array<{ component: CellComponent<TExtraProps>, inputValue: string }> = [];
-
         for (const [position, newValue] of imputations) {
             const key = `${position.row}-${position.col}`;
             const cellComponent = this.cellComponents.get(key);
             if (cellComponent) {
-                // Convert CellValue to string for inputValue
-                const inputValue = newValue === null ? '' : String(newValue);
-                changes.push({ component: cellComponent, inputValue });
+                changes.push({ component: cellComponent, inputValue: newValue === null ? '' : String(newValue) });
             }
         }
 
+        const cursorBefore = this.historyManager.getCursor();
         const success = this.attemptCommit(changes, 'cell', undefined, 'other');
-        if (success) {
-            // Return positions of successfully changed cells
-            return changes.map(change => change.component.position);
-        }
-        return [];
+        if (!success) return [];
+        if (this.historyManager.getCursor() === cursorBefore) return [];
+        return this.historyManager.getLastCommittedCellPositions();
     }
 
     /**

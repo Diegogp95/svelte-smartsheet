@@ -82,6 +82,15 @@ export class HistoryManager {
         return this.reader.getChangedElements();
     }
 
+    getCursor(): number {
+        return this.stack.getCursor();
+    }
+
+    getLastCommittedCellPositions(): GridPosition[] {
+        const cs = this.stack.getAt(this.stack.getCursor());
+        return cs ? cs.getPositions<GridPosition>('cell') : [];
+    }
+
     // ==================== PRIVATE ====================
 
     private record(changes: AnyChange[], origin: ChangeOrigin): void {
