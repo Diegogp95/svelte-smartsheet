@@ -8,10 +8,17 @@ import type {
     GridDimensions,
     KeyboardNavigationAnalysis,
 } from '../types/types.ts';
+import { Selection } from './Selection.ts';
+import { HeaderSelection } from './HeaderSelection.ts';
+import { analyzeRectangularSelections, findConsecutiveHeaderRanges } from './SelectionAlgorithms.ts';
+import { HeaderReflectionTracker } from './HeaderReflectionTracker.ts';
+import { DeselectionManager, type DeselectionResult } from './DeselectionManager.ts';
+import { SelectionSynchronizer } from './SelectionSynchronizer.ts';
 
 
 // Callback type for selection changes
-export type SelectionChangedCallback = (handler: SelectionHandler<any, any, any>) => void;
+export type SelectionChangedCallback<TExtraProps, TRowHeaderProps, TColHeaderProps> =
+    (handler: SelectionHandler<TExtraProps, TRowHeaderProps, TColHeaderProps>) => void;
 
 // Callback type for header reflection changes (borders)
 export type HeaderReflectionCallback = (
@@ -21,31 +28,25 @@ export type HeaderReflectionCallback = (
     toRemoveColReflections: Set<number>
 ) => void;
 
+
+/**
+ * Entry point to the selection domain. Owns the current selections states and orchestrates
+ * updates to them based on input from the navigation and interaction handlers.
+ */
 export default class SelectionHandler<TExtraProps = undefined, TRowHeaderProps = undefined, TColHeaderProps = undefined> {
-    private selectedCells: Set<string>;
-    private cellComponents: Map<string, CellComponent<TExtraProps>>;
+    private synchronizer: SelectionSynchronizer<TExtraProps, TRowHeaderProps, TColHeaderProps>;
     private selections: Selection[];
-    private onSelectionsChanged?: SelectionChangedCallback;
-    private onDeselectionsChanged?: SelectionChangedCallback;
+    private onSelectionsChanged?: SelectionChangedCallback<TExtraProps, TRowHeaderProps, TColHeaderProps>;
+    private onDeselectionsChanged?: SelectionChangedCallback<TExtraProps, TRowHeaderProps, TColHeaderProps>;
     private onDeselectionFinished?: (resultingActiveSelection: 'cell' | 'header-row' | 'header-col' | null,
         anchor: GridPosition | number, pointer: GridPosition | number) => void;
     private onHeaderReflectionChanged?: HeaderReflectionCallback;
-    private isDeselecting: boolean;
-    private deselection: Selection | null;
-    private headerDeselection: HeaderSelection | null;
-    // Separate header components by type
-    private rowHeaderComponents: Map<string, HeaderComponent<TRowHeaderProps>>;
-    private colHeaderComponents: Map<string, HeaderComponent<TColHeaderProps>>;
-    private cornerHeaderComponent: HeaderComponent | null;
-    private selectedRowHeaders: Set<number>;
-    private selectedColHeaders: Set<number>;
+    private deselectionManager: DeselectionManager;
     private headerSelectionsRows: HeaderSelection[];
     private headerSelectionsCols: HeaderSelection[];
     private gridDimensions: GridDimensions;
     private activeSelection: Selection | HeaderSelection | null;
-    // Track current header reflections to calculate diffs
-    private currentReflectedRowHeaders: Set<number>;
-    private currentReflectedColHeaders: Set<number>;
+    private headerReflectionTracker: HeaderReflectionTracker;
 
     constructor(
         gridDimensions: GridDimensions,
@@ -53,33 +54,24 @@ export default class SelectionHandler<TExtraProps = undefined, TRowHeaderProps =
         rowHeaderComponents: Map<string, HeaderComponent<TRowHeaderProps>>,
         colHeaderComponents: Map<string, HeaderComponent<TColHeaderProps>>,
         cornerHeaderComponent: HeaderComponent | null,
-        onSelectionsChanged?: SelectionChangedCallback,
-        onDeselectionsChanged?: SelectionChangedCallback,
+        onSelectionsChanged?: SelectionChangedCallback<TExtraProps, TRowHeaderProps, TColHeaderProps>,
+        onDeselectionsChanged?: SelectionChangedCallback<TExtraProps, TRowHeaderProps, TColHeaderProps>,
         onDeselectionFinished?: (resultingActiveSelection: 'cell' | 'header-row' | 'header-col' | null,
             anchor: GridPosition | number, pointer: GridPosition | number) => void,
         onHeaderReflectionChanged?: HeaderReflectionCallback
     ) {
         this.gridDimensions = gridDimensions;
-        this.selectedCells = new Set<string>();
-        this.cellComponents = cellComponents;
+        this.synchronizer = new SelectionSynchronizer(cellComponents, rowHeaderComponents, colHeaderComponents, cornerHeaderComponent);
         this.selections = [];
         this.onSelectionsChanged = onSelectionsChanged;
         this.onDeselectionsChanged = onDeselectionsChanged;
         this.onDeselectionFinished = onDeselectionFinished;
         this.onHeaderReflectionChanged = onHeaderReflectionChanged;
-        this.isDeselecting = false;
-        this.deselection = null;
-        this.headerDeselection = null;
-        this.rowHeaderComponents = rowHeaderComponents;
-        this.colHeaderComponents = colHeaderComponents;
-        this.cornerHeaderComponent = cornerHeaderComponent;
-        this.selectedRowHeaders = new Set<number>();
-        this.selectedColHeaders = new Set<number>();
+        this.deselectionManager = new DeselectionManager();
         this.headerSelectionsRows = [];
         this.headerSelectionsCols = [];
         this.activeSelection = null;
-        this.currentReflectedRowHeaders = new Set<number>();
-        this.currentReflectedColHeaders = new Set<number>();
+        this.headerReflectionTracker = new HeaderReflectionTracker();
     }
 
     // Helper method to convert position to key
@@ -93,225 +85,40 @@ export default class SelectionHandler<TExtraProps = undefined, TRowHeaderProps =
         return { row, col };
     }
 
-    // Efficient update: only changes cells that actually changed state
-    updateSelection(newSelection: Set<string>, clearPrevious: boolean = true) {
-        let finalSelection: Set<string>;
-
-        if (clearPrevious) {
-            finalSelection = new Set(newSelection);
-        } else {
-            finalSelection = new Set([...this.selectedCells, ...newSelection]);
-        }
-
-        const toDeselect = new Set<string>();
-        this.selectedCells.forEach(key => {
-            if (!finalSelection.has(key)) {
-                toDeselect.add(key);
-            }
-        });
-
-        const toSelect = new Set<string>();
-        finalSelection.forEach(key => {
-            if (!this.selectedCells.has(key)) {
-                toSelect.add(key);
-            }
-        });
-
-        // If no changes, do nothing for performance
-        if (toDeselect.size === 0 && (!clearPrevious || toSelect.size === 0)) {
-            return;
-        }
-
-        // Update selectedCells state
-        this.applyCellChanges(toDeselect, toSelect);
-        this.selectedCells = finalSelection;
-
-        // Update header reflections after cell selection changes
-        this.updateHeaderReflections();
-
-        // Emit change event if a handler is set
-        if (this.onSelectionsChanged) {
-            this.onSelectionsChanged(this);
-        }
-    }
-
-    // Efficient header update: only changes headers that actually changed state
-    updateHeaderSelections(newRowHeaders: Set<number>, newColHeaders: Set<number>, clearPrevious: boolean = true) {
-        let finalRowHeaders: Set<number>;
-        let finalColHeaders: Set<number>;
-
-        if (clearPrevious) {
-            finalRowHeaders = new Set(newRowHeaders);
-            finalColHeaders = new Set(newColHeaders);
-        } else {
-            finalRowHeaders = new Set([...this.selectedRowHeaders, ...newRowHeaders]);
-            finalColHeaders = new Set([...this.selectedColHeaders, ...newColHeaders]);
-        }
-
-        const toDeselectRows = new Set<number>();
-        this.selectedRowHeaders.forEach(index => {
-            if (!finalRowHeaders.has(index)) {
-                toDeselectRows.add(index);
-            }
-        });
-
-        const toDeselectCols = new Set<number>();
-        this.selectedColHeaders.forEach(index => {
-            if (!finalColHeaders.has(index)) {
-                toDeselectCols.add(index);
-            }
-        });
-
-        const toSelectRows = new Set<number>();
-        finalRowHeaders.forEach(index => {
-            if (!this.selectedRowHeaders.has(index)) {
-                toSelectRows.add(index);
-            }
-        });
-
-        const toSelectCols = new Set<number>();
-        finalColHeaders.forEach(index => {
-            if (!this.selectedColHeaders.has(index)) {
-                toSelectCols.add(index);
-            }
-        });
-
-        // If no changes, do nothing for performance
-        if (toDeselectRows.size === 0 && toDeselectCols.size === 0 &&
-            (!clearPrevious || (toSelectRows.size === 0 && toSelectCols.size === 0))) {
-            return;
-        }
-
-        // Update selectedHeaders state
-        this.applyHeaderChanges(toDeselectRows, toDeselectCols, toSelectRows, toSelectCols);
-        this.selectedRowHeaders = finalRowHeaders;
-        this.selectedColHeaders = finalColHeaders;
-
-        // Emit change event if a handler is set
-        if (this.onSelectionsChanged) {
-            this.onSelectionsChanged(this);
-        }
-    }
-
-    // Apply visual changes to Cell components
-    private applyCellChanges(toDeselect: Set<string>, toSelect: Set<string>) {
-        // Deselect specific cells
-        toDeselect.forEach(key => {
-            const cellComponent = this.cellComponents.get(key);
-            if (cellComponent) {
-                cellComponent.selected = false;
-            }
-        });
-
-        // Select specific cells
-        toSelect.forEach(key => {
-            const cellComponent = this.cellComponents.get(key);
-            if (cellComponent) {
-                cellComponent.selected = true;
-            }
-        });
-    }
-
     clearSelections() {
         this.selections = [];
         this.headerSelectionsRows = [];
         this.headerSelectionsCols = [];
-        this.updateSelection(new Set());
-        this.updateHeaderSelections(new Set<number>(), new Set<number>());
+        this.syncSelectedCells();
+        this.syncSelectedHeaders();
     }
 
     // ==================== HEADER REFLECTION METHODS ====================
 
-    /**
-     * Calculate headers affected by current regular selections (not HeaderSelections)
-     * Only considers Selection objects, not HeaderSelection objects
-     */
-    private calculateAffectedHeaders(): {
-        affectedRowHeaders: Set<number>,
-        affectedColHeaders: Set<number>
-    } {
-        const affectedRowHeaders = new Set<number>();
-        const affectedColHeaders = new Set<number>();
-
-        // Only consider regular selections (Selection objects), not HeaderSelections
-        this.selections.forEach(selection => {
-            selection.getDerivedRowHeaders().forEach(row => affectedRowHeaders.add(row));
-            selection.getDerivedColHeaders().forEach(col => affectedColHeaders.add(col));
-        });
-
-        return { affectedRowHeaders, affectedColHeaders };
-    }
-
-    /**
-     * Update header reflections with differential logic
-     * Similar to updateSelection, only applies changes to headers that actually changed
-     */
-    private updateHeaderReflections(): void {
+    private fireHeaderReflectionIfChanged(): void {
         if (!this.onHeaderReflectionChanged) return;
-
-        const { affectedRowHeaders, affectedColHeaders } = this.calculateAffectedHeaders();
-
-        // Calculate row header changes
-        const toRemoveRowReflections = new Set<number>();
-        this.currentReflectedRowHeaders.forEach(rowIndex => {
-            if (!affectedRowHeaders.has(rowIndex)) {
-                toRemoveRowReflections.add(rowIndex);
-            }
-        });
-
-        const toAddRowReflections = new Set<number>();
-        affectedRowHeaders.forEach(rowIndex => {
-            if (!this.currentReflectedRowHeaders.has(rowIndex)) {
-                toAddRowReflections.add(rowIndex);
-            }
-        });
-
-        // Calculate column header changes
-        const toRemoveColReflections = new Set<number>();
-        this.currentReflectedColHeaders.forEach(colIndex => {
-            if (!affectedColHeaders.has(colIndex)) {
-                toRemoveColReflections.add(colIndex);
-            }
-        });
-
-        const toAddColReflections = new Set<number>();
-        affectedColHeaders.forEach(colIndex => {
-            if (!this.currentReflectedColHeaders.has(colIndex)) {
-                toAddColReflections.add(colIndex);
-            }
-        });
-
-        // If no changes, do nothing for performance
-        if (toRemoveRowReflections.size === 0 && toAddRowReflections.size === 0 &&
-            toRemoveColReflections.size === 0 && toAddColReflections.size === 0) {
-            return;
+        const diff = this.headerReflectionTracker.update(this.selections);
+        if (diff) {
+            this.onHeaderReflectionChanged(
+                diff.addedRows,
+                diff.removedRows,
+                diff.addedCols,
+                diff.removedCols
+            );
         }
-
-        // Update current state
-        this.currentReflectedRowHeaders = new Set(affectedRowHeaders);
-        this.currentReflectedColHeaders = new Set(affectedColHeaders);
-
-        // Emit header reflection change event
-        this.onHeaderReflectionChanged(
-            toAddRowReflections,
-            toRemoveRowReflections,
-            toAddColReflections,
-            toRemoveColReflections
-        );
     }
 
     // Getters
     getSelectedCells(): Set<string> {
-        return new Set(this.selectedCells);
+        return this.synchronizer.getSelectedCells();
     }
 
     getSelectedPositions(): GridPosition[] {
-        return Array.from(this.selectedCells).map(key => this.keyToPosition(key));
+        return Array.from(this.synchronizer.getSelectedCells()).map(key => this.keyToPosition(key));
     }
 
     isCellSelected(position: GridPosition): boolean {
-        const key = this.positionToKey(position);
-        return this.selectedCells.has(key);
+        return this.synchronizer.isCellSelected(this.positionToKey(position));
     }
 
     // Excel-like behavior: Check if a cell is selected either directly or through header selections (on-demand)
@@ -343,21 +150,9 @@ export default class SelectionHandler<TExtraProps = undefined, TRowHeaderProps =
 
     // Get all selected cells combining direct selections and header-derived selections (on-demand)
     getAllSelectedCells(): Set<string> {
-        const allCells = new Set<string>();
-
-        // Add directly selected cells
-        this.selectedCells.forEach(cell => allCells.add(cell));
-
-        // Add cells from row header selections
-        this.headerSelectionsRows.forEach(headerSelection => {
-            headerSelection.getCells().forEach(cell => allCells.add(cell));
-        });
-
-        // Add cells from column header selections
-        this.headerSelectionsCols.forEach(headerSelection => {
-            headerSelection.getCells().forEach(cell => allCells.add(cell));
-        });
-
+        const allCells = this.synchronizer.getSelectedCells();
+        this.headerSelectionsRows.forEach(hs => hs.getCells().forEach(c => allCells.add(c)));
+        this.headerSelectionsCols.forEach(hs => hs.getCells().forEach(c => allCells.add(c)));
         return allCells;
     }
 
@@ -453,12 +248,13 @@ export default class SelectionHandler<TExtraProps = undefined, TRowHeaderProps =
 
                     if (this.isHeaderSelected(headerPos.headerType, headerPos.index)) {
                         // Header is already selected, start deselecting headers
-                        this.isDeselecting = true;
+                        this.deselectionManager.activate();
                         if (headerPos.headerType === 'row') {
-                            this.createHeaderDeselection('row', navigationState.headerAnchorRow, navigationState.headerPointerRow);
+                            this.deselectionManager.startHeaderDeselection('row', navigationState.headerAnchorRow, navigationState.headerPointerRow, this.gridDimensions);
                         } else if (headerPos.headerType === 'col') {
-                            this.createHeaderDeselection('col', navigationState.headerAnchorCol, navigationState.headerPointerCol);
+                            this.deselectionManager.startHeaderDeselection('col', navigationState.headerAnchorCol, navigationState.headerPointerCol, this.gridDimensions);
                         }
+                        if (this.onDeselectionsChanged) this.onDeselectionsChanged(this);
                     } else {
                         // Header not selected, add to multi-selection
                         if (headerPos.headerType === 'row') {
@@ -471,8 +267,9 @@ export default class SelectionHandler<TExtraProps = undefined, TRowHeaderProps =
                     // Cell selection: Excel-like behavior - check both direct and header-derived selections
                     if (this.isAnyCellSelected(currentPosition)) {
                         // Cell is selected (directly or through headers), start deselecting
-                        this.isDeselecting = true;
-                        this.createDeselection(anchor, currentPosition);
+                        this.deselectionManager.activate();
+                        this.deselectionManager.startCellDeselection(anchor, currentPosition);
+                        if (this.onDeselectionsChanged) this.onDeselectionsChanged(this);
                     } else {
                         // Create new selection, keep existing ones
                         this.addNewSelection(anchor, currentPosition);
@@ -482,21 +279,22 @@ export default class SelectionHandler<TExtraProps = undefined, TRowHeaderProps =
 
             case 'update-selection':
                 // Update active selection (drag continues or shift+mousedown)
-                if (this.isDeselecting) {
+                if (this.deselectionManager.isActive) {
                     // Determine if we're deselecting headers or cells
-                    if (this.headerDeselection !== null) {
+                    if (this.deselectionManager.getHeaderDeselection() !== null) {
                         // Header deselection active - update header deselection area
-                        const headerType = this.headerDeselection.getDirection();
+                        const headerType = this.deselectionManager.getHeaderDeselection()!.getDirection();
 
                         if (headerType === 'row') {
-                            this.updateHeaderDeselection('row', navigationState.headerAnchorRow, navigationState.headerPointerRow);
+                            this.deselectionManager.updateHeaderDeselection('row', navigationState.headerAnchorRow, navigationState.headerPointerRow, this.gridDimensions);
                         } else if (headerType === 'col') {
-                            this.updateHeaderDeselection('col', navigationState.headerAnchorCol, navigationState.headerPointerCol);
+                            this.deselectionManager.updateHeaderDeselection('col', navigationState.headerAnchorCol, navigationState.headerPointerCol, this.gridDimensions);
                         }
                     } else {
                         // Cell deselection active - use existing logic
-                        this.updateDeselection(anchor, currentPosition);
+                        this.deselectionManager.updateCellDeselection(anchor, currentPosition);
                     }
+                    if (this.onDeselectionsChanged) this.onDeselectionsChanged(this);
                 } else {
                     const activeSelection = this.getActiveSelection();
                     // Normal selection active - use dragging context to determine initial context
@@ -529,22 +327,28 @@ export default class SelectionHandler<TExtraProps = undefined, TRowHeaderProps =
 
             case 'finalize-selection':
                 // Mouseup: Finalize current selection state
-                // Finalize deselection if active
-                if (this.isDeselecting) {
-                    this.isDeselecting = false;
+                if (this.deselectionManager.isActive) {
+                    this.deselectionManager.deactivate();
 
-                    // Determine what type of deselection to finalize
-                    if (this.headerDeselection !== null) {
+                    if (this.deselectionManager.getHeaderDeselection() !== null) {
                         // Finalize header deselection
-                        this.deselectHeaderArea();
-                        this.clearHeaderDeselection();
-                        this.executeEndDeselectionCallback();
-                    } else if (this.deselection !== null) {
+                        const result = this.deselectionManager.applyHeaderDeselection(
+                            this.selections, this.headerSelectionsRows, this.headerSelectionsCols,
+                            this.activeSelection, this.gridDimensions
+                        );
+                        this.applyDeselectionResult(result);
+                        this.deselectionManager.clearHeaderDeselection();
+                    } else if (this.deselectionManager.getDeselection() !== null) {
                         // Finalize cell deselection
-                        this.deselectArea();
-                        this.clearDeselection();
-                        this.executeEndDeselectionCallback();
+                        const result = this.deselectionManager.applyCellDeselection(
+                            this.selections, this.headerSelectionsRows, this.headerSelectionsCols,
+                            this.activeSelection
+                        );
+                        this.applyDeselectionResult(result);
+                        this.deselectionManager.clearCellDeselection();
                     }
+                    if (this.onDeselectionsChanged) this.onDeselectionsChanged(this);
+                    this.executeEndDeselectionCallback();
                 }
                 // No additional actions needed for normal selection finalization (mouseup without deselection)
                 break;
@@ -605,13 +409,10 @@ export default class SelectionHandler<TExtraProps = undefined, TRowHeaderProps =
         this.activeSelection = selection;
     }
 
-    // Check if a header is selected (by type and index)
     private isHeaderSelected(headerType: 'row' | 'col', index: number): boolean {
-        if (headerType === 'row') {
-            return this.selectedRowHeaders.has(index);
-        } else {
-            return this.selectedColHeaders.has(index);
-        }
+        return headerType === 'row'
+            ? this.synchronizer.isRowHeaderSelected(index)
+            : this.synchronizer.isColHeaderSelected(index);
     }
 
     // Update Active Header Selection - Modifies the currently active header selection
@@ -632,122 +433,14 @@ export default class SelectionHandler<TExtraProps = undefined, TRowHeaderProps =
         return newSelection;
     }
 
-    // Get current position from navigation handler
     private syncSelectedCells(): void {
         const allCells = new Set<string>();
-
-        // Collect all cells from current selections
         this.selections.forEach(selection => {
             selection.getCells().forEach(cell => allCells.add(cell));
         });
-
-        // Update visual representation of selected cells
-        this.updateSelection(allCells, true);
-    }
-
-    private applyAreaDeselectionToHeaderSelections(
-        deselectionBounds: { topLeft: GridPosition; bottomRight: GridPosition },
-        headerSelection: HeaderSelection
-    ): [HeaderSelection | null, Selection[]] {
-        const cellSelection = headerSelection.getCellSelection();
-        const cellFragments = cellSelection.fragmentExcluding(deselectionBounds);
-
-        // If the fragmentation remains the cellSelection unchanged, return original HeaderSelection
-        // reference comparison is sufficient here
-        if (cellFragments.length === 1 && cellFragments[0] === cellSelection) {
-            return [headerSelection, []];
-        } else {
-            // If fragmentation occurred, but this was not the active selection, we can just return fragments and
-            // forget about the original HeaderSelection that will be garbage collected
-            if (!(this.getActiveSelection() === headerSelection)) {
-                return [null, cellFragments];
-            } else {
-                // This was the active selection, we need to reassign activeSelection to first fragment if exists
-                // If no fragments remain, activeSelection will be cleared and reassigned later if needed
-                this.setActiveSelection(cellFragments[0] || null);
-                return [null, cellFragments];
-            }
-        }
-    }
-
-    private applyAreaDeselectionToRegularSelection(
-        deselectionBounds: { topLeft: GridPosition; bottomRight: GridPosition },
-    selection: Selection
-    ): Selection[] {
-        const fragments = selection.fragmentExcluding(deselectionBounds);
-        // If this was the active selection, we need to manage it
-        if (this.getActiveSelection() === selection) {
-            // If the active selection was fragmented, reassign activeSelection to the first fragment
-            if (fragments.length > 0 && this.getActiveSelection() !== fragments[0]) {
-                this.setActiveSelection(fragments[0]);
-            // If the active selection was completely removed, clear activeSelection reference, it will be reassigned later if needed
-            } else if (fragments.length === 0) {
-                this.setActiveSelection(null);
-            } // If the active selection remains unchanged, do nothing
-        }
-
-        return fragments;
-    }
-
-
-    private deselectArea(): void {
-        const deselection = this.getDeselection();
-        if (!deselection) return;
-
-        const deselectionBounds = deselection.getBounds();
-        const newSelections: Selection[] = [];
-        const newRowHeaderSelections: HeaderSelection[] = [];
-        const newColHeaderSelections: HeaderSelection[] = [];
-
-        // 1. Fragment regular cell selections
-        for (const selection of this.selections) {
-            const fragments = this.applyAreaDeselectionToRegularSelection(deselectionBounds, selection);
-            newSelections.push(...fragments);
-        }
-
-        // Fragment header selections, EXCEL-LIKE BEHAVIOR:
-        // 2. Process row header selections
-        for (const headerRowSelection of this.headerSelectionsRows) {
-            const [processedRowHeaderSelection, cellFragments] = this.applyAreaDeselectionToHeaderSelections(deselectionBounds, headerRowSelection);
-            if (processedRowHeaderSelection) {
-                newRowHeaderSelections.push(processedRowHeaderSelection);
-            }
-            if (cellFragments.length > 0) {
-                newSelections.push(...cellFragments);
-            }
-        }
-
-        // 3. Process column header selections
-        for (const headerColSelection of this.headerSelectionsCols) {
-            const [processedColHeaderSelection, _cellFragments] = this.applyAreaDeselectionToHeaderSelections(deselectionBounds, headerColSelection);
-            if (processedColHeaderSelection) {
-                newColHeaderSelections.push(processedColHeaderSelection);
-            }
-            if (_cellFragments.length > 0) {
-                newSelections.push(..._cellFragments);
-            }
-        }
-
-        // 4. Update all selection arrays (eliminates affected HeaderSelections by omission)
-        this.selections = newSelections;
-        this.headerSelectionsRows = newRowHeaderSelections;
-        this.headerSelectionsCols = newColHeaderSelections;
-
-        // 5. If no active selection remains, but there are still selections, assign the last one as active
-        if (!this.getActiveSelection() && newSelections.length > 0) {
-            // Try to assign to last regular selection if exists
-            this.setActiveSelection(newSelections[newSelections.length - 1]);
-        } else if (!this.getActiveSelection() && newRowHeaderSelections.length > 0) {
-            // Assign to last row header selection if exists
-            this.setActiveSelection(newRowHeaderSelections[newRowHeaderSelections.length - 1]);
-        } else if (!this.getActiveSelection() && newColHeaderSelections.length > 0) {
-            // Assign to last column header selection if exists
-            this.setActiveSelection(newColHeaderSelections[newColHeaderSelections.length - 1]);
-        } // If still no active selection, it remains null
-
-        // Update visual state for both cells and headers
-        this.syncSelectedCells();
-        this.syncSelectedHeaders();
+        if (!this.synchronizer.syncCells(allCells)) return;
+        this.fireHeaderReflectionIfChanged();
+        if (this.onSelectionsChanged) this.onSelectionsChanged(this);
     }
 
     getSelections(): Selection[] {
@@ -788,143 +481,24 @@ export default class SelectionHandler<TExtraProps = undefined, TRowHeaderProps =
         return derivedSelections;
     }
 
-    // Reuse Selection class for deselection, since it handles rectangular areas
-    private createDeselection(position1: GridPosition, position2: GridPosition): void {
-        this.deselection = new Selection(position1, position2);
-        if (this.onDeselectionsChanged) {
-            this.onDeselectionsChanged(this);
-        }
-    }
-
-    private clearDeselection(): void {
-        this.deselection = null;
-        if (this.onDeselectionsChanged) {
-            this.onDeselectionsChanged(this);
-        }
-    }
-
-    private updateDeselection(position1: GridPosition, position2: GridPosition): void {
-        if (this.deselection) {
-            this.deselection.updateBounds(position1, position2);
-        } else {
-            this.createDeselection(position1, position2);
-        }
-        if (this.onDeselectionsChanged) {
-            this.onDeselectionsChanged(this);
-        }
-    }
-
     getDeselection(): Selection | null {
-        return this.deselection;
+        return this.deselectionManager.getDeselection();
     }
 
     getHeaderDeselection(): HeaderSelection | null {
-        return this.headerDeselection;
-    }
-
-    // Header deselection methods (similar to cell deselection)
-    private createHeaderDeselection(headerType: 'row' | 'col', anchor: number, pointer: number): void {
-        this.headerDeselection = new HeaderSelection(headerType, anchor, pointer, this.gridDimensions);
-        if (this.onDeselectionsChanged) {
-            this.onDeselectionsChanged(this);
-        }
-    }
-
-    private clearHeaderDeselection(): void {
-        this.headerDeselection = null;
-        if (this.onDeselectionsChanged) {
-            this.onDeselectionsChanged(this);
-        }
-    }
-
-    private updateHeaderDeselection(headerType: 'row' | 'col', anchor: number, pointer: number): void {
-        if (this.headerDeselection && this.headerDeselection.getDirection() === headerType) {
-            this.headerDeselection.updateBoundsWithSync(anchor, pointer, this.gridDimensions);
-        } else {
-            this.createHeaderDeselection(headerType, anchor, pointer);
-        }
-        if (this.onDeselectionsChanged) {
-            this.onDeselectionsChanged(this);
-        }
-    }
-
-    private deselectHeaderArea(): void {
-        const headerDeselection = this.getHeaderDeselection();
-        if (!headerDeselection) return;
-
-        const headerType = headerDeselection.getDirection();
-        const cellDeselectionBounds = headerDeselection.getCellBounds();
-        const headerDeselectionBounds = headerDeselection.getBounds();
-
-        const newSelections: Selection[] = [];
-
-        // 1. Fragment regular cell selections
-        for (const selection of this.selections) {
-            const fragments = this.applyAreaDeselectionToRegularSelection(cellDeselectionBounds, selection);
-            newSelections.push(...fragments);
-        }
-
-        // 2. Fragment HeaderSelection of same type (existing behavior)
-        const sameTypeSelections = headerType === 'row' ? this.headerSelectionsRows : this.headerSelectionsCols;
-        const newSameTypeSelections: HeaderSelection[] = [];
-
-        for (const headerSelection of sameTypeSelections) {
-            const fragments = headerSelection.fragmentExcluding(headerDeselectionBounds, this.gridDimensions);
-            // If this was the active selection, we need to manage it
-            if (this.getActiveSelection() === headerSelection) {
-                // If the active selection was fragmented, reassign activeSelection to the first fragment
-                if (fragments.length > 0 && this.getActiveSelection() !== fragments[0]) {
-                    this.setActiveSelection(fragments[0]);
-                // If the active selection was completely removed, clear activeSelection reference, it will be reassigned later if needed
-                } else if (fragments.length === 0) {
-                    this.setActiveSelection(null);
-                } // If the active selection remains unchanged, do nothing
-            }
-            newSameTypeSelections.push(...fragments);
-        }
-
-        // 3. Fragment HeaderSelection of opposite type (NEW: Excel-like behavior)
-        const oppositeTypeSelections = headerType === 'row' ? this.headerSelectionsCols : this.headerSelectionsRows;
-        const newOppositeTypeSelections: HeaderSelection[] = [];
-
-        for (const headerSelection of oppositeTypeSelections) {
-            const [processedHeaderSelection, cellFragments] = this.applyAreaDeselectionToHeaderSelections(cellDeselectionBounds, headerSelection);
-            if (processedHeaderSelection) {
-                newOppositeTypeSelections.push(processedHeaderSelection);
-            }
-            if (cellFragments.length > 0) {
-                newSelections.push(...cellFragments);
-            }
-        }
-
-        // 4. Update all selection arrays
-        this.selections = newSelections;
-        if (headerType === 'row') {
-            this.headerSelectionsRows = newSameTypeSelections;
-            this.headerSelectionsCols = newOppositeTypeSelections;
-        } else {
-            this.headerSelectionsRows = newOppositeTypeSelections;
-            this.headerSelectionsCols = newSameTypeSelections;
-        }
-
-        // 5. If no active selection remains, but there are still selections, assign the last one as active
-        if (!this.getActiveSelection() && newSelections.length > 0) {
-            // Try to assign to last regular selection if exists
-            this.setActiveSelection(newSelections[newSelections.length - 1]);
-        } else if (!this.getActiveSelection() && newSameTypeSelections.length > 0) {
-            // Assign to last same-type header selection if exists
-            this.setActiveSelection(newSameTypeSelections[newSameTypeSelections.length - 1]);
-        } else if (!this.getActiveSelection() && newOppositeTypeSelections.length > 0) {
-            // Assign to last opposite-type header selection if exists
-            this.setActiveSelection(newOppositeTypeSelections[newOppositeTypeSelections.length - 1]);
-        } // If still no active selection, it remains null
-
-        // Update visual state for both cells and headers
-        this.syncSelectedCells();
-        this.syncSelectedHeaders();
+        return this.deselectionManager.getHeaderDeselection();
     }
 
     // ===================== END DESELECTION CALLBACK EXECUTION =====================
+
+    private applyDeselectionResult(result: DeselectionResult): void {
+        this.selections = result.selections;
+        this.headerSelectionsRows = result.headerSelectionsRows;
+        this.headerSelectionsCols = result.headerSelectionsCols;
+        this.activeSelection = result.activeSelection;
+        this.syncSelectedCells();
+        this.syncSelectedHeaders();
+    }
 
     private executeEndDeselectionCallback(): void {
         if (!this.onDeselectionFinished) return;
@@ -942,25 +516,6 @@ export default class SelectionHandler<TExtraProps = undefined, TRowHeaderProps =
     }
 
     // ==================== HEADERS SELECTION METHODS ====================
-
-    // Helper method to get header component from any of the header maps
-    private getHeaderComponent(key: string): HeaderComponent<any> | null {
-        // Try row headers
-        let headerComponent: HeaderComponent<any> | undefined = this.rowHeaderComponents.get(key);
-        if (headerComponent) return headerComponent;
-
-        // Try column headers
-        headerComponent = this.colHeaderComponents.get(key);
-        if (headerComponent) return headerComponent;
-
-        // Try corner header if the key matches
-        if (this.cornerHeaderComponent) {
-            const cornerKey = `${this.cornerHeaderComponent.position.headerType}-${this.cornerHeaderComponent.position.index}`;
-            if (key === cornerKey) return this.cornerHeaderComponent;
-        }
-
-        return null;
-    }
 
     // Create a new header selection and add it to the list
     private createHeaderSelection(headerType: 'row' | 'col', anchor: number, pointer: number): HeaderSelection {
@@ -985,27 +540,13 @@ export default class SelectionHandler<TExtraProps = undefined, TRowHeaderProps =
         this.syncSelectedHeaders();
     }
 
-    // Sync selected headers from HeaderSelection objects to visual representation
     private syncSelectedHeaders(): void {
         const allRowHeaders = new Set<number>();
         const allColHeaders = new Set<number>();
-
-        // Collect all headers from current row header selections
-        this.headerSelectionsRows.forEach(headerSelection => {
-            headerSelection.getHeaderIndices().forEach(index => {
-                allRowHeaders.add(index);
-            });
-        });
-
-        // Collect all headers from current col header selections
-        this.headerSelectionsCols.forEach(headerSelection => {
-            headerSelection.getHeaderIndices().forEach(index => {
-                allColHeaders.add(index);
-            });
-        });
-
-        // Update visual representation of selected headers
-        this.updateHeaderSelections(allRowHeaders, allColHeaders, true);
+        this.headerSelectionsRows.forEach(hs => hs.getHeaderIndices().forEach(i => allRowHeaders.add(i)));
+        this.headerSelectionsCols.forEach(hs => hs.getHeaderIndices().forEach(i => allColHeaders.add(i)));
+        if (!this.synchronizer.syncHeaders(allRowHeaders, allColHeaders)) return;
+        if (this.onSelectionsChanged) this.onSelectionsChanged(this);
     }
 
     // Process new header selection based on header position and navigation state
@@ -1025,243 +566,32 @@ export default class SelectionHandler<TExtraProps = undefined, TRowHeaderProps =
         // They only participate in derived selections
     }
 
-    private applyHeaderChanges(toDeselectRows: Set<number>, toDeselectCols: Set<number>, toSelectRows: Set<number>, toSelectCols: Set<number>) {
-		// Deselect specific row headers
-		toDeselectRows.forEach(index => {
-			const key = `row-${index}`;
-			const headerComponent = this.getHeaderComponent(key);
-			if (headerComponent) {
-				headerComponent.selected = false;
-			}
-		});
+    getSelectedHeaders(): Set<string> {
+        const allHeaders = new Set<string>();
+        this.synchronizer.getSelectedRowHeaders().forEach(i => allHeaders.add(`row-${i}`));
+        this.synchronizer.getSelectedColHeaders().forEach(i => allHeaders.add(`col-${i}`));
+        return allHeaders;
+    }
 
-		// Deselect specific column headers
-		toDeselectCols.forEach(index => {
-			const key = `col-${index}`;
-			const headerComponent = this.getHeaderComponent(key);
-			if (headerComponent) {
-				headerComponent.selected = false;
-			}
-		});
+    getSelectedRowHeaders(): number[] {
+        return this.synchronizer.getSelectedRowHeaders();
+    }
 
-		// Select specific row headers
-		toSelectRows.forEach(index => {
-			const key = `row-${index}`;
-			const headerComponent = this.getHeaderComponent(key);
-			if (headerComponent) {
-				headerComponent.selected = true;
-			}
-		});
+    getSelectedColHeaders(): number[] {
+        return this.synchronizer.getSelectedColHeaders();
+    }
 
-		// Select specific column headers
-		toSelectCols.forEach(index => {
-			const key = `col-${index}`;
-			const headerComponent = this.getHeaderComponent(key);
-			if (headerComponent) {
-				headerComponent.selected = true;
-			}
-		});
-	}
+    isRowHeaderSelected(index: number): boolean {
+        return this.synchronizer.isRowHeaderSelected(index);
+    }
 
-	/**
-	 * Get currently selected headers (for debugging or other purposes)
-	 */
-	getSelectedHeaders(): Set<string> {
-		const allHeaders = new Set<string>();
-
-		// Add row headers with prefix
-		this.selectedRowHeaders.forEach(index => {
-			allHeaders.add(`row-${index}`);
-		});
-
-		// Add column headers with prefix
-		this.selectedColHeaders.forEach(index => {
-			allHeaders.add(`col-${index}`);
-		});
-
-		return allHeaders;
-	}
-
-	/**
-	 * Get currently selected row header indices
-	 */
-	getSelectedRowHeaders(): number[] {
-		return Array.from(this.selectedRowHeaders);
-	}
-
-	/**
-	 * Get currently selected column header indices
-	 */
-	getSelectedColHeaders(): number[] {
-		return Array.from(this.selectedColHeaders);
-	}
-
-	/**
-	 * Check if a row header is selected
-	 */
-	isRowHeaderSelected(index: number): boolean {
-		return this.selectedRowHeaders.has(index);
-	}
-
-	/**
-	 * Check if a column header is selected
-	 */
-	isColHeaderSelected(index: number): boolean {
-		return this.selectedColHeaders.has(index);
-	}
+    isColHeaderSelected(index: number): boolean {
+        return this.synchronizer.isColHeaderSelected(index);
+    }
 
     // ==================== HARD ALGORITHMS =====================
 
     // Analyze positions to find optimal rectangular groupings
-    private analyzeRectangularSelections(positions: GridPosition[]): {
-        rectangles: Array<{ topLeft: GridPosition, bottomRight: GridPosition }>,
-        individuals: GridPosition[]
-    } {
-        if (positions.length === 0) {
-            return { rectangles: [], individuals: [] };
-        }
-
-        // Convert positions to a Set for O(1) lookup
-        const positionSet = new Set(positions.map(pos => `${pos.row}-${pos.col}`));
-        const processed = new Set<string>();
-        const rectangles: Array<{ topLeft: GridPosition, bottomRight: GridPosition }> = [];
-        const individuals: GridPosition[] = [];
-
-        for (const position of positions) {
-            const key = `${position.row}-${position.col}`;
-
-            if (processed.has(key)) continue;
-
-            // Try to find the largest rectangle starting from this position
-            const rectangle = this.findLargestRectangle(position, positionSet, processed);
-
-            if (rectangle.area > 1) {
-                rectangles.push({
-                    topLeft: rectangle.topLeft,
-                    bottomRight: rectangle.bottomRight
-                });
-
-                // Mark all positions in this rectangle as processed
-                for (let row = rectangle.topLeft.row; row <= rectangle.bottomRight.row; row++) {
-                    for (let col = rectangle.topLeft.col; col <= rectangle.bottomRight.col; col++) {
-                        processed.add(`${row}-${col}`);
-                    }
-                }
-            } else {
-                // Single isolated position
-                individuals.push(position);
-                processed.add(key);
-            }
-        }
-
-        return { rectangles, individuals };
-    }
-
-    // Find the largest rectangle starting from a given position
-    private findLargestRectangle(
-        startPos: GridPosition,
-        positionSet: Set<string>,
-        processed: Set<string>
-    ): { topLeft: GridPosition, bottomRight: GridPosition, area: number } {
-        const key = `${startPos.row}-${startPos.col}`;
-
-        if (processed.has(key) || !positionSet.has(key)) {
-            return { topLeft: startPos, bottomRight: startPos, area: 0 };
-        }
-
-        let maxArea = 1;
-        let bestRect = { topLeft: startPos, bottomRight: startPos };
-
-        // Try expanding in all four directions to find rectangles
-        for (let endRow = startPos.row; endRow <= this.gridDimensions.maxRow; endRow++) {
-            for (let endCol = startPos.col; endCol <= this.gridDimensions.maxCol; endCol++) {
-                // Check if we can form a rectangle from startPos to (endRow, endCol)
-                if (this.isValidRectangle(startPos, { row: endRow, col: endCol }, positionSet, processed)) {
-                    const area = (endRow - startPos.row + 1) * (endCol - startPos.col + 1);
-                    if (area > maxArea) {
-                        maxArea = area;
-                        bestRect = {
-                            topLeft: startPos,
-                            bottomRight: { row: endRow, col: endCol }
-                        };
-                    }
-                } else {
-                    // If this position fails, no point checking further in this row
-                    break;
-                }
-            }
-        }
-
-        return { ...bestRect, area: maxArea };
-    }
-
-    // Check if all positions in a rectangle are available and not processed
-    private isValidRectangle(
-        topLeft: GridPosition,
-        bottomRight: GridPosition,
-        positionSet: Set<string>,
-        processed: Set<string>
-    ): boolean {
-        for (let row = topLeft.row; row <= bottomRight.row; row++) {
-            for (let col = topLeft.col; col <= bottomRight.col; col++) {
-                const key = `${row}-${col}`;
-                if (!positionSet.has(key) || processed.has(key)) {
-                    return false;
-                }
-            }
-        }
-        return true;
-    }
-
-    // Find consecutive ranges in a sorted array of header indices
-    private findConsecutiveHeaderRanges(indices: number[]): {
-        ranges: Array<{ start: number, end: number }>,
-        individuals: number[]
-    } {
-        if (indices.length === 0) {
-            return { ranges: [], individuals: [] };
-        }
-
-        // Remove duplicates and sort
-        const uniqueIndices = Array.from(new Set(indices)).sort((a, b) => a - b);
-        const ranges: Array<{ start: number, end: number }> = [];
-        const individuals: number[] = [];
-
-        let currentRangeStart = uniqueIndices[0];
-        let currentRangeEnd = uniqueIndices[0];
-
-        for (let i = 1; i < uniqueIndices.length; i++) {
-            const currentIndex = uniqueIndices[i];
-
-            if (currentIndex === currentRangeEnd + 1) {
-                // Consecutive, extend current range
-                currentRangeEnd = currentIndex;
-            } else {
-                // Not consecutive, finalize current range
-                if (currentRangeStart === currentRangeEnd) {
-                    // Single element, add as individual
-                    individuals.push(currentRangeStart);
-                } else {
-                    // Range of 2+ elements, add as range
-                    ranges.push({ start: currentRangeStart, end: currentRangeEnd });
-                }
-
-                // Start new range
-                currentRangeStart = currentIndex;
-                currentRangeEnd = currentIndex;
-            }
-        }
-
-        // Handle the last range
-        if (currentRangeStart === currentRangeEnd) {
-            individuals.push(currentRangeStart);
-        } else {
-            ranges.push({ start: currentRangeStart, end: currentRangeEnd });
-        }
-
-        return { ranges, individuals };
-    }
-
     // ==================== HEADER SUBSET CALCULATIONS =====================
 
     /**
@@ -1310,7 +640,7 @@ export default class SelectionHandler<TExtraProps = undefined, TRowHeaderProps =
     addIntelligentSelections(positions: GridPosition[]): void {
         if (positions.length === 0) return;
 
-        const analysis = this.analyzeRectangularSelections(positions);
+        const analysis = analyzeRectangularSelections(positions, this.gridDimensions);
 
         // Create rectangular selections
         analysis.rectangles.forEach(rect => {
@@ -1348,7 +678,7 @@ export default class SelectionHandler<TExtraProps = undefined, TRowHeaderProps =
     addIntelligentHeaderSelections(headerType: 'row' | 'col', indices: number[]): void {
         if (indices.length === 0) return;
 
-        const analysis = this.findConsecutiveHeaderRanges(indices);
+        const analysis = findConsecutiveHeaderRanges(indices);
 
         // Create ranges
         analysis.ranges.forEach(range => {
@@ -1361,435 +691,4 @@ export default class SelectionHandler<TExtraProps = undefined, TRowHeaderProps =
         });
     }
 
-}
-
-export class Selection {
-    // Rectangular selection defined by two corners
-    private topLeft!: GridPosition;
-    private bottomRight!: GridPosition;
-
-    // Set of cells in this selection
-    private cells: Set<string>;
-
-    // Headers affected by this selection (derived)
-    private affectedRowHeaders: Set<number>;
-    private affectedColHeaders: Set<number>;
-
-    // Grid area for CSS grid layout
-    private gridArea!: {
-        rowStart: number;
-        rowEnd: number;
-        colStart: number; 
-        colEnd: number;
-    };
-
-    constructor(
-        position1: GridPosition,
-        position2: GridPosition,
-    ) {
-        this.cells = new Set<string>();
-        this.affectedRowHeaders = new Set<number>();
-        this.affectedColHeaders = new Set<number>();
-
-        // Calculate bounds and grid area
-        this.updateBounds(position1, position2);
-    }
-
-    // Update selection bounds and recalculate cells
-    updateBounds(position1: GridPosition, position2: GridPosition): void {
-        this.updateBoundsFromCells(position1, position2);
-        this.recalculateCells();
-        this.updateGridArea();
-    }
-
-    contains(position: GridPosition): boolean {
-        const key = this.positionToKey(position);
-        return this.cells.has(key);
-    }
-
-    getCells(): Set<string> {
-        return new Set(this.cells);
-    }
-
-    getBounds(): { topLeft: GridPosition, bottomRight: GridPosition } {
-        return {
-            topLeft: { ...this.topLeft },
-            bottomRight: { ...this.bottomRight }
-        };
-    }
-
-    getGridArea(): { rowStart: number, rowEnd: number, colStart: number, colEnd: number } {
-        return { ...this.gridArea };
-    }
-
-    // Get headers affected by this selection (derived headers)
-    getDerivedRowHeaders(): Set<number> {
-        return new Set(this.affectedRowHeaders);
-    }
-
-    getDerivedColHeaders(): Set<number> {
-        return new Set(this.affectedColHeaders);
-    }
-
-    getDerivedHeaders(): { rows: Set<number>, cols: Set<number> } {
-        return {
-            rows: this.getDerivedRowHeaders(),
-            cols: this.getDerivedColHeaders()
-        };
-    }
-
-    // Calculate bounds based on two positions
-    private calculateBounds(pos1: GridPosition, pos2: GridPosition): { topLeft: GridPosition, bottomRight: GridPosition } {
-        const topLeft = {
-            row: Math.min(pos1.row, pos2.row),
-            col: Math.min(pos1.col, pos2.col)
-        };
-        const bottomRight = {
-            row: Math.max(pos1.row, pos2.row),
-            col: Math.max(pos1.col, pos2.col)
-        };
-        return { topLeft, bottomRight };
-    }
-
-    private updateBoundsFromCells(position1: GridPosition, position2: GridPosition): void {
-        const { topLeft, bottomRight } = this.calculateBounds(position1, position2);
-        this.topLeft = { ...topLeft };
-        this.bottomRight = { ...bottomRight };
-    }
-
-    private recalculateCells(): void {
-        this.cells.clear();
-        this.affectedRowHeaders.clear();
-        this.affectedColHeaders.clear();
-
-        for (let row = this.topLeft.row; row <= this.bottomRight.row; row++) {
-            this.affectedRowHeaders.add(row);
-            for (let col = this.topLeft.col; col <= this.bottomRight.col; col++) {
-                this.affectedColHeaders.add(col);
-                this.cells.add(this.positionToKey({ row, col }));
-            }
-        }
-    }
-
-    private updateGridArea(): void {
-        // Grid area is 1-based for CSS grid, so we add 1 to each index
-        this.gridArea = {
-            rowStart: this.topLeft.row + 1,
-            rowEnd: this.bottomRight.row + 2, // +2 because end is exclusive
-            colStart: this.topLeft.col + 1,
-            colEnd: this.bottomRight.col + 2
-        };
-    }
-
-    private positionToKey(position: GridPosition): string {
-        return `${position.row}-${position.col}`;
-    }
-
-    fragmentExcluding(excludeArea: { topLeft: GridPosition; bottomRight: GridPosition }): Selection[] {
-        const fragments: Selection[] = [];
-
-        const selectionTopLeft = this.topLeft;
-        const selectionBottomRight = this.bottomRight;
-
-        const excludeTopLeft = excludeArea.topLeft;
-        const excludeBottomRight = excludeArea.bottomRight;
-
-        // Calculate intersection
-        const intersectTopLeft: GridPosition = {
-            row: Math.max(selectionTopLeft.row, excludeTopLeft.row),
-            col: Math.max(selectionTopLeft.col, excludeTopLeft.col)
-        };
-
-        const intersectBottomRight: GridPosition = {
-            row: Math.min(selectionBottomRight.row, excludeBottomRight.row),
-            col: Math.min(selectionBottomRight.col, excludeBottomRight.col)
-        };
-
-        // Check if there is no intersection
-        const noIntersection =
-            intersectTopLeft.row > intersectBottomRight.row ||
-            intersectTopLeft.col > intersectBottomRight.col;
-
-        // No intersection, return original selection as single fragment
-        if (noIntersection)  {
-            return [this];
-        }
-
-        // Check if the selection fully covers the intersection area
-        const fullCover =
-            intersectTopLeft.row === selectionTopLeft.row &&
-            intersectBottomRight.row === selectionBottomRight.row &&
-            intersectTopLeft.col === selectionTopLeft.col &&
-            intersectBottomRight.col === selectionBottomRight.col;
-
-        if (fullCover) {
-            return [];
-        }
-
-        // Upper part
-        if (selectionTopLeft.row < intersectTopLeft.row) {
-            fragments.push(new Selection(
-                { row: selectionTopLeft.row, col: selectionTopLeft.col },
-                { row: intersectTopLeft.row - 1, col: selectionBottomRight.col },
-            ));
-        }
-
-        // Lower part
-        if (intersectBottomRight.row < selectionBottomRight.row) {
-            fragments.push(new Selection(
-                { row: intersectBottomRight.row + 1, col: selectionTopLeft.col },
-                { row: selectionBottomRight.row, col: selectionBottomRight.col },
-            ));
-        }
-
-        // Left side
-        if (selectionTopLeft.col < intersectTopLeft.col) {
-            fragments.push(new Selection(
-                {
-                    row: Math.max(selectionTopLeft.row, intersectTopLeft.row),
-                    col: selectionTopLeft.col
-                },
-                {
-                    row: Math.min(selectionBottomRight.row, intersectBottomRight.row),
-                    col: intersectTopLeft.col - 1
-                },
-            ));
-        }
-
-        // Right side
-        if (intersectBottomRight.col < selectionBottomRight.col) {
-            fragments.push(new Selection(
-                {
-                    row: Math.max(selectionTopLeft.row, intersectTopLeft.row),
-                    col: intersectBottomRight.col + 1
-                },
-                {
-                    row: Math.min(selectionBottomRight.row, intersectBottomRight.row),
-                    col: selectionBottomRight.col
-                },
-            ));
-        }
-
-        return fragments;
-    }
-
-}
-
-export class HeaderSelection {
-    // Direction of the header selection (row or column)
-    private direction: 'row' | 'col';
-
-    // Range defined by start and end indices
-    private startIndex!: number;
-    private endIndex!: number;
-
-    // Set of header indices in this selection
-    private headerIndices: Set<number>;
-
-    // Grid area for header subgrid CSS grid layout
-    private headerGridArea!: {
-        rowStart: number;
-        rowEnd: number;
-        colStart: number;
-        colEnd: number;
-    };
-
-    // Internal Selection that represents the cells affected by this header selection
-    // This Selection is ALWAYS inactive (isActive: false) as it's only for derived cell calculations
-    private cellSelection: Selection;
-
-    constructor(
-        direction: 'row' | 'col',
-        startIndex: number,
-        endIndex: number,
-        gridDimensions: GridDimensions,
-    ) {
-        this.direction = direction;
-        this.headerIndices = new Set<number>();
-
-        // First, set bounds and calculate header-specific data
-        this.updateBounds(startIndex, endIndex);
-
-        // Then create internal cell selection based on calculated bounds
-        // NOTE: cellSelection is ALWAYS inactive (false) - it's only for derived cell calculations
-        this.cellSelection = this.createCellSelectionFromHeaders(gridDimensions, false);
-    }
-
-    // Update selection bounds and recalculate indices (header-specific only)
-    updateBounds(startIndex: number, endIndex: number): void {
-        this.startIndex = Math.min(startIndex, endIndex);
-        this.endIndex = Math.max(startIndex, endIndex);
-        this.recalculateHeaderIndices();
-        this.updateHeaderGridArea();
-    }
-
-    // Update bounds and automatically sync the internal cellSelection
-    updateBoundsWithSync(startIndex: number, endIndex: number, gridDimensions: GridDimensions): void {
-        // Update header bounds first
-        this.updateBounds(startIndex, endIndex);
-
-        // Then sync the cellSelection with new bounds
-        this.updateCellSelection(gridDimensions);
-    }
-
-    // Update the cell selection when bounds change
-    updateCellSelection(gridDimensions: GridDimensions): void {
-        const { topLeft, bottomRight } = this.calculateCellBounds(gridDimensions);
-        this.cellSelection.updateBounds(topLeft, bottomRight);
-    }
-
-    contains(index: number): boolean {
-        return this.headerIndices.has(index);
-    }
-
-    getHeaderIndices(): Set<number> {
-        return new Set(this.headerIndices);
-    }
-
-    getHeaderArea(): { indexStart: number; indexEnd: number; type: 'row' | 'col' } {
-        return {
-            indexStart: this.startIndex,
-            indexEnd: this.endIndex,
-            type: this.direction
-        };
-    }
-
-    getBounds(): { startIndex: number, endIndex: number } {
-        return {
-            startIndex: this.startIndex,
-            endIndex: this.endIndex
-        };
-    }
-
-    getDirection(): 'row' | 'col' {
-        return this.direction;
-    }
-
-    // Delegate cell-related methods to internal Selection
-    getCells(): Set<string> {
-        return this.cellSelection.getCells();
-    }
-
-    getCellBounds(): { topLeft: GridPosition, bottomRight: GridPosition } {
-        return this.cellSelection.getBounds();
-    }
-
-    // Get the internal cell selection (for derived cell visualization)
-    getCellSelection(): Selection {
-        return this.cellSelection;
-    }
-
-    getGridArea(): { rowStart: number, rowEnd: number, colStart: number, colEnd: number } {
-        return this.cellSelection.getGridArea();
-    }
-
-    // Get grid area specifically for header subgrid positioning
-    getHeaderGridArea(): { rowStart: number, rowEnd: number, colStart: number, colEnd: number } {
-        return { ...this.headerGridArea };
-    }
-
-    // Create a Selection instance that represents all cells in the selected headers
-    // This Selection is ALWAYS inactive as it's only used for derived cell calculations
-    private createCellSelectionFromHeaders(gridDimensions: GridDimensions, isActive: boolean): Selection {
-        const { topLeft, bottomRight } = this.calculateCellBounds(gridDimensions);
-        return new Selection(topLeft, bottomRight);
-    }
-
-    // Calculate the cell bounds that correspond to this header selection
-    private calculateCellBounds(gridDimensions: GridDimensions): { topLeft: GridPosition, bottomRight: GridPosition } {
-        if (this.direction === 'row') {
-            // Row selection: all columns in the selected rows
-            return {
-                topLeft: { row: this.startIndex, col: 0 },
-                bottomRight: { row: this.endIndex, col: gridDimensions.maxCol }
-            };
-        } else {
-            // Column selection: all rows in the selected columns
-            return {
-                topLeft: { row: 0, col: this.startIndex },
-                bottomRight: { row: gridDimensions.maxRow , col: this.endIndex }
-            };
-        }
-    }
-
-    // Recalculate header indices based on current bounds
-    private recalculateHeaderIndices(): void {
-        this.headerIndices.clear();
-        for (let i = this.startIndex; i <= this.endIndex; i++) {
-            this.headerIndices.add(i);
-        }
-    }
-
-    // Update header grid area for CSS grid positioning
-    private updateHeaderGridArea(): void {
-        if (this.direction === 'row') {
-            // Row headers: span across the row indices, single column
-            this.headerGridArea = {
-                rowStart: this.startIndex + 1, // 1-based for CSS grid
-                rowEnd: this.endIndex + 2, // +2 because end is exclusive
-                colStart: 1, // Row headers are in column 1 of header subgrid
-                colEnd: 2 // Single column span
-            };
-        } else {
-            // Column headers: span across the column indices, single row
-            this.headerGridArea = {
-                rowStart: 1, // Column headers are in row 1 of header subgrid
-                rowEnd: 2, // Single row span
-                colStart: this.startIndex + 1, // 1-based for CSS grid
-                colEnd: this.endIndex + 2 // +2 because end is exclusive
-            };
-        }
-    }
-
-    // Fragment this selection excluding a given range
-    fragmentExcluding(excludeRange: { startIndex: number, endIndex: number }, gridDimensions: GridDimensions): HeaderSelection[] {
-        const fragments: HeaderSelection[] = [];
-
-        const excludeStart = excludeRange.startIndex;
-        const excludeEnd = excludeRange.endIndex;
-
-        // Calculate intersection
-        const intersectStart = Math.max(this.startIndex, excludeStart);
-        const intersectEnd = Math.min(this.endIndex, excludeEnd);
-
-        // Check if there is no intersection
-        const noIntersection = intersectStart > intersectEnd;
-
-        if (noIntersection) {
-            // No intersection, return original selection as single fragment
-            return [this];
-        }
-
-        // Check if the selection is fully covered by the exclusion
-        const fullCover =
-            intersectStart === this.startIndex &&
-            intersectEnd === this.endIndex;
-
-        if (fullCover) {
-            // Fully covered, return empty array
-            return [];
-        }
-
-        // Left fragment (before exclusion)
-        if (this.startIndex < intersectStart) {
-            fragments.push(new HeaderSelection(
-                this.direction,
-                this.startIndex,
-                intersectStart - 1,
-                gridDimensions,
-            ));
-        }
-
-        // Right fragment (after exclusion)
-        if (intersectEnd < this.endIndex) {
-            fragments.push(new HeaderSelection(
-                this.direction,
-                intersectEnd + 1,
-                this.endIndex,
-                gridDimensions,
-            ));
-        }
-
-        return fragments;
-    }
 }

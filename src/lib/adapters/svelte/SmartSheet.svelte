@@ -15,7 +15,8 @@
     import { SvelteViewport } from './ports/SvelteViewport.ts';
     import { SvelteFlashEffect } from './ports/SvelteFlashEffect.ts';
     import { SvelteClipboard } from './ports/SvelteClipboard.ts';
-    import { Selection, HeaderSelection } from '../../core/selection/SelectionHandler.ts';
+    import { Selection } from '../../core/selection/Selection.ts';
+    import { HeaderSelection } from '../../core/selection/HeaderSelection.ts';
     import type { SelectionChangedCallback } from '../../core/selection/SelectionHandler.ts';
     import type { PointerPositionCallback } from '../../core/navigation/NavigationHandler.ts';
     import type { VisibleComponentsCallback, ScaleChangeCallback } from '../../core/virtualization/VirtualizeHandler.ts';
@@ -88,7 +89,8 @@
     let headerSelectionsCols: HeaderSelection[] = [];
     let derivedCellSelections: Selection[] = []; // Cell selections derived from header selections
     // Callback to get selections from controller
-    const subscribeToSelections: SelectionChangedCallback = (handler) => {
+    const subscribeToSelections: SelectionChangedCallback<TExtraProps, TRowHeaderProps, TColHeaderProps> =
+        (handler) => {
         selections = handler.getSelections();
         headerSelectionsRows = handler.getHeaderSelectionsRows();
         headerSelectionsCols = handler.getHeaderSelectionsCols();
@@ -105,7 +107,8 @@
     let headerDeselectionRow: HeaderSelection | null = null;
     let headerDeselectionCol: HeaderSelection | null = null;
     // Callback to get deselection area from controller
-    const subscribeToDeselection: SelectionChangedCallback = (handler) => {
+    const subscribeToDeselection: SelectionChangedCallback<TExtraProps, TRowHeaderProps, TColHeaderProps> =
+        (handler) => {
         const headerDeselection = handler.getHeaderDeselection();
         if (headerDeselection) {
             if (headerDeselection.getDirection() === 'row') {

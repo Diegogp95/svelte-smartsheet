@@ -47,6 +47,20 @@ interface ValidatedComponentChange<T extends AnyComponent<any, any, any>, V exte
 
 // ==================== DATA HANDLER CLASS ====================
 
+/**
+ * Entry point to the data domain. Owns the core data structures and orchestrates interactions between
+ * editing, validation, history, translation, and imputation.
+ *
+ * Responsibilities:
+ *  - Manage cell and header values.
+ *  - Handle editing lifecycle and delegate to EditingManager.
+ *  - Validate user input and manage value changes.
+ *  - Track history and support undo/redo operations.
+ *  - Translate data between different formats.
+ *  - Track and manage imputed values.
+ *  - Interact directly with the history domain.
+ */
+
 export default class DataHandler<TExtraProps = undefined, TRowHeaderProps = undefined, TColHeaderProps = undefined> {
     private cellComponents: Map<string, CellComponent<TExtraProps>>;
     private rowHeaderComponents: Map<string, HeaderComponent<TRowHeaderProps>>;
