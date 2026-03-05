@@ -1,6 +1,4 @@
 import type { GridPosition, HeaderPosition } from '../types/types.ts';
-import { CellChange } from './CellChange.ts';
-import { HeaderChange } from './HeaderChange.ts';
 import type { ChangeSet } from './ChangeSet.ts';
 import type { HistoryStack } from './HistoryStack.ts';
 
@@ -18,12 +16,13 @@ export class HistoryQueryReader {
         const result: GridPosition[] = [];
         for (let i = 0; i <= this.stack.getCursor(); i++) {
             const cs = this.stack.getAt(i);
-            if (!cs?.isCellOnlyEdit()) continue;
-            for (const change of cs.changes as CellChange[]) {
-                const key = `${change.position.row}-${change.position.col}`;
+            if (cs?.element !== 'cell') continue;
+            for (const change of cs.changes) {
+                const pos = change.position as GridPosition;
+                const key = `${pos.row}-${pos.col}`;
                 if (!seen.has(key)) {
                     seen.add(key);
-                    result.push(change.position);
+                    result.push(pos);
                 }
             }
         }
@@ -37,14 +36,15 @@ export class HistoryQueryReader {
         const cols: HeaderPosition[] = [];
         for (let i = 0; i <= this.stack.getCursor(); i++) {
             const cs = this.stack.getAt(i);
-            if (!cs?.isHeaderOnlyEdit()) continue;
-            for (const change of cs.changes as HeaderChange[]) {
-                if (change.position.headerType === 'row' && !seenRows.has(change.position.index)) {
-                    seenRows.add(change.position.index);
-                    rows.push(change.position);
-                } else if (change.position.headerType === 'col' && !seenCols.has(change.position.index)) {
-                    seenCols.add(change.position.index);
-                    cols.push(change.position);
+            if (cs?.element !== 'header') continue;
+            for (const change of cs.changes) {
+                const pos = change.position as HeaderPosition;
+                if (pos.headerType === 'row' && !seenRows.has(pos.index)) {
+                    seenRows.add(pos.index);
+                    rows.push(pos);
+                } else if (pos.headerType === 'col' && !seenCols.has(pos.index)) {
+                    seenCols.add(pos.index);
+                    cols.push(pos);
                 }
             }
         }
@@ -66,22 +66,24 @@ export class HistoryQueryReader {
         for (let i = 0; i <= this.stack.getCursor(); i++) {
             const cs = this.stack.getAt(i);
             if (!cs) continue;
-            if (cs.isCellOnlyEdit()) {
-                for (const change of cs.changes as CellChange[]) {
-                    const key = `${change.position.row}-${change.position.col}`;
+            if (cs.element === 'cell') {
+                for (const change of cs.changes) {
+                    const pos = change.position as GridPosition;
+                    const key = `${pos.row}-${pos.col}`;
                     if (!cellKeys.has(key)) {
                         cellKeys.add(key);
-                        cells.push(change.position);
+                        cells.push(pos);
                     }
                 }
-            } else if (cs.isHeaderOnlyEdit()) {
-                for (const change of cs.changes as HeaderChange[]) {
-                    if (change.position.headerType === 'row' && !rowKeys.has(change.position.index)) {
-                        rowKeys.add(change.position.index);
-                        rowHeaders.push(change.position);
-                    } else if (change.position.headerType === 'col' && !colKeys.has(change.position.index)) {
-                        colKeys.add(change.position.index);
-                        colHeaders.push(change.position);
+            } else if (cs.element === 'header') {
+                for (const change of cs.changes) {
+                    const pos = change.position as HeaderPosition;
+                    if (pos.headerType === 'row' && !rowKeys.has(pos.index)) {
+                        rowKeys.add(pos.index);
+                        rowHeaders.push(pos);
+                    } else if (pos.headerType === 'col' && !colKeys.has(pos.index)) {
+                        colKeys.add(pos.index);
+                        colHeaders.push(pos);
                     }
                 }
             }

@@ -1,11 +1,15 @@
 import type { GridPosition, HeaderPosition, CellValue, HeaderValue } from '../types/types.ts';
+import type { AnyChange } from './Change.ts';
 import { CellChange } from './CellChange.ts';
 import { HeaderChange } from './HeaderChange.ts';
 import { ChangeSet } from './ChangeSet.ts';
+import type { ChangeOrigin } from './ChangeSet.ts';
 import { HistoryStack } from './HistoryStack.ts';
 import { HistoryQueryReader } from './HistoryQueryReader.ts';
 
-export type ChangeType = 'single-edit' | 'paste' | 'delete' | 'format' | 'other';
+// ChangeOrigin is defined in ChangeSet.ts (its natural home) and re-exported here
+// so all callers continue to import from a single location.
+export type { ChangeOrigin } from './ChangeSet.ts';
 
 export type UndoRedoResult =
     | { type: 'cell';   changes: Array<{ position: GridPosition;   oldValue: CellValue;   newValue: CellValue }> }
@@ -30,18 +34,16 @@ export class HistoryManager {
 
     recordCellChanges(
         changes: Array<{ position: GridPosition; oldValue: CellValue; newValue: CellValue }>,
-        type: ChangeType
+        origin: ChangeOrigin
     ): void {
-        const cellChanges = changes.map(c => new CellChange(c.position, c.oldValue, c.newValue));
-        this.stack.push(new ChangeSet(cellChanges, type));
+        this.record(changes.map(c => new CellChange(c.position, c.oldValue, c.newValue)), origin);
     }
 
     recordHeaderChanges(
         changes: Array<{ position: HeaderPosition; oldValue: HeaderValue; newValue: HeaderValue }>,
-        type: ChangeType
+        origin: ChangeOrigin
     ): void {
-        const headerChanges = changes.map(c => new HeaderChange(c.position, c.oldValue, c.newValue));
-        this.stack.push(new ChangeSet(headerChanges, type));
+        this.record(changes.map(c => new HeaderChange(c.position, c.oldValue, c.newValue)), origin);
     }
 
     undo(): UndoRedoResult | null {
@@ -62,42 +64,14 @@ export class HistoryManager {
         return this.stack.canRedo();
     }
 
-    getCurrentIndex(): number {
-        return this.stack.getCursor();
-    }
-
-    getHistoryLength(): number {
-        return this.stack.getLength();
-    }
-
-    getChangeAt(index: number): ChangeSet | null {
-        return this.stack.getAt(index);
-    }
-
     clear(): void {
         this.stack.clear();
-    }
-
-    clearFrom(index: number): void {
-        this.stack.clearFrom(index);
-    }
-
-    setMaxHistorySize(size: number): void {
-        this.stack.setMaxSize(size);
-    }
-
-    getMaxHistorySize(): number {
-        return this.stack.getMaxSize();
     }
 
     // ==================== DOMAIN QUERIES ====================
 
     getChangedCells(): GridPosition[] {
         return this.reader.getChangedCells();
-    }
-
-    getChangedHeaders(): { rows: HeaderPosition[]; cols: HeaderPosition[] } {
-        return this.reader.getChangedHeaders();
     }
 
     getChangedElements(): {
@@ -110,24 +84,32 @@ export class HistoryManager {
 
     // ==================== PRIVATE ====================
 
+    private record(changes: AnyChange[], origin: ChangeOrigin): void {
+        const domain  = changes.length > 0 ? changes[0].domain  : 'unknown';
+        const element = changes.length > 0 ? changes[0].element : 'unknown';
+        this.stack.push(new ChangeSet(changes, origin, domain, element));
+    }
+
     private toResult(changeSet: ChangeSet): UndoRedoResult {
-        if (changeSet.isCellOnlyEdit()) {
-            return {
-                type: 'cell',
-                changes: (changeSet.changes as CellChange[]).map(c => ({
-                    position: c.position,
-                    oldValue: c.oldValue,
-                    newValue: c.newValue,
-                })),
-            };
+        switch (changeSet.element) {
+            case 'cell':
+                return {
+                    type: 'cell',
+                    changes: changeSet.changes.map(c => ({
+                        position: c.position as GridPosition,
+                        oldValue: c.oldValue as CellValue,
+                        newValue: c.newValue as CellValue,
+                    })),
+                };
+            default:
+                return {
+                    type: 'header',
+                    changes: changeSet.changes.map(c => ({
+                        position: c.position as HeaderPosition,
+                        oldValue: c.oldValue as HeaderValue,
+                        newValue: c.newValue as HeaderValue,
+                    })),
+                };
         }
-        return {
-            type: 'header',
-            changes: (changeSet.changes as HeaderChange[]).map(c => ({
-                position: c.position,
-                oldValue: c.oldValue,
-                newValue: c.newValue,
-            })),
-        };
     }
 }

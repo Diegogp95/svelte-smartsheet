@@ -1,10 +1,13 @@
 import type { GridPosition, CellValue } from '../types/types.ts';
+import type { Change } from './Change.ts';
 
 /**
  * Value object representing a single cell value change.
  * Immutable by convention — never mutate after construction.
  */
-export class CellChange {
+export class CellChange implements Change<GridPosition, CellValue> {
+    readonly domain  = 'data' as const;
+    readonly element = 'cell' as const;
     constructor(
         public readonly position: GridPosition,
         public readonly oldValue: CellValue,
