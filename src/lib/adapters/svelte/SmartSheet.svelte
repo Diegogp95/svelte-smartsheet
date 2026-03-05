@@ -14,6 +14,7 @@
     import { SvelteExternalEvent } from './ports/SvelteExternalEvent.ts';
     import { SvelteViewport } from './ports/SvelteViewport.ts';
     import { SvelteFlashEffect } from './ports/SvelteFlashEffect.ts';
+    import { SvelteClipboard } from './ports/SvelteClipboard.ts';
     import { Selection, HeaderSelection } from '../../core/selection/SelectionHandler.ts';
     import type { SelectionChangedCallback } from '../../core/selection/SelectionHandler.ts';
     import type { PointerPositionCallback } from '../../core/navigation/NavigationHandler.ts';
@@ -190,6 +191,7 @@
     );
     controller.setInputActivationPort(new SvelteInputActivation(controller.getInstanceId()));
     controller.setFlashEffectPort(new SvelteFlashEffect(controller.getInstanceId()));
+    controller.setClipboardPort(new SvelteClipboard());
     const externalEventPort = new SvelteExternalEvent();
     controller.setExternalEventPort(externalEventPort);
     const viewportPort = new SvelteViewport();

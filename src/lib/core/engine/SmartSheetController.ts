@@ -29,6 +29,8 @@ import type { InputActivationPort } from '../ports/InputActivationPort.ts';
 import type { ExternalEventPort } from '../ports/ExternalEventPort.ts';
 import type { ViewportPort } from '../ports/ViewportPort.ts';
 import type { FlashEffectPort } from '../ports/FlashEffectPort.ts';
+import type { ClipboardPort } from '../ports/ClipboardPort.ts';
+import { generateColumnLabel } from '../utils/utils.ts';
 import ColorHandler from '../styling/ColorHandler.ts';
 import VirtualizeHandler from '../virtualization/VirtualizeHandler.ts';
 import type { VisibleComponentsCallback, RenderAreaCallback, ScaleChangeCallback } from '../virtualization/VirtualizeHandler.ts';
@@ -61,10 +63,8 @@ export default class SmartSheetController<TExtraProps = undefined,
     private gridDimensions: GridDimensions;
     private viewportPort?: ViewportPort;
     private headersReadOnly: boolean;
-    // Clipboard event listeners references for cleanup
-    private pasteListener: ((event: ClipboardEvent) => void) | null = null;
-    private copyListener: ((event: ClipboardEvent) => void) | null = null;
-    private cutListener: ((event: ClipboardEvent) => void) | null = null;
+    // Ports
+    private clipboardPort?: ClipboardPort;
     // Separate header components by type for different extraProps handling
     // ExtraProps schema registry for homogeneous structures
     private extraPropsSchema = {
@@ -174,7 +174,6 @@ export default class SmartSheetController<TExtraProps = undefined,
             onRenderAreaChanged,
         );
 
-        // Clipboard listeners will be added/removed based on navigation mode
     };
 
         /**
@@ -252,7 +251,7 @@ export default class SmartSheetController<TExtraProps = undefined,
             const key = `col-${index}`;
             const headerComponent: HeaderComponent<TColHeaderProps> = {
                 position,
-                value: colHeaders?.[index] ?? this.generateColumnLabel(index),
+                value: colHeaders?.[index] ?? generateColumnLabel(index),
                 selected: false,
                 editing: false,
                 extraProps: colHeaderProps?.[index] as TColHeaderProps,
@@ -270,19 +269,6 @@ export default class SmartSheetController<TExtraProps = undefined,
      */
     private positionToKey(position: GridPosition): string {
         return `${position.row}-${position.col}`;
-    }
-
-    /**
-     * Helper method to generate column labels (A, B, C, ... AA, AB, etc.)
-     */
-    private generateColumnLabel(index: number): string {
-        let result = '';
-        let num = index;
-        do {
-            result = String.fromCharCode(65 + (num % 26)) + result;
-            num = Math.floor(num / 26) - 1;
-        } while (num >= 0);
-        return result;
     }
 
     /**
@@ -353,112 +339,38 @@ export default class SmartSheetController<TExtraProps = undefined,
         }
     };
 
-    // Add clipboard event handlers when entering navigation mode
-    private addClipboardHandlers(): void {
-        // Only add if not already added
-        if (this.pasteListener) {
-            return;
-        }
+    // ==================== CLIPBOARD OPERATIONS ====================
+    // These are pure data operations — the controller knows what to do
+    // with the content; the adapter (via ClipboardPort) handles listener
+    // registration and ClipboardEvent interaction.
 
-        // Create listener functions that can be referenced for removal
-        this.pasteListener = (event: ClipboardEvent) => {
-            event.preventDefault();
-            event.stopPropagation();
-
-            const clipboardText = event.clipboardData?.getData('text/plain') || '';
-            this.handlePasteFromClipboard(clipboardText);
-        };
-
-        this.copyListener = (event: ClipboardEvent) => {
-            event.preventDefault();
-            event.stopPropagation();
-
-            this.handleCopyToClipboard(event);
-        };
-
-        this.cutListener = (event: ClipboardEvent) => {
-            event.preventDefault();
-            event.stopPropagation();
-
-            this.handleCutToClipboard(event);
-        };
-
-        // Add listeners to document
-        document.addEventListener('paste', this.pasteListener, { capture: true });
-        document.addEventListener('copy', this.copyListener, { capture: true });
-        document.addEventListener('cut', this.cutListener, { capture: true });
-    }
-
-    // Remove clipboard event handlers when leaving navigation mode
-    private removeClipboardHandlers(): void {
-        if (this.pasteListener) {
-            document.removeEventListener('paste', this.pasteListener, { capture: true });
-            this.pasteListener = null;
-        }
-
-        if (this.copyListener) {
-            document.removeEventListener('copy', this.copyListener, { capture: true });
-            this.copyListener = null;
-        }
-
-        if (this.cutListener) {
-            document.removeEventListener('cut', this.cutListener, { capture: true });
-            this.cutListener = null;
-        }
-    }
-
-    // Process clipboard text and paste into grid
-    private handlePasteFromClipboard(clipboardText: string): void {
-        if (!clipboardText || clipboardText.trim() === '') {
-            return;
-        }
-
+    private onPaste(text: string): void {
+        if (!text || text.trim() === '') return;
         const currentPosition = this.navigationHandler.getCurrentPosition();
-        const pasteData = this.dataHandler.parseClipboardText(clipboardText);
+        const pasteData = this.dataHandler.parseClipboardText(text);
         const success = this.dataHandler.paste(currentPosition, pasteData);
-        // Need to update the rendered area if paste was successful
         if (success) {
-            // execute the virtualization callback to refresh visible components
             this.virtualizeHandler.onVisibleComponentsChanged?.(this.virtualizeHandler);
         }
     }
 
-    // Handle copy to clipboard
-    private handleCopyToClipboard(event: ClipboardEvent): void {
+    private onCopy(): string {
         const selectedPositions = this.selectionHandler.getSelectedPositions();
         if (selectedPositions.length === 0) {
-            // If no selection, copy current cell
-            const currentPosition = this.navigationHandler.getCurrentPosition();
-            selectedPositions.push(currentPosition);
+            selectedPositions.push(this.navigationHandler.getCurrentPosition());
         }
-
-        // Create clipboard data using DataHandler
-        const clipboardData = this.dataHandler.formatClipboardData(selectedPositions);
-
-        if (event.clipboardData) {
-            event.clipboardData.setData('text/plain', clipboardData);
-        }
+        return this.dataHandler.formatClipboardData(selectedPositions);
     }
 
-    // Handle cut to clipboard
-    private handleCutToClipboard(event: ClipboardEvent): void {
+    private onCut(): string {
         const selectedPositions = this.selectionHandler.getSelectedPositions();
         if (selectedPositions.length === 0) {
-            // If no selection, cut current cell
-            const currentPosition = this.navigationHandler.getCurrentPosition();
-            selectedPositions.push(currentPosition);
+            selectedPositions.push(this.navigationHandler.getCurrentPosition());
         }
-
-        // Create clipboard data using DataHandler
-        const clipboardData = this.dataHandler.formatClipboardData(selectedPositions);
-
-        if (event.clipboardData) {
-            event.clipboardData.setData('text/plain', clipboardData);
-            // Delete the cell values after copying (that's what makes it "cut")
-            this.dataHandler.deleteCellsValues(selectedPositions);
-            // Update the visible components
-            this.virtualizeHandler.onVisibleComponentsChanged?.(this.virtualizeHandler);
-        }
+        const text = this.dataHandler.formatClipboardData(selectedPositions);
+        this.dataHandler.deleteCellsValues(selectedPositions);
+        this.virtualizeHandler.onVisibleComponentsChanged?.(this.virtualizeHandler);
+        return text;
     }
 
     // Maps getters
@@ -814,8 +726,11 @@ export default class SmartSheetController<TExtraProps = undefined,
     // Activate navigation: select current cell only if no selection exists
     activateNavigation() {
         this.navigationHandler.activateNavigation();
-        // Add clipboard listeners when entering navigation mode
-        this.addClipboardHandlers();
+        this.clipboardPort?.registerClipboardListeners(
+            (text) => this.onPaste(text),
+            ()     => this.onCopy(),
+            ()     => this.onCut(),
+        );
 
         // Only auto-select current position if there's no existing selection
         // currently disabled, might be eliminated or enabled later
@@ -830,9 +745,7 @@ export default class SmartSheetController<TExtraProps = undefined,
     // Deactivate navigation: don't clear selection
     deactivateNavigation() {
         this.navigationHandler.deactivateNavigation();
-        // Remove clipboard listeners when leaving navigation mode
-        this.removeClipboardHandlers();
-
+        this.clipboardPort?.unregisterClipboardListeners();
         return false;
     }
 
@@ -871,6 +784,11 @@ export default class SmartSheetController<TExtraProps = undefined,
     // Wire the adapter's ExternalEventPort so NavigationHandler can register outside-drag listeners
     setExternalEventPort(port: ExternalEventPort): void {
         this.navigationHandler.setExternalEventPort(port);
+    }
+
+    // Wire the adapter's ClipboardPort so the controller can request clipboard listener registration
+    setClipboardPort(port: ClipboardPort): void {
+        this.clipboardPort = port;
     }
 
     // Wire the adapter's ViewportPort so NavigationHandler, VirtualizeHandler and MouseEventTranslator can query and command the viewport
@@ -1792,9 +1710,7 @@ export default class SmartSheetController<TExtraProps = undefined,
      * Cleanup resources and event listeners
      */
     dispose(): void {
-        // Ensure clipboard handlers are removed
-        this.removeClipboardHandlers();
-        // Deactivate navigation
+        this.clipboardPort?.unregisterClipboardListeners();
         this.deactivateNavigation();
     }
 
