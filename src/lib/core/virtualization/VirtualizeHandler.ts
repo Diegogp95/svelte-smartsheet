@@ -8,6 +8,7 @@ import type {
 	RenderArea,
 } from '../types/types.ts';
 import type { ViewportPort } from '../ports/ViewportPort.ts';
+import { positionToKey } from '../utils/utils.ts';
 
 // Callback types for virtualization subscriptions
 export type VisibleComponentsCallback<TExtraProps, TRowHeaderProps, TColHeaderProps> = 
@@ -109,11 +110,6 @@ export default class VirtualizeHandler<TExtraProps = undefined, TRowHeaderProps 
         this.updateRenderArea(initialRenderArea, initialVisibleArea);
     }
 
-    // Helper method to convert position to key
-    private positionToKey(position: GridPosition): string {
-        return `${position.row}-${position.col}`;
-    }
-
     // Get current render area
     getRenderArea(): RenderArea {
         return { ...this.renderArea };
@@ -170,7 +166,7 @@ export default class VirtualizeHandler<TExtraProps = undefined, TRowHeaderProps 
         // Extract visible cells
         for (let row = this.renderArea.startRow; row <= this.renderArea.endRow; row++) {
             for (let col = this.renderArea.startCol; col <= this.renderArea.endCol; col++) {
-                const key = this.positionToKey({ row, col });
+                const key = positionToKey({ row, col });
                 const cellComponent = this.cellComponents.get(key);
                 if (cellComponent) {
                     cells.push(cellComponent);

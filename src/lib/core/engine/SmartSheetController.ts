@@ -30,7 +30,7 @@ import type { ExternalEventPort } from '../ports/ExternalEventPort.ts';
 import type { ViewportPort } from '../ports/ViewportPort.ts';
 import type { FlashEffectPort } from '../ports/FlashEffectPort.ts';
 import type { ClipboardPort } from '../ports/ClipboardPort.ts';
-import { generateColumnLabel } from '../utils/utils.ts';
+import { generateColumnLabel, positionToKey } from '../utils/utils.ts';
 import ColorHandler from '../styling/ColorHandler.ts';
 import VirtualizeHandler from '../virtualization/VirtualizeHandler.ts';
 import type { VisibleComponentsCallback, RenderAreaCallback, ScaleChangeCallback } from '../virtualization/VirtualizeHandler.ts';
@@ -188,7 +188,7 @@ export default class SmartSheetController<TExtraProps = undefined,
         for (let row = 0; row < gridData.length; row++) {
             for (let col = 0; col < gridData[row].length; col++) {
                 const position: GridPosition = { row, col };
-                const key = this.positionToKey(position);
+                const key = positionToKey(position);
                 const cellComponent: CellComponent<TExtraProps> = {
                     position,
                     value: gridData[row][col] ?? '',
@@ -262,13 +262,6 @@ export default class SmartSheetController<TExtraProps = undefined,
             headerMap.set(key, headerComponent);
         }
         return headerMap;
-    }
-
-    /**
-     * Helper method to convert position to key
-     */
-    private positionToKey(position: GridPosition): string {
-        return `${position.row}-${position.col}`;
     }
 
     /**
@@ -1406,7 +1399,7 @@ export default class SmartSheetController<TExtraProps = undefined,
                 }
 
                 for (let col = 0; col < expectedCols; col++) {
-                    const key = this.positionToKey({ row, col });
+                    const key = positionToKey({ row, col });
                     const cellComponent = this.cellComponents.get(key);
 
                     if (cellComponent) {

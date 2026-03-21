@@ -1,4 +1,5 @@
 import type { GridPosition } from '../types/types.ts';
+import { positionToKey } from '../utils/utils.ts';
 
 export class Selection {
     // Rectangular selection defined by two corners
@@ -40,7 +41,7 @@ export class Selection {
     }
 
     contains(position: GridPosition): boolean {
-        const key = this.positionToKey(position);
+        const key = positionToKey(position);
         return this.cells.has(key);
     }
 
@@ -103,7 +104,7 @@ export class Selection {
             this.affectedRowHeaders.add(row);
             for (let col = this.topLeft.col; col <= this.bottomRight.col; col++) {
                 this.affectedColHeaders.add(col);
-                this.cells.add(this.positionToKey({ row, col }));
+                this.cells.add(positionToKey({ row, col }));
             }
         }
     }
@@ -116,10 +117,6 @@ export class Selection {
             colStart: this.topLeft.col + 1,
             colEnd: this.bottomRight.col + 2
         };
-    }
-
-    private positionToKey(position: GridPosition): string {
-        return `${position.row}-${position.col}`;
     }
 
     fragmentExcluding(excludeArea: { topLeft: GridPosition; bottomRight: GridPosition }): Selection[] {

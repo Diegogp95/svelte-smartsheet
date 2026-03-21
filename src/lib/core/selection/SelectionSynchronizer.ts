@@ -1,150 +1,59 @@
-import type {
-    CellComponent,
-    HeaderComponent,
-} from '../types/types.ts';
-
 /**
- * Owns the visual synchronization between domain selection state (sets of indices/keys)
- * and the component objects that carry the `.selected` flag.
- * Encapsulates the diff logic and the component map lookups.
+ * Pure stateless diff engine for selection synchronization.
+ * Computes what changed between two selection states without holding references
+ * or applying mutations. The Store is responsible for applying all mutations.
  */
-export class SelectionSynchronizer<TExtraProps = undefined, TRowHeaderProps = undefined, TColHeaderProps = undefined> {
-    private selectedCells: Set<string> = new Set();
-    private selectedRowHeaders: Set<number> = new Set();
-    private selectedColHeaders: Set<number> = new Set();
 
-    private cellComponents: Map<string, CellComponent<TExtraProps>>;
-    private rowHeaderComponents: Map<string, HeaderComponent<TRowHeaderProps>>;
-    private colHeaderComponents: Map<string, HeaderComponent<TColHeaderProps>>;
-    private cornerHeaderComponent: HeaderComponent | null;
+export interface CellDiff {
+    toSelect: Set<string>;
+    toDeselect: Set<string>;
+}
 
-    constructor(
-        cellComponents: Map<string, CellComponent<TExtraProps>>,
-        rowHeaderComponents: Map<string, HeaderComponent<TRowHeaderProps>>,
-        colHeaderComponents: Map<string, HeaderComponent<TColHeaderProps>>,
-        cornerHeaderComponent: HeaderComponent | null
-    ) {
-        this.cellComponents = cellComponents;
-        this.rowHeaderComponents = rowHeaderComponents;
-        this.colHeaderComponents = colHeaderComponents;
-        this.cornerHeaderComponent = cornerHeaderComponent;
-    }
+export interface HeaderDiff {
+    toSelectRows: Set<number>;
+    toDeselectRows: Set<number>;
+    toSelectCols: Set<number>;
+    toDeselectCols: Set<number>;
+}
 
-    // ==================== SYNC ====================
-
+export class SelectionSynchronizer {
     /**
-     * Diffs the new cell set against the current one and applies .selected changes
-     * to cell components. Returns true if any change was applied.
+     * Returns the diff between the current and next cell selection sets,
+     * or null if nothing changed.
      */
-    syncCells(newCells: Set<string>): boolean {
+    diffCells(current: Set<string>, next: Set<string>): CellDiff | null {
         const toDeselect = new Set<string>();
-        this.selectedCells.forEach(key => {
-            if (!newCells.has(key)) toDeselect.add(key);
-        });
+        current.forEach(key => { if (!next.has(key)) toDeselect.add(key); });
 
         const toSelect = new Set<string>();
-        newCells.forEach(key => {
-            if (!this.selectedCells.has(key)) toSelect.add(key);
-        });
+        next.forEach(key => { if (!current.has(key)) toSelect.add(key); });
 
-        if (toDeselect.size === 0 && toSelect.size === 0) return false;
-
-        toDeselect.forEach(key => {
-            const c = this.cellComponents.get(key);
-            if (c) c.selected = false;
-        });
-
-        toSelect.forEach(key => {
-            const c = this.cellComponents.get(key);
-            if (c) c.selected = true;
-        });
-
-        this.selectedCells = new Set(newCells);
-        return true;
+        if (toDeselect.size === 0 && toSelect.size === 0) return null;
+        return { toSelect, toDeselect };
     }
 
     /**
-     * Diffs the new header index sets against the current ones and applies .selected
-     * changes to header components. Returns true if any change was applied.
+     * Returns the diff between the current and next header selection sets,
+     * or null if nothing changed.
      */
-    syncHeaders(newRows: Set<number>, newCols: Set<number>): boolean {
+    diffHeaders(
+        currentRows: Set<number>, nextRows: Set<number>,
+        currentCols: Set<number>, nextCols: Set<number>
+    ): HeaderDiff | null {
         const toDeselectRows = new Set<number>();
-        this.selectedRowHeaders.forEach(i => { if (!newRows.has(i)) toDeselectRows.add(i); });
-
-        const toDeselectCols = new Set<number>();
-        this.selectedColHeaders.forEach(i => { if (!newCols.has(i)) toDeselectCols.add(i); });
+        currentRows.forEach(i => { if (!nextRows.has(i)) toDeselectRows.add(i); });
 
         const toSelectRows = new Set<number>();
-        newRows.forEach(i => { if (!this.selectedRowHeaders.has(i)) toSelectRows.add(i); });
+        nextRows.forEach(i => { if (!currentRows.has(i)) toSelectRows.add(i); });
+
+        const toDeselectCols = new Set<number>();
+        currentCols.forEach(i => { if (!nextCols.has(i)) toDeselectCols.add(i); });
 
         const toSelectCols = new Set<number>();
-        newCols.forEach(i => { if (!this.selectedColHeaders.has(i)) toSelectCols.add(i); });
+        nextCols.forEach(i => { if (!currentCols.has(i)) toSelectCols.add(i); });
 
-        if (toDeselectRows.size === 0 && toDeselectCols.size === 0 &&
-            toSelectRows.size === 0 && toSelectCols.size === 0) return false;
-
-        toDeselectRows.forEach(i => {
-            const c = this.getHeaderComponent(`row-${i}`);
-            if (c) c.selected = false;
-        });
-        toDeselectCols.forEach(i => {
-            const c = this.getHeaderComponent(`col-${i}`);
-            if (c) c.selected = false;
-        });
-        toSelectRows.forEach(i => {
-            const c = this.getHeaderComponent(`row-${i}`);
-            if (c) c.selected = true;
-        });
-        toSelectCols.forEach(i => {
-            const c = this.getHeaderComponent(`col-${i}`);
-            if (c) c.selected = true;
-        });
-
-        this.selectedRowHeaders = new Set(newRows);
-        this.selectedColHeaders = new Set(newCols);
-        return true;
-    }
-
-    // ==================== QUERIES ====================
-
-    isCellSelected(key: string): boolean {
-        return this.selectedCells.has(key);
-    }
-
-    isRowHeaderSelected(index: number): boolean {
-        return this.selectedRowHeaders.has(index);
-    }
-
-    isColHeaderSelected(index: number): boolean {
-        return this.selectedColHeaders.has(index);
-    }
-
-    getSelectedCells(): Set<string> {
-        return new Set(this.selectedCells);
-    }
-
-    getSelectedRowHeaders(): number[] {
-        return Array.from(this.selectedRowHeaders);
-    }
-
-    getSelectedColHeaders(): number[] {
-        return Array.from(this.selectedColHeaders);
-    }
-
-    // ==================== PRIVATE ====================
-
-    private getHeaderComponent(key: string): HeaderComponent<any> | null {
-        let c: HeaderComponent<any> | undefined = this.rowHeaderComponents.get(key);
-        if (c) return c;
-
-        c = this.colHeaderComponents.get(key);
-        if (c) return c;
-
-        if (this.cornerHeaderComponent) {
-            const cornerKey = `${this.cornerHeaderComponent.position.headerType}-${this.cornerHeaderComponent.position.index}`;
-            if (key === cornerKey) return this.cornerHeaderComponent;
-        }
-
-        return null;
+        if (toDeselectRows.size === 0 && toSelectRows.size === 0 &&
+            toDeselectCols.size === 0 && toSelectCols.size === 0) return null;
+        return { toSelectRows, toDeselectRows, toSelectCols, toDeselectCols };
     }
 }

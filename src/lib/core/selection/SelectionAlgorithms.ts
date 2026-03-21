@@ -1,4 +1,5 @@
 import type { GridPosition, GridDimensions } from '../types/types.ts';
+import type { HeaderSelection } from './HeaderSelection.ts';
 
 /**
  * Analyzes a flat list of positions and groups them into the largest possible
@@ -141,4 +142,23 @@ function isValidRectangle(
         }
     }
     return true;
+}
+
+/**
+ * Calculates the intersection of cells covered by row header selections
+ * and column header selections.
+ */
+export function calculateRowColIntersection(
+    rowSelections: HeaderSelection[],
+    colSelections: HeaderSelection[]
+): Set<string> {
+    const rowCells = new Set<string>();
+    rowSelections.forEach(hs => hs.getCells().forEach(cell => rowCells.add(cell)));
+
+    const colCells = new Set<string>();
+    colSelections.forEach(hs => hs.getCells().forEach(cell => colCells.add(cell)));
+
+    const intersection = new Set<string>();
+    rowCells.forEach(cell => { if (colCells.has(cell)) intersection.add(cell); });
+    return intersection;
 }
