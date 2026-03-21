@@ -12,6 +12,10 @@ export function keyToPosition(key: string): GridPosition {
     return { row, col };
 }
 
+export function comparePositions(pos1: GridPosition, pos2: GridPosition): boolean {
+    return pos1.row === pos2.row && pos1.col === pos2.col;
+}
+
 export function generateColumnLabel(index: number): string {
     let result = '';
     let num = index;
