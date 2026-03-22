@@ -9,6 +9,8 @@ import type {
 } from '../types/types.ts';
 import type { ViewportPort } from '../ports/ViewportPort.ts';
 import { positionToKey } from '../utils/utils.ts';
+import { computeRenderArea } from './RenderAreaAlgorithms.ts';
+import { ScaleManager } from './ScaleManager.ts';
 
 // Callback types for virtualization subscriptions
 export type VisibleComponentsCallback<TExtraProps, TRowHeaderProps, TColHeaderProps> = 
@@ -27,18 +29,8 @@ export default class VirtualizeHandler<TExtraProps = undefined, TRowHeaderProps 
     private rowHeaderComponents: Map<string, HeaderComponent<TRowHeaderProps>>;
     private colHeaderComponents: Map<string, HeaderComponent<TColHeaderProps>>;
     private cornerHeaderComponent: HeaderComponent;
-    // Viewport port — provides scroll state for render area calculations
     private viewportPort?: ViewportPort;
-
-    // Original arrays (shared references - these get modified by scaling)
-    private rowHeights: number[] = [];
-    private colWidths: number[] = [];
-
-    // Base dimensions (immutable copies for scaling calculations)
-    private baseRowHeights: number[] = [];
-    private baseColWidths: number[] = [];
-    
-    private scaleFactor: number = 1.0;
+    private scaleManager: ScaleManager = new ScaleManager();
 
     // Subscription callbacks
     onVisibleComponentsChanged?: VisibleComponentsCallback<TExtraProps, TRowHeaderProps, TColHeaderProps>;
@@ -84,17 +76,11 @@ export default class VirtualizeHandler<TExtraProps = undefined, TRowHeaderProps 
     }
 
     setRowHeights(heights: number[]) {
-        // Store shared reference (this gets modified by scaling)
-        this.rowHeights = heights;
-        // Create immutable copy for base calculations
-        this.baseRowHeights = [...heights];
+        this.scaleManager.setRowHeights(heights);
     }
 
     setColWidths(widths: number[]) {
-        // Store shared reference (this gets modified by scaling)
-        this.colWidths = widths;
-        // Create immutable copy for base calculations
-        this.baseColWidths = [...widths];
+        this.scaleManager.setColWidths(widths);
     }
 
     // Initialize the handler with container dimensions (called on mount)
@@ -196,81 +182,23 @@ export default class VirtualizeHandler<TExtraProps = undefined, TRowHeaderProps 
     }
 
     // Calculate render area based on scroll position and container dimensions
-    calculateRenderArea(
-        overscan: number = 1 // Extra rows/cols to render outside visible area
-    ): [RenderArea, RenderArea] {
-        // Calculate visible row range
-        let accumulatedHeight = 0;
-        let startRow = 0;
-        let endRow = this.gridDimensions.maxRow;
-        let startVisibleRow = 0;
-        let endVisibleRow = this.gridDimensions.maxRow;
-
+    calculateRenderArea(overscan: number = 1): [RenderArea, RenderArea] {
         const state = this.viewportPort?.getScrollState();
-        const scrollTop = state?.scrollTop ?? 0;
-        const containerHeight = state?.viewportHeight ?? 0;
-        const scrollLeft = state?.scrollLeft ?? 0;
-        const containerWidth = state?.viewportWidth ?? 0;
-
-        // Find start row
-        for (let row = 0; row <= this.gridDimensions.maxRow; row++) {
-            const rowHeight = this.rowHeights[row] || 32; // Use already scaled height
-            if (accumulatedHeight + rowHeight > scrollTop) {
-                startVisibleRow = Math.max(0, row);
-                startRow = Math.max(0, row - overscan);
-                break;
-            }
-            accumulatedHeight += rowHeight;
-        }
-
-        // Find end row
-        accumulatedHeight = 0;
-        for (let row = 0; row <= this.gridDimensions.maxRow; row++) {
-            const rowHeight = this.rowHeights[row] || 32; // Use already scaled height
-            accumulatedHeight += rowHeight;
-            if (accumulatedHeight > scrollTop + containerHeight) {
-                endVisibleRow = Math.min(this.gridDimensions.maxRow, row);
-                endRow = Math.min(this.gridDimensions.maxRow, row + overscan);
-                break;
-            }
-        }
-
-        // Calculate visible column range
-        let accumulatedWidth = 0;
-        let startCol = 0;
-        let endCol = this.gridDimensions.maxCol;
-        let startVisibleCol = 0;
-        let endVisibleCol = this.gridDimensions.maxCol;
-
-        // Find start column
-        for (let col = 0; col <= this.gridDimensions.maxCol; col++) {
-            const colWidth = this.colWidths[col] || 120; // Use already scaled width
-            if (accumulatedWidth + colWidth > scrollLeft) {
-                startVisibleCol = Math.max(0, col);
-                startCol = Math.max(0, col - overscan);
-                break;
-            }
-            accumulatedWidth += colWidth;
-        }
-
-        // Find end column
-        accumulatedWidth = 0;
-        for (let col = 0; col <= this.gridDimensions.maxCol; col++) {
-            const colWidth = this.colWidths[col] || 120; // Use already scaled width
-            accumulatedWidth += colWidth;
-            if (accumulatedWidth > scrollLeft + containerWidth) {
-                endVisibleCol = Math.min(this.gridDimensions.maxCol, col);
-                endCol = Math.min(this.gridDimensions.maxCol, col + overscan);
-                break;
-            }
-        }
-
-        return [{ startRow, endRow, startCol, endCol }, { startRow: startVisibleRow, endRow: endVisibleRow, startCol: startVisibleCol, endCol: endVisibleCol }];
+        return computeRenderArea(
+            this.scaleManager.getRowHeights(),
+            this.scaleManager.getColWidths(),
+            this.gridDimensions,
+            state?.scrollTop ?? 0,
+            state?.scrollLeft ?? 0,
+            state?.viewportHeight ?? 0,
+            state?.viewportWidth ?? 0,
+            overscan,
+        );
     }
 
     // Update render area based on scroll and container information
     handleScroll() {
-        if (!this.rowHeights.length || !this.colWidths.length || !this.viewportPort) {
+        if (!this.scaleManager.getRowHeights().length || !this.scaleManager.getColWidths().length || !this.viewportPort) {
             return;
         }
         const [newRenderArea, newVisibleArea] = this.calculateRenderArea();
@@ -279,16 +207,8 @@ export default class VirtualizeHandler<TExtraProps = undefined, TRowHeaderProps 
 
     // ==================== SCALING METHODS ====================
 
-    /**
-     * Set the scale factor directly (internal assignment method)
-     * @param factor Scale factor (1.0 = normal size, 0.5 = half size, 2.0 = double size)
-     */
     setScaleFactor(factor: number): void {
-        if (factor <= 0) {
-            console.warn('[VirtualizeHandler] Scale factor must be positive');
-            return;
-        }
-        this.scaleFactor = factor;
+        this.scaleManager.setScaleFactor(factor);
     }
 
     /**
@@ -303,7 +223,7 @@ export default class VirtualizeHandler<TExtraProps = undefined, TRowHeaderProps 
         // Calculate scale delta: positive deltaY = zoom out, negative deltaY = zoom in
         const scaleDelta = wheelDeltaY > 0 ? -SCALE_STEP : SCALE_STEP;
 
-        const currentScale = this.scaleFactor;
+        const currentScale = this.scaleManager.getScaleFactor();
         const newScale = currentScale + scaleDelta;
 
         // Check bounds
@@ -312,14 +232,12 @@ export default class VirtualizeHandler<TExtraProps = undefined, TRowHeaderProps 
             return;
         }
 
-        // Update scale factor
-        this.setScaleFactor(newScale);
-
-        // Update shared arrays based on base dimensions and new scale factor
-        this.updateSharedDimensionsFromBase();
+        // Update scale factor and shared dimension arrays
+        this.scaleManager.setScaleFactor(newScale);
+        this.scaleManager.updateSharedDimensionsFromBase();
 
         // Recalculate render area with new scaled dimensions
-        if (this.viewportPort && this.rowHeights.length && this.colWidths.length) {
+        if (this.viewportPort && this.scaleManager.getRowHeights().length && this.scaleManager.getColWidths().length) {
             const [newRenderArea, newVisibleArea] = this.calculateRenderArea();
             this.updateRenderArea(newRenderArea, newVisibleArea);
         }
@@ -334,60 +252,19 @@ export default class VirtualizeHandler<TExtraProps = undefined, TRowHeaderProps 
         }
     }
 
-    /**
-     * Get current scale factor
-     * @returns Current scale factor
-     */
     getScaleFactor(): number {
-        return this.scaleFactor;
+        return this.scaleManager.getScaleFactor();
     }
 
-    /**
-     * Update shared dimension arrays based on base dimensions and current scale factor
-     * This modifies the shared arrays that other handlers use, so we need to take this into account
-     */
-    private updateSharedDimensionsFromBase(): void {
-        // Update shared rowHeights array based on base dimensions
-        for (let i = 0; i < this.baseRowHeights.length; i++) {
-            this.rowHeights[i] = this.baseRowHeights[i] * this.scaleFactor;
-        }
-
-        // Update shared colWidths array based on base dimensions
-        for (let i = 0; i < this.baseColWidths.length; i++) {
-            this.colWidths[i] = this.baseColWidths[i] * this.scaleFactor;
-        }
-    }
-
-    /**
-     * Get scaled font size based on base font size
-     * @param baseFontSize Base font size string (e.g., "14px", "1.2em", "1rem")
-     * @returns Scaled font size string with same unit
-     */
     getScaledFontSize(baseFontSize: string): string {
-        const match = baseFontSize.match(/^([\d.]+)(px|em|rem)$/);
-        if (!match) {
-            console.warn(`[VirtualizeHandler] Unsupported font size format: ${baseFontSize}`);
-            return baseFontSize; // Return original if format is unsupported
-        }
-        const numericSize = parseFloat(match[1]);
-        const unit = match[2];
-        const scaledSize = numericSize * this.scaleFactor;
-        return `${scaledSize}${unit}`;
+        return this.scaleManager.getScaledFontSize(baseFontSize);
     }
 
-    /**
-     * Get reference to the shared row heights array (for Svelte reactivity)
-     * This returns the actual array reference that gets modified in-place during scaling
-     */
     getRowHeights(): number[] {
-        return this.rowHeights;
+        return this.scaleManager.getRowHeights();
     }
 
-    /**
-     * Get reference to the shared column widths array (for Svelte reactivity)
-     * This returns the actual array reference that gets modified in-place during scaling
-     */
     getColWidths(): number[] {
-        return this.colWidths;
+        return this.scaleManager.getColWidths();
     }
 }
