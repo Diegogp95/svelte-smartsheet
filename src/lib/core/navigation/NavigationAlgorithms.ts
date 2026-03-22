@@ -1,4 +1,4 @@
-import type { GridDimensions, GridPosition } from '../types/types.ts';
+import type { GridDimensions, GridPosition, CellComponent } from '../types/types.ts';
 
 /**
  * Pure movement step: advance a cell position by one unit in the given direction.
@@ -74,4 +74,65 @@ export function boundaryHeaderJump(
             break;
     }
     return index;
+}
+
+/**
+ * Returns true if the cell at the given position has no meaningful value.
+ */
+export function isCellEmpty<T>(
+    cellComponents: Map<string, CellComponent<T>>,
+    position: GridPosition
+): boolean {
+    const key = `${position.row}-${position.col}`;
+    const cell = cellComponents.get(key);
+    if (!cell) return true;
+    const value = cell.value;
+    return value === '' || value === null || value === undefined;
+}
+
+/**
+ * Excel-style Ctrl+Arrow boundary detection.
+ * From an empty cell: finds the first non-empty cell in direction.
+ * From a non-empty cell: finds the last contiguous non-empty cell in direction.
+ */
+export function findDataBoundary<T>(
+    cellComponents: Map<string, CellComponent<T>>,
+    gridDimensions: GridDimensions,
+    currentRow: number,
+    currentCol: number,
+    direction: 'up' | 'down' | 'left' | 'right'
+): GridPosition {
+    const { maxRow, maxCol } = gridDimensions;
+    const currentEmpty = isCellEmpty(cellComponents, { row: currentRow, col: currentCol });
+
+    const directions = {
+        up:    { rowDelta: -1, colDelta:  0, boundary: { row: 0,      col: currentCol } },
+        down:  { rowDelta:  1, colDelta:  0, boundary: { row: maxRow, col: currentCol } },
+        left:  { rowDelta:  0, colDelta: -1, boundary: { row: currentRow, col: 0      } },
+        right: { rowDelta:  0, colDelta:  1, boundary: { row: currentRow, col: maxCol } },
+    };
+
+    const { rowDelta, colDelta, boundary } = directions[direction];
+
+    if (currentEmpty) {
+        let row = currentRow + rowDelta;
+        let col = currentCol + colDelta;
+        while (row >= 0 && row <= maxRow && col >= 0 && col <= maxCol) {
+            if (!isCellEmpty(cellComponents, { row, col })) return { row, col };
+            row += rowDelta;
+            col += colDelta;
+        }
+        return boundary;
+    } else {
+        let row = currentRow + rowDelta;
+        let col = currentCol + colDelta;
+        while (row >= 0 && row <= maxRow && col >= 0 && col <= maxCol) {
+            if (isCellEmpty(cellComponents, { row, col })) {
+                return { row: row - rowDelta, col: col - colDelta };
+            }
+            row += rowDelta;
+            col += colDelta;
+        }
+        return boundary;
+    }
 }

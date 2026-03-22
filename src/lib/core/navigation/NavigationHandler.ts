@@ -13,7 +13,7 @@ import type {
 } from '../types/types.ts';
 import type { ExternalEventPort } from '../ports/ExternalEventPort.ts';
 import type { ViewportPort } from '../ports/ViewportPort.ts';
-import { singleCellStep, singleHeaderStep, boundaryHeaderJump } from './NavigationAlgorithms.ts';
+import { singleCellStep, singleHeaderStep, boundaryHeaderJump, isCellEmpty, findDataBoundary } from './NavigationAlgorithms.ts';
 import { NavigationStore } from './NavigationStore.ts';
 import { AutoScrollManager } from './AutoScrollManager.ts';
 import { ViewportScrollCalculator } from './ViewportScrollCalculator.ts';
@@ -105,58 +105,6 @@ export default class NavigationHandler<TExtraProps = undefined, TRowHeaderProps 
         return this.getCurrentPosition();
     }
 
-    //========================== HELPER METHODS FOR POSITION CALCULATION ==========================//
-
-    /**
-     * Advances the page in the specified direction.
-     * @param direction The direction to advance the page ('up', 'down', 'left', 'right').
-     * @returns The new grid position after advancing the page.
-     * This method delegates the scroll action to movePointer after calculating the new position.
-     * This works for now, but it does not work just like Excel's page up/down behavior. We might need to revisit this later.
-     */
-    private advancePage(direction: string | null): GridPosition {
-        const currentPosition = this.getCurrentPosition();
-        let newPosition = { ...currentPosition };
-
-        switch (direction) {
-            case 'page-up':
-                newPosition.row = this.viewportScrollCalculator.calculateVerticalPage(currentPosition.row, 'up', this.gridDimensions);
-                break;
-            case 'page-down':
-                newPosition.row = this.viewportScrollCalculator.calculateVerticalPage(currentPosition.row, 'down', this.gridDimensions);
-                break;
-            case 'page-left':
-                newPosition.col = this.viewportScrollCalculator.calculateHorizontalPage(currentPosition.col, 'left', this.gridDimensions);
-                break;
-            case 'page-right':
-                newPosition.col = this.viewportScrollCalculator.calculateHorizontalPage(currentPosition.col, 'right', this.gridDimensions);
-                break;
-            default:
-                // Unknown direction, return current position
-                return currentPosition;
-        }
-
-        return newPosition;
-    }
-
-    private advanceHeaderPage(headerType: 'row' | 'col', direction: 'page-up' | 'page-down' | 'page-left' | 'page-right'): number {
-        if (headerType === 'row') {
-            if (direction === 'page-up' || direction === 'page-left') {
-                return this.viewportScrollCalculator.calculateVerticalPage(this.store.getHeaderPointerRow(), 'up', this.gridDimensions);
-            } else if (direction === 'page-down' || direction === 'page-right') {
-                return this.viewportScrollCalculator.calculateVerticalPage(this.store.getHeaderPointerRow(), 'down', this.gridDimensions);
-            }
-            return this.store.getHeaderPointerRow();
-        } else {
-            if (direction === 'page-left' || direction === 'page-up') {
-                return this.viewportScrollCalculator.calculateHorizontalPage(this.store.getHeaderPointerCol(), 'left', this.gridDimensions);
-            } else if (direction === 'page-right' || direction === 'page-down') {
-                return this.viewportScrollCalculator.calculateHorizontalPage(this.store.getHeaderPointerCol(), 'right', this.gridDimensions);
-            }
-            return this.store.getHeaderPointerCol();
-        }
-    }
-
     /**
      * Process keyboard navigation events.
      * @param analysis Keyboard navigation analysis
@@ -178,10 +126,16 @@ export default class NavigationHandler<TExtraProps = undefined, TRowHeaderProps 
                     newCellPos = singleCellStep(cellPointer, direction as 'up' | 'down' | 'left' | 'right', this.gridDimensions);
                     this.movePointer(newCellPos);
                 } else if (navigationType === 'boundary' && direction) {
-                    newCellPos = this.findDataBoundary(cellPointer.row, cellPointer.col, direction as 'up' | 'down' | 'left' | 'right');
+                    newCellPos = findDataBoundary(this.cellComponents, this.gridDimensions, cellPointer.row, cellPointer.col, direction as 'up' | 'down' | 'left' | 'right');
                     this.movePointer(newCellPos);
                     } else if (navigationType === 'page' && direction) {
-                    newCellPos = this.advancePage(direction);
+                    newCellPos = { ...cellPointer };
+                    switch (direction) {
+                        case 'page-up':    newCellPos.row = this.viewportScrollCalculator.calculateVerticalPage(cellPointer.row, 'up', this.gridDimensions); break;
+                        case 'page-down':  newCellPos.row = this.viewportScrollCalculator.calculateVerticalPage(cellPointer.row, 'down', this.gridDimensions); break;
+                        case 'page-left':  newCellPos.col = this.viewportScrollCalculator.calculateHorizontalPage(cellPointer.col, 'left', this.gridDimensions); break;
+                        case 'page-right': newCellPos.col = this.viewportScrollCalculator.calculateHorizontalPage(cellPointer.col, 'right', this.gridDimensions); break;
+                    }
                     this.movePointer(newCellPos, 'instant', direction === 'page-up' || direction === 'page-left' ? 'initial' : 'final');
                 } else {
                     // Fallback: no navigation
@@ -205,8 +159,16 @@ export default class NavigationHandler<TExtraProps = undefined, TRowHeaderProps 
                     } else if (navigationType === 'boundary' && direction) {
                         newHeaderIndex = boundaryHeaderJump(currentHeaderIndex, direction as 'up' | 'down' | 'left' | 'right', headerType, this.gridDimensions);
                     } else if (navigationType === 'page' && direction) {
-                        // Page navigation for headers using specialized method
-                        newHeaderIndex = this.advanceHeaderPage(headerType, direction as 'page-up' | 'page-down' | 'page-left' | 'page-right');
+                        const pageDir = direction as 'page-up' | 'page-down' | 'page-left' | 'page-right';
+                        if (headerType === 'row') {
+                            newHeaderIndex = (pageDir === 'page-up' || pageDir === 'page-left')
+                                ? this.viewportScrollCalculator.calculateVerticalPage(currentHeaderIndex, 'up', this.gridDimensions)
+                                : this.viewportScrollCalculator.calculateVerticalPage(currentHeaderIndex, 'down', this.gridDimensions);
+                        } else {
+                            newHeaderIndex = (pageDir === 'page-left' || pageDir === 'page-up')
+                                ? this.viewportScrollCalculator.calculateHorizontalPage(currentHeaderIndex, 'left', this.gridDimensions)
+                                : this.viewportScrollCalculator.calculateHorizontalPage(currentHeaderIndex, 'right', this.gridDimensions);
+                        }
                     } else {
                         // Fallback: no navigation
                         newHeaderIndex = currentHeaderIndex;
@@ -414,24 +376,6 @@ export default class NavigationHandler<TExtraProps = undefined, TRowHeaderProps 
         this.updateMouseActionContextFromAnalysis(analysis);
     }
 
-    // Helper method: Get selection range for entire row
-    private getRowSelectionRange(rowIndex: number): { start: GridPosition; end: GridPosition } {
-        const { maxCol } = this.gridDimensions;
-        return {
-            start: { row: rowIndex, col: 0 },
-            end: { row: rowIndex, col: maxCol }
-        };
-    }
-
-    // Helper method: Get selection range for entire column
-    private getColumnSelectionRange(colIndex: number): { start: GridPosition; end: GridPosition } {
-        const { maxRow } = this.gridDimensions;
-        return {
-            start: { row: 0, col: colIndex },
-            end: { row: maxRow, col: colIndex }
-        };
-    }
-
     // Update mouse action context based on processed analysis
     updateMouseActionContextFromAnalysis(analysis: MouseEventAnalysis): void {
         const { type, position, navigationAction, componentType } = analysis;
@@ -476,62 +420,6 @@ export default class NavigationHandler<TExtraProps = undefined, TRowHeaderProps 
             dragType,
             dragOrigin,
         });
-    }
-
-    // Helper methods for Ctrl+Arrow navigation (Excel-like boundary detection)
-    private isCellEmpty(position: GridPosition): boolean {
-        const key = `${position.row}-${position.col}`;
-        const cellComponent = this.cellComponents.get(key);
-        if (!cellComponent) return true;
-
-        const value = cellComponent.value;
-        return value === '' || value === null || value === undefined;
-    }
-
-    private findDataBoundary(currentRow: number, currentCol: number, direction: 'up' | 'down' | 'left' | 'right'): GridPosition {
-        const { maxRow, maxCol } = this.gridDimensions;
-        const currentEmpty = this.isCellEmpty({ row: currentRow, col: currentCol });
-
-        // Define direction vectors and boundaries
-        const directions = {
-            up: { rowDelta: -1, colDelta: 0, boundary: { row: 0, col: currentCol } },
-            down: { rowDelta: 1, colDelta: 0, boundary: { row: maxRow, col: currentCol } },
-            left: { rowDelta: 0, colDelta: -1, boundary: { row: currentRow, col: 0 } },
-            right: { rowDelta: 0, colDelta: 1, boundary: { row: currentRow, col: maxCol } }
-        };
-
-        const { rowDelta, colDelta, boundary } = directions[direction];
-
-        if (currentEmpty) {
-            // Find first non-empty cell in direction
-            let row = currentRow + rowDelta;
-            let col = currentCol + colDelta;
-
-            while (row >= 0 && row <= maxRow && col >= 0 && col <= maxCol) {
-                if (!this.isCellEmpty({ row, col })) {
-                    return { row, col };
-                }
-                row += rowDelta;
-                col += colDelta;
-            }
-            // No data found, go to boundary
-            return boundary;
-        } else {
-            // Find last data cell before empty region or boundary
-            let row = currentRow + rowDelta;
-            let col = currentCol + colDelta;
-
-            while (row >= 0 && row <= maxRow && col >= 0 && col <= maxCol) {
-                if (this.isCellEmpty({ row, col })) {
-                    // Found empty cell, return previous data cell
-                    return { row: row - rowDelta, col: col - colDelta };
-                }
-                row += rowDelta;
-                col += colDelta;
-            }
-            // No empty cell found, go to boundary
-            return boundary;
-        }
     }
 
     // Navigation mode control
