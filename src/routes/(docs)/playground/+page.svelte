@@ -10,26 +10,44 @@
 
     let sheet: SmartSheet;
 
+    // 50 columns: Q1-Y5 quarters + months Jan-Dec repeated across 5 years
     const columnHeaders: HeaderValue[] = [
-        'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-        'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+        'Jan-21','Feb-21','Mar-21','Apr-21','May-21','Jun-21','Jul-21','Aug-21','Sep-21','Oct-21',
+        'Nov-21','Dec-21','Jan-22','Feb-22','Mar-22','Apr-22','May-22','Jun-22','Jul-22','Aug-22',
+        'Sep-22','Oct-22','Nov-22','Dec-22','Jan-23','Feb-23','Mar-23','Apr-23','May-23','Jun-23',
+        'Jul-23','Aug-23','Sep-23','Oct-23','Nov-23','Dec-23','Jan-24','Feb-24','Mar-24','Apr-24',
+        'May-24','Jun-24','Jul-24','Aug-24','Sep-24','Oct-24','Nov-24','Dec-24','Jan-25','Feb-25',
     ];
 
+    // 40 rows: 8 regions × 5 product lines
     const rowHeaders: HeaderValue[] = [
-        'North', 'South', 'East', 'West',
-        'Online', 'Retail', 'Wholesale', 'Export',
+        'North-Elec','North-App','North-Cloth','North-Food','North-Tech',
+        'South-Elec','South-App','South-Cloth','South-Food','South-Tech',
+        'East-Elec', 'East-App', 'East-Cloth', 'East-Food', 'East-Tech',
+        'West-Elec', 'West-App', 'West-Cloth', 'West-Food', 'West-Tech',
+        'Online-Elec','Online-App','Online-Cloth','Online-Food','Online-Tech',
+        'Retail-Elec','Retail-App','Retail-Cloth','Retail-Food','Retail-Tech',
+        'WS-Elec',   'WS-App',   'WS-Cloth',   'WS-Food',   'WS-Tech',
+        'Exp-Elec',  'Exp-App',  'Exp-Cloth',  'Exp-Food',  'Exp-Tech',
     ];
 
-    const gridData = [
-        [12400, 11800, 14200, 15600, 17100, 16800, 18300, 17900, 16400, 15200, 13800, 19200],
-        [9800,  10200, 11400, 12800, 13500, 14100, 13700, 14500, 12900, 11700, 10400, 15600],
-        [7600,  8100,  9300,  10200, 11400, 10900, 12100, 11800, 10600, 9800,  8700,  13400],
-        [6200,  6800,  7900,  8700,  9600,  9200,  10400, 10100, 9100,  8300,  7400,  11200],
-        [22100, 23400, 25600, 27800, 30200, 29400, 32100, 31500, 28900, 26700, 24100, 38400],
-        [18300, 17900, 19800, 21400, 23100, 22600, 24500, 23800, 21900, 20200, 18600, 29800],
-        [14700, 15200, 16800, 18300, 19900, 19400, 21200, 20700, 19100, 17600, 15900, 24600],
-        [8900,  9400,  10700, 11800, 13100, 12700, 14200, 13800, 12400, 11300, 10100, 16800],
-    ];
+    // Generate 40×50 grid with seeded pseudo-random values
+    function makeGrid(rows: number, cols: number): number[][] {
+        const grid: number[][] = [];
+        for (let r = 0; r < rows; r++) {
+            const row: number[] = [];
+            for (let c = 0; c < cols; c++) {
+                // simple deterministic formula to get believable sales numbers
+                const base = 5000 + (r * 317 + c * 211) % 30000;
+                const trend = Math.floor(c * 12.5);
+                row.push(base + trend);
+            }
+            grid.push(row);
+        }
+        return grid;
+    }
+
+    const gridData = makeGrid(40, 50);
 </script>
 
 <div class="playground">
